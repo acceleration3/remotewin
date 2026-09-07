@@ -45,7 +45,7 @@ Q_SIGNALS:
     void windows_listed(const QList<rwin::host::GuestWindowInfo>& windows);
     void frame_arrived(quint64 window, const QImage& pixels);
     void window_gone(quint64 window);
-    void non_client_hit(quint64 window, qint32 hit_code);
+    void drag_started(quint64 window);
     void cursor_shape(quint64 id, quint32 width, quint32 height, quint32 hotspot_x,
                       quint32 hotspot_y, const QByteArray& pixels);
     void cursor_changed(quint64 id);

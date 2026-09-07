@@ -168,7 +168,8 @@ void MirrorWindow::focusInEvent(QFocusEvent* event) {
 
 void MirrorWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    if (applying_guest_size_ || event->size() == guest_size_ || !isVisible()) {
+    if (applying_guest_size_ || applying_guest_state_ || event->size() == guest_size_
+        || !isVisible()) {
         return;
     }
     guest_size_ = event->size();
@@ -191,44 +192,45 @@ void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
         static_cast<std::int32_t>(event->position().y() - origin.y()));
 }
 
+void MirrorWindow::take_over_drag() {
+    QWindow* surface = windowHandle();
+    if (surface == nullptr) return;
+    swallow_release_ = true;
+    if (!surface->startSystemMove()) {
+        RWIN_WARN("chrome", "{:#x} compositor refused the drag", handle_);
+        swallow_release_ = false;
+    }
+}
+
+void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
+    if (minimized == isMinimized() && maximized == isMaximized()) return;
+    applying_guest_state_ = true;
+    if (minimized) {
+        showMinimized();
+    } else if (maximized) {
+        showMaximized();
+    } else {
+        showNormal();
+    }
+    applying_guest_state_ = false;
+    RWIN_DEBUG("chrome", "{:#x} follows guest state minimized={} maximized={}", handle_,
+               minimized, maximized);
+}
+
+// The host's own band, which the guest cannot report: a window's resize
+// border is outside its visible frame, so no point inside a mirror is in
+// it.
 bool MirrorWindow::act_on_chrome(QMouseEvent* event) {
-    if (event->button() != Qt::LeftButton) return false;
+    if (event->button() != Qt::LeftButton || isMaximized()) return false;
+    const Qt::Edges edges = border_.at(event->position(), size());
+    if (edges == Qt::Edges{}) return false;
 
     QWindow* surface = windowHandle();
-    // The host's own band first: the guest cannot report an edge that is
-    // outside its visible frame, which all of them are.
-    if (const Qt::Edges edges = border_.at(event->position(), size());
-        edges != Qt::Edges{} && !isMaximized()) {
-        RWIN_DEBUG("chrome", "{:#x} resize from edges {:#x}", handle_,
-                   static_cast<unsigned>(edges.toInt()));
-        return surface != nullptr && surface->startSystemResize(edges);
-    }
-    if (!hit_.is_host_action()) return false;
-    RWIN_DEBUG("chrome", "{:#x} press in zone {}", handle_, hit_.code());
-
-    if (hit_.is_close()) {
-        close();
-        return true;
-    }
-    if (hit_.is_minimize()) {
-        showMinimized();
-        return true;
-    }
-    if (hit_.is_maximize()) {
-        if (isMaximized()) {
-            showNormal();
-        } else {
-            showMaximized();
-        }
-        return true;
-    }
     if (surface == nullptr) return false;
-    // Whatever the guest called an edge is inside its frame — a sizing
-    // grip, say — so honour it as a resize too.
-    if (const Qt::Edges edges = hit_.resize_edges(); edges != Qt::Edges{}) {
-        return surface->startSystemResize(edges);
-    }
-    return surface->startSystemMove();
+    RWIN_DEBUG("chrome", "{:#x} resize from edges {:#x}", handle_,
+               static_cast<unsigned>(edges.toInt()));
+    swallow_release_ = true;
+    return surface->startSystemResize(edges);
 }
 
 void MirrorWindow::send_button(QMouseEvent* event, bool pressed) {
@@ -247,7 +249,13 @@ void MirrorWindow::mousePressEvent(QMouseEvent* event) {
     send_button(event, true);
 }
 
-void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) { send_button(event, false); }
+void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
+    if (swallow_release_) {
+        swallow_release_ = false;
+        return;
+    }
+    send_button(event, false);
+}
 
 void MirrorWindow::send_key(QKeyEvent* event, bool pressed) {
     const std::uint32_t virtual_key = virtual_key_for(event->key());

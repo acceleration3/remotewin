@@ -25,6 +25,8 @@ struct GuestWindow {
     std::uint32_t extended_style = 0;
     std::string title;
     std::string class_name;
+    bool minimized = false;
+    bool maximized = false;
 };
 
 // Every top-level window worth showing.

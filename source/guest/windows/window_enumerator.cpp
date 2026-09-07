@@ -84,6 +84,8 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
     found.style = static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_STYLE));
     found.extended_style =
         static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_EXSTYLE));
+    found.minimized = ::IsIconic(window) != FALSE;
+    found.maximized = ::IsZoomed(window) != FALSE;
     found.title = text_of(window, window_title);
     found.class_name = text_of(window, window_class);
     collector->into->push_back(std::move(found));

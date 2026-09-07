@@ -20,10 +20,9 @@ enum class MessageId : std::uint8_t {
     WindowList = 64,
     Frame = 65,
     WindowGone = 66,
-    // What part of itself the window says the pointer is over. Pushed
-    // when it changes rather than asked on each click, so a press can be
-    // acted on at once instead of after a round trip.
-    NonClientHit = 67,
+    // Windows started moving a window, and the guest stopped it. The
+    // host owns the drag from here.
+    DragStarted = 67,
     CursorShape = 68,
     CursorChanged = 69,
 };

@@ -37,6 +37,7 @@ void GuestSession::run() {
             if (decoder_.overflowed()) return;
         }
         push_window_changes();
+        report_drags();
         send_frames();
         report_cursor();
     }
@@ -52,6 +53,7 @@ void GuestSession::handle(MessageReader& message) {
             }
             watcher_->forget();
             push_window_changes();
+        report_drags();
             break;
         }
         case MessageId::Subscribe: {
@@ -65,7 +67,6 @@ void GuestSession::handle(MessageReader& message) {
         case MessageId::Unsubscribe: {
             const std::uint64_t window = message.u64();
             captures_.erase(window);
-            last_hit_.erase(window);
             RWIN_INFO("session", "unsubscribed from window {:#x}", window);
             break;
         }
@@ -75,7 +76,6 @@ void GuestSession::handle(MessageReader& message) {
             const std::int32_t y = message.i32();
             if (!message.ok()) break;
             pointer_.move_to(WindowSurface{window}, x, y);
-            report_hit(window, x, y);
             break;
         }
         case MessageId::PointerButton: {
@@ -130,20 +130,15 @@ void GuestSession::handle(MessageReader& message) {
     }
 }
 
-void GuestSession::report_hit(std::uint64_t window_handle, std::int32_t x,
-                              std::int32_t y) {
-    const std::int32_t zone = hit_test_.at(WindowSurface{window_handle}, x, y);
-    auto [entry, inserted] = last_hit_.try_emplace(window_handle, zone);
-    if (!inserted) {
-        if (entry->second == zone) return;
-        entry->second = zone;
+void GuestSession::report_drags() {
+    for (const std::uint64_t window : drags_.drained()) {
+        MessageWriter out{MessageId::DragStarted};
+        out.put_u64(window);
+        if (!link_.send(out.take())) {
+            running_ = false;
+            return;
+        }
     }
-    RWIN_DEBUG("hit", "window {:#x} at {},{} is zone {}", window_handle, x, y, zone);
-
-    MessageWriter out{MessageId::NonClientHit};
-    out.put_u64(window_handle);
-    out.put_i32(zone);
-    running_ = link_.send(out.take());
 }
 
 void GuestSession::report_cursor() {
@@ -206,6 +201,8 @@ void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
         out.put_u32(window.extended_style);
         out.put_string(window.title);
         out.put_string(window.class_name);
+        out.put_u8(static_cast<std::uint8_t>((window.minimized ? 1 : 0)
+                                             | (window.maximized ? 2 : 0)));
     }
     running_ = link_.send(out.take());
 }
@@ -214,6 +211,7 @@ void GuestSession::send_frames() {
     std::vector<std::uint64_t> vanished;
     for (auto& [handle, capture] : captures_) {
         const WindowSurface surface{handle};
+        if (surface.minimized()) continue;
         if (!capture->grab(surface)) {
             RWIN_INFO("frames", "window {:#x} no longer captures; dropping", handle);
             vanished.push_back(handle);
@@ -231,7 +229,6 @@ void GuestSession::send_frames() {
     }
     for (const std::uint64_t handle : vanished) {
         captures_.erase(handle);
-        last_hit_.erase(handle);
         send_window_gone(handle);
     }
 }

@@ -9,7 +9,8 @@ namespace {
 bool same(const GuestWindow& a, const GuestWindow& b) {
     return a.handle == b.handle && a.owner == b.owner && a.x == b.x && a.y == b.y
            && a.width == b.width && a.height == b.height && a.style == b.style
-           && a.extended_style == b.extended_style && a.title == b.title;
+           && a.extended_style == b.extended_style && a.title == b.title
+           && a.minimized == b.minimized && a.maximized == b.maximized;
 }
 
 }  // namespace

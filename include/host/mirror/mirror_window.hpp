@@ -1,6 +1,5 @@
 #pragma once
 
-#include "host/chrome/non_client_area.hpp"
 #include "host/chrome/resize_border.hpp"
 #include "host/link/guest_window_info.hpp"
 
@@ -32,7 +31,16 @@ public:
     void present(const QImage& pixels);
     void retitle(const QString& title);
     void note_guest_size(std::uint32_t width, std::uint32_t height);
-    void note_hit(std::int32_t hit_code) noexcept { hit_ = NonClientArea{hit_code}; }
+    // The guest tried to move this window and was stopped. The drag is
+    // this window's now, carried out by the compositor that actually has
+    // it on a screen.
+    void take_over_drag();
+
+    // Follow the guest window's own minimised and maximised state, which
+    // is how a press on the chrome it drew reaches this window: the press
+    // is forwarded, the application acts on it, and the state it ended up
+    // in comes back.
+    void follow_guest_state(bool minimized, bool maximized);
     void wear_guest_cursor(const QCursor& cursor);
 
     // Make this window transient to ``owner`` and put it where the guest
@@ -73,12 +81,15 @@ private:
     std::uint64_t owner_;
     QImage frame_;
     QSize guest_size_;
-    NonClientArea hit_;
     ResizeBorder border_;
     QCursor guest_cursor_;
     Qt::Edges hovered_edges_;
     bool guest_closed_ = false;
     bool applying_guest_size_ = false;
+    bool applying_guest_state_ = false;
+    // The press that began a drag was consumed by it; its release would
+    // otherwise reach the guest as a click nobody made.
+    bool swallow_release_ = false;
 };
 
 }  // namespace rwin::host

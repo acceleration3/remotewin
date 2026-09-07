@@ -22,6 +22,9 @@ public:
     explicit WindowSurface(std::uint64_t window_handle);
 
     [[nodiscard]] bool valid() const noexcept { return valid_; }
+    // Nothing to capture, and nowhere meaningful to put a pointer: a
+    // minimised window is parked far off-screen.
+    [[nodiscard]] bool minimized() const noexcept { return minimized_; }
 
     [[nodiscard]] std::int32_t screen_x(std::int32_t frame_x) const noexcept {
         return frame_left_ + frame_x;
@@ -52,6 +55,7 @@ private:
     std::uint32_t captured_height_ = 0;
     std::uint32_t inset_x_ = 0;
     std::uint32_t inset_y_ = 0;
+    bool minimized_ = false;
     bool valid_ = false;
 };
 

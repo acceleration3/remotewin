@@ -11,6 +11,7 @@ WindowSurface::WindowSurface(std::uint64_t window_handle)
     : handle_(reinterpret_cast<void*>(static_cast<std::uintptr_t>(window_handle))) {
     auto window = static_cast<HWND>(handle_);
     if (::IsWindow(window) == FALSE) return;
+    minimized_ = ::IsIconic(window) != FALSE;
 
     RECT window_rect{};
     if (::GetWindowRect(window, &window_rect) == FALSE) return;

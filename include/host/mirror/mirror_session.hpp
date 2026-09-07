@@ -34,7 +34,7 @@ Q_SIGNALS:
 
 private:
     void refresh(const QList<GuestWindowInfo>& windows);
-    void note_hit(quint64 window, qint32 hit_code);
+    void hand_over_drag(quint64 window);
     void show_cursor(quint64 id);
     void show_frame(quint64 window, const QImage& pixels);
     void forget(quint64 window);
@@ -44,9 +44,6 @@ private:
     QTimer* poll_;
     QHash<quint64, QPointer<MirrorWindow>> mirrors_;
     EmulatedCursor cursor_;
-    // Which mirror the pointer was last reported over, so a cursor change
-    // is applied to the window it belongs to.
-    quint64 pointer_over_ = 0;
     bool saw_any_ = false;
 };
 

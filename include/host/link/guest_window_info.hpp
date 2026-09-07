@@ -20,6 +20,8 @@ struct GuestWindowInfo {
     std::uint32_t extended_style = 0;
     QString title;
     QString class_name;
+    bool minimized = false;
+    bool maximized = false;
 };
 
 }  // namespace rwin::host

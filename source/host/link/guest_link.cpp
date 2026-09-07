@@ -92,6 +92,9 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
                 window.extended_style = message.u32();
                 window.title = QString::fromStdString(message.string());
                 window.class_name = QString::fromStdString(message.string());
+                const std::uint8_t state = message.u8();
+                window.minimized = (state & 1) != 0;
+                window.maximized = (state & 2) != 0;
                 windows.push_back(std::move(window));
             }
             if (!message.ok()) {
@@ -135,12 +138,11 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
                 Q_EMIT window_gone(window);
             }
             break;
-        case MessageId::NonClientHit: {
+        case MessageId::DragStarted: {
             const std::uint64_t window = message.u64();
-            const std::int32_t zone = message.i32();
             if (!message.ok()) break;
-            RWIN_DEBUG("link", "window {:#x} pointer is in zone {}", window, zone);
-            Q_EMIT non_client_hit(window, zone);
+            RWIN_INFO("link", "guest handed us a drag of {:#x}", window);
+            Q_EMIT drag_started(window);
             break;
         }
         case MessageId::CursorShape: {

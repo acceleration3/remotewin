@@ -24,7 +24,7 @@ MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id, QObject*
     connect(&link_, &GuestLink::windows_listed, this, &MirrorSession::refresh);
     connect(&link_, &GuestLink::frame_arrived, this, &MirrorSession::show_frame);
     connect(&link_, &GuestLink::window_gone, this, &MirrorSession::forget);
-    connect(&link_, &GuestLink::non_client_hit, this, &MirrorSession::note_hit);
+    connect(&link_, &GuestLink::drag_started, this, &MirrorSession::hand_over_drag);
     connect(&link_, &GuestLink::cursor_changed, this, &MirrorSession::show_cursor);
     connect(&link_, &GuestLink::cursor_shape, this,
             [this](quint64 id, quint32 width, quint32 height, quint32 hotspot_x,
@@ -50,6 +50,7 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
         if (auto it = mirrors_.find(window.handle); it != mirrors_.end()) {
             if (!it.value().isNull()) {
                 it.value()->retitle(window.title);
+                it.value()->follow_guest_state(window.minimized, window.maximized);
                 it.value()->note_guest_size(window.width, window.height);
             }
             continue;
@@ -102,22 +103,24 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
     }
 }
 
-void MirrorSession::note_hit(quint64 window, qint32 hit_code) {
-    pointer_over_ = window;
+void MirrorSession::hand_over_drag(quint64 window) {
     if (auto it = mirrors_.find(window); it != mirrors_.end() && !it.value().isNull()) {
-        it.value()->note_hit(hit_code);
+        it.value()->take_over_drag();
     }
 }
 
 void MirrorSession::show_cursor(quint64 id) {
-    auto it = mirrors_.find(pointer_over_);
-    if (it == mirrors_.end() || it.value().isNull()) return;
     const QCursor* shape = cursor_.find(id);
     if (shape == nullptr) {
         RWIN_DEBUG("cursor", "shape {:#x} named before it arrived", id);
         return;
     }
-    it.value()->wear_guest_cursor(*shape);
+    // The guest has one cursor at a time and does not say whose window it
+    // is over. Every mirror wears it; only the one under the pointer is
+    // showing a cursor at all.
+    for (auto& mirror : mirrors_) {
+        if (!mirror.isNull()) mirror->wear_guest_cursor(*shape);
+    }
 }
 
 void MirrorSession::show_frame(quint64 window, const QImage& pixels) {
