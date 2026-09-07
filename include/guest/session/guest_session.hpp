@@ -11,6 +11,7 @@
 #include "guest/windows/window_drag_watcher.hpp"
 #include "guest/windows/window_focus.hpp"
 #include "guest/windows/window_resizer.hpp"
+#include "guest/windows/desktop_stand_in.hpp"
 #include "guest/windows/window_state.hpp"
 #include "proto/frame_decoder.hpp"
 
@@ -51,7 +52,8 @@ private:
     PointerInjector pointer_{focus_};
     KeyboardInjector keyboard_{focus_};
     WindowResizer resizer_;
-    WindowState state_;
+    DesktopStandIn elsewhere_;
+    WindowState state_{elsewhere_};
     WindowDragWatcher drags_;
     CursorWatcher cursor_;
     FrameDecoder decoder_;

@@ -1,5 +1,7 @@
 #include "guest/windows/window_state.hpp"
 
+#include "guest/windows/desktop_stand_in.hpp"
+
 #include "logging/logger.hpp"
 
 // clang-format off
@@ -13,8 +15,8 @@ void WindowState::apply(std::uint64_t window_handle, bool minimized, bool maximi
     auto window = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(window_handle));
     if (::IsWindow(window) == FALSE) return;
     if (!active && ::GetForegroundWindow() == window) {
-        ::PostMessageW(window, WM_CANCELMODE, 0, 0);
-        RWIN_DEBUG("state", "{:#x} deactivated on the host; modal state cancelled",
+        elsewhere_.take_foreground();
+        RWIN_DEBUG("state", "{:#x} deactivated on the host; foreground given to the desktop",
                    window_handle);
     }
     const bool is_minimized = ::IsIconic(window) != FALSE;
