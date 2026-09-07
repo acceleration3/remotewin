@@ -66,6 +66,7 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows,
         }
     }
     close_departed(listed);
+    close_let_go();
     finish_if_done();
 }
 
@@ -152,11 +153,37 @@ void MirrorSession::close_departed(const Listed& listed) {
             continue;
         }
         RWIN_INFO("mirror", "window {:#x} left the list; closing its mirror", it.key());
-        if (!it.value().isNull()) {
-            it.value()->guest_closed();
+        if (auto mirror = it.value(); !mirror.isNull()) {
+            // Photoshop hides a panel the moment it is picked up. The
+            // surface the press landed on has to outlive the panel, or
+            // the compositor delivers the rest of the drag to nobody.
+            if (mirror->holds_press()) {
+                mirror->close_when_released();
+                connect(mirror, &MirrorWindow::let_go, this, &MirrorSession::close_let_go);
+                waiting_release_.push_back(mirror);
+            } else {
+                mirror->guest_closed();
+            }
         }
         link_.unsubscribe(it.key());
         it = mirrors_.erase(it);
+    }
+}
+
+// A mirror kept for a press closes once nothing in it holds one — its
+// own release, or the release of a popup of its that it had to outlive.
+void MirrorSession::close_let_go() {
+    for (auto it = waiting_release_.begin(); it != waiting_release_.end();) {
+        if (it->isNull()) {
+            it = waiting_release_.erase(it);
+            continue;
+        }
+        if ((*it)->holds_press()) {
+            ++it;
+            continue;
+        }
+        (*it)->guest_closed();
+        it = waiting_release_.erase(it);
     }
 }
 

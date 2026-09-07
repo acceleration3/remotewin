@@ -69,6 +69,20 @@ public:
     // to close a window that no longer exists.
     void guest_closed();
 
+    // A button pressed here and not yet released, on this window or on a
+    // popup of it. The compositor holds the pointer to the surface it was
+    // pressed on until the release, and delivers nothing to anyone if that
+    // surface is gone — the release included.
+    [[nodiscard]] bool holds_press() const noexcept;
+
+    // The guest window is gone but a press is still held: stay, showing
+    // nothing, until the release has been delivered, then close.
+    void close_when_released();
+
+Q_SIGNALS:
+    // The last held button was released on a window waiting for it.
+    void let_go();
+
 protected:
     void paintEvent(QPaintEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
@@ -112,6 +126,8 @@ private:
     ResizeBorder border_;
     QCursor guest_cursor_;
     Qt::Edges hovered_edges_;
+    Qt::MouseButtons held_;
+    bool closing_when_released_ = false;
     bool guest_closed_ = false;
     bool applying_guest_size_ = false;
     bool applying_guest_state_ = false;

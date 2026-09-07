@@ -182,6 +182,23 @@ void MirrorWindow::guest_closed() {
     close();
 }
 
+bool MirrorWindow::holds_press() const noexcept {
+    if (held_ != Qt::NoButton) return true;
+    for (const MirrorWindow* popup : findChildren<MirrorWindow*>(Qt::FindDirectChildrenOnly)) {
+        if (popup->holds_press()) return true;
+    }
+    return false;
+}
+
+void MirrorWindow::close_when_released() {
+    guest_closed_ = true;
+    closing_when_released_ = true;
+    frame_ = QImage();
+    update();
+    RWIN_DEBUG("input", "{:#x} gone in the guest but holding a press; staying until release",
+               handle_);
+}
+
 void MirrorWindow::wear_guest_cursor(const QCursor& cursor) {
     guest_cursor_ = cursor;
     // Not while the pointer is in the resize band: there the shape has to
@@ -400,11 +417,13 @@ void MirrorWindow::mousePressEvent(QMouseEvent* event) {
         return;
     }
     const QPoint at = guest_position_of(event);
+    held_ |= event->button();
     link_.send_pointer_button(root().handle(), at.x(), at.y(), button_index(event->button()),
                               true);
 }
 
 void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
+    held_ &= ~event->button();
     if (swallow_release_) {
         swallow_release_ = false;
         return;
@@ -412,6 +431,7 @@ void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
     const QPoint at = guest_position_of(event);
     link_.send_pointer_button(root().handle(), at.x(), at.y(), button_index(event->button()),
                               false);
+    if (held_ == Qt::NoButton) Q_EMIT let_go();
 }
 
 void MirrorWindow::send_key(QKeyEvent* event, bool pressed) {

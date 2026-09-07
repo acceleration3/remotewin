@@ -3,6 +3,8 @@
 #include "guest/windows/launch_scope.hpp"
 #include "guest/windows/window_surface.hpp"
 
+#include "logging/logger.hpp"
+
 // clang-format off
 #include <windows.h>
 #include <dwmapi.h>
@@ -100,11 +102,21 @@ HWND owner_of(HWND window) {
     if (gui.hwndMenuOwner != nullptr && shows_a_menu(window)) {
         return root_owner_of(gui.hwndMenuOwner);
     }
-    if (gui.hwndCapture == window && gui.hwndActive != nullptr) {
+    // A child window with no parent but the desktop: a combo box's
+    // dropped list is made this way. A child is a part of something, and
+    // the something is whatever its thread has active. The same goes for
+    // a window holding the mouse capture while another is active — a
+    // window capturing the mouse for itself is a drag, and is nobody's.
+    const bool child_of_desktop = (::GetWindowLongPtrW(window, GWL_STYLE) & WS_CHILD) != 0;
+    if ((child_of_desktop || gui.hwndCapture == window) && gui.hwndActive != nullptr) {
         HWND root = root_owner_of(gui.hwndActive);
-        // A window capturing the mouse for itself — a drag inside it —
-        // belongs to nobody.
-        if (root != window) return root;
+        if (root != window) {
+            RWIN_DEBUG("owner", "{:#x} belongs to active root {:#x} (child={} capture={})",
+                       reinterpret_cast<std::uintptr_t>(window),
+                       reinterpret_cast<std::uintptr_t>(root), child_of_desktop,
+                       gui.hwndCapture == window);
+            return root;
+        }
     }
     return nullptr;
 }

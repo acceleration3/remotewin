@@ -44,6 +44,7 @@ private:
     void follow(MirrorWindow& mirror, const GuestWindowInfo& window, const Listed& listed);
     void place(MirrorWindow& mirror, const GuestWindowInfo& window, const Listed& listed);
     void close_departed(const Listed& listed);
+    void close_let_go();
     void hand_over_drag(quint64 window);
     void show_cursor(quint64 id);
     void show_frame(quint64 window, const QImage& pixels);
@@ -54,6 +55,8 @@ private:
     QString job_name_;
     QTimer* poll_;
     QHash<quint64, QPointer<MirrorWindow>> mirrors_;
+    // Gone in the guest, still here for a press they hold.
+    QList<QPointer<MirrorWindow>> waiting_release_;
     EmulatedCursor cursor_;
     bool application_alive_ = true;
 };
