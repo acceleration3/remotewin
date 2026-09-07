@@ -6,14 +6,17 @@
 #include "logging/logger.hpp"
 
 #include <QImage>
+#include <QPoint>
+#include <QSet>
 #include <QTimer>
 
 namespace rwin::host {
 
 namespace {
-// How often the window set is re-asked for. Windows opening and closing
-// is not frequent enough to deserve a push channel yet; frames have one.
-constexpr int kPollIntervalMs = 500;
+// The guest pushes the window set whenever it changes, at frame rate, so
+// this is only a safety net: it re-asks in case a push was lost with a
+// connection, and costs one small message a second.
+constexpr int kPollIntervalMs = 1000;
 }  // namespace
 
 MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id, QObject* parent)
@@ -38,7 +41,10 @@ MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id, QObject*
 }
 
 void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
+    // Every mirror is made before any is placed: a popup can arrive in
+    // the same list as the window it belongs to, and ahead of it.
     QSet<quint64> present;
+    QList<const GuestWindowInfo*> awaiting_placement;
     for (const GuestWindowInfo& window : windows) {
         present.insert(window.handle);
         if (auto it = mirrors_.find(window.handle); it != mirrors_.end()) {
@@ -48,14 +54,33 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
             }
             continue;
         }
-        RWIN_INFO("mirror", "new window {:#x} '{}' {}x{} class='{}'", window.handle,
-                  window.title.toStdString(), window.width, window.height,
-                  window.class_name.toStdString());
+        RWIN_INFO("mirror", "new window {:#x} owner={:#x} '{}' {}x{} class='{}'",
+                  window.handle, window.owner, window.title.toStdString(), window.width,
+                  window.height, window.class_name.toStdString());
         auto* mirror = new MirrorWindow(link_, window);
         mirrors_.insert(window.handle, mirror);
         saw_any_ = true;
+        awaiting_placement.push_back(&window);
+    }
+
+    for (const GuestWindowInfo* window : awaiting_placement) {
+        auto mirror = mirrors_.value(window->handle);
+        if (mirror.isNull()) continue;
+        // An owner we are not mirroring is no owner at all — the window
+        // stands on its own rather than being placed against nothing.
+        auto owner = mirrors_.value(window->owner);
+        if (mirror->is_owned() && !owner.isNull()) {
+            const GuestWindowInfo* placed_against = nullptr;
+            for (const GuestWindowInfo& candidate : windows) {
+                if (candidate.handle == window->owner) placed_against = &candidate;
+            }
+            if (placed_against != nullptr) {
+                mirror->place_under(*owner, QPoint(window->x - placed_against->x,
+                                                   window->y - placed_against->y));
+            }
+        }
         mirror->show();
-        link_.subscribe(window.handle);
+        link_.subscribe(window->handle);
     }
 
     for (auto it = mirrors_.begin(); it != mirrors_.end();) {
@@ -87,9 +112,12 @@ void MirrorSession::note_hit(quint64 window, qint32 hit_code) {
 void MirrorSession::show_cursor(quint64 id) {
     auto it = mirrors_.find(pointer_over_);
     if (it == mirrors_.end() || it.value().isNull()) return;
-    if (!cursor_.apply(id, *it.value())) {
+    const QCursor* shape = cursor_.find(id);
+    if (shape == nullptr) {
         RWIN_DEBUG("cursor", "shape {:#x} named before it arrived", id);
+        return;
     }
+    it.value()->wear_guest_cursor(*shape);
 }
 
 void MirrorSession::show_frame(quint64 window, const QImage& pixels) {

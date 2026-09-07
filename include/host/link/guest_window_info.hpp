@@ -10,6 +10,7 @@ namespace rwin::host {
 // together, so they are one thing.
 struct GuestWindowInfo {
     std::uint64_t handle = 0;
+    std::uint64_t owner = 0;
     std::uint32_t process_id = 0;
     std::int32_t x = 0;
     std::int32_t y = 0;

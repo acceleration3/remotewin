@@ -4,6 +4,7 @@
 
 // clang-format off
 #include <windows.h>
+#include <dwmapi.h>
 // clang-format on
 
 namespace rwin::guest {
@@ -30,8 +31,20 @@ int window_class(HWND window, wchar_t* into, int size) {
     return ::GetClassNameW(window, into, size);
 }
 
+// Mapped, sized, visible — and still not drawn. DWM knows; nothing in
+// user32 does.
+bool is_cloaked(HWND window) {
+    DWORD cloaked = 0;
+    if (FAILED(::DwmGetWindowAttribute(window, DWMWA_CLOAKED, &cloaked,
+                                       sizeof(cloaked)))) {
+        return false;
+    }
+    return cloaked != 0;
+}
+
 bool worth_showing(HWND window) {
     if (::IsWindowVisible(window) == FALSE) return false;
+    if (is_cloaked(window)) return false;
     // An owned tool window is chrome for another window, not a window of
     // its own; the host draws those as part of their owner.
     const LONG_PTR extended = ::GetWindowLongPtrW(window, GWL_EXSTYLE);
@@ -62,6 +75,7 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
     // this and the capture crops to it, so all three agree.
     const WindowSurface surface{found.handle};
     if (!surface.valid()) return TRUE;
+    found.owner = reinterpret_cast<std::uintptr_t>(::GetWindow(window, GW_OWNER));
     found.process_id = process_id;
     found.x = surface.screen_x(0);
     found.y = surface.screen_y(0);

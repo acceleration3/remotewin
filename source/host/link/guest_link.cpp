@@ -82,6 +82,7 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
             for (std::uint32_t i = 0; i < count && message.ok(); ++i) {
                 GuestWindowInfo window;
                 window.handle = message.u64();
+                window.owner = message.u64();
                 window.process_id = message.u32();
                 window.x = message.i32();
                 window.y = message.i32();
@@ -99,9 +100,12 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
             }
             RWIN_DEBUG("link", "window list: {}", windows.size());
             for (const GuestWindowInfo& w : windows) {
-                RWIN_DEBUG("link", "  {:#x} {}x{} style={:#010x} class='{}' title='{}'",
-                           w.handle, w.width, w.height, w.style,
-                           w.class_name.toStdString(), w.title.toStdString());
+                RWIN_DEBUG("link",
+                           "  {:#x} owner={:#x} {}x{} at {},{} style={:#010x} "
+                           "ex={:#010x} class='{}' title='{}'",
+                           w.handle, w.owner, w.width, w.height, w.x, w.y, w.style,
+                           w.extended_style, w.class_name.toStdString(),
+                           w.title.toStdString());
             }
             Q_EMIT windows_listed(windows);
             break;

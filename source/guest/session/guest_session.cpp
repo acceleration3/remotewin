@@ -1,6 +1,8 @@
 #include "guest/session/guest_session.hpp"
 
 #include "guest/cursor/cursor_image.hpp"
+
+#include <optional>
 #include "guest/windows/window_surface.hpp"
 #include "logging/logger.hpp"
 #include "proto/message_id.hpp"
@@ -34,6 +36,7 @@ void GuestSession::run() {
             }
             if (decoder_.overflowed()) return;
         }
+        push_window_changes();
         send_frames();
         report_cursor();
     }
@@ -41,9 +44,16 @@ void GuestSession::run() {
 
 void GuestSession::handle(MessageReader& message) {
     switch (message.id()) {
-        case MessageId::ListWindows:
-            send_window_list(message.u32());
+        case MessageId::ListWindows: {
+            const std::uint32_t process_id = message.u32();
+            if (!message.ok()) break;
+            if (watcher_ == nullptr) {
+                watcher_ = std::make_unique<WindowListWatcher>(process_id);
+            }
+            watcher_->forget();
+            push_window_changes();
             break;
+        }
         case MessageId::Subscribe: {
             const std::uint64_t window = message.u64();
             if (!message.ok()) break;
@@ -168,14 +178,25 @@ void GuestSession::report_cursor() {
     running_ = link_.send(changed.take());
 }
 
-void GuestSession::send_window_list(std::uint32_t process_id) {
-    const std::vector<GuestWindow> found = windows_.windows_of(process_id);
-    RWIN_DEBUG("windows", "listing for pid {}: {} window(s)", process_id, found.size());
+void GuestSession::push_window_changes() {
+    if (watcher_ == nullptr) return;
+    std::optional<std::vector<GuestWindow>> changed = watcher_->changed();
+    if (!changed.has_value()) return;
+    RWIN_DEBUG("windows", "{} window(s)", changed->size());
+    for (const GuestWindow& window : *changed) {
+        RWIN_DEBUG("windows", "  {:#x} owner={:#x} {}x{} at {},{} class='{}' title='{}'",
+                   window.handle, window.owner, window.width, window.height, window.x,
+                   window.y, window.class_name, window.title);
+    }
+    send_window_list(*changed);
+}
 
+void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
     MessageWriter out{MessageId::WindowList};
-    out.put_u32(static_cast<std::uint32_t>(found.size()));
-    for (const GuestWindow& window : found) {
+    out.put_u32(static_cast<std::uint32_t>(windows.size()));
+    for (const GuestWindow& window : windows) {
         out.put_u64(window.handle);
+        out.put_u64(window.owner);
         out.put_u32(window.process_id);
         out.put_i32(window.x);
         out.put_i32(window.y);

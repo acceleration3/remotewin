@@ -12,6 +12,8 @@
 #include <QResizeEvent>
 #include <QWindow>
 
+#include <algorithm>
+
 namespace rwin::host {
 
 namespace {
@@ -51,6 +53,7 @@ MirrorWindow::MirrorWindow(GuestLink& link, const GuestWindowInfo& window,
     : QWidget(parent),
       link_(link),
       handle_(window.handle),
+      owner_(window.owner),
       guest_size_(static_cast<int>(window.width), static_cast<int>(window.height)) {
     const WindowStyle style{window.class_name.toStdString(), window.style,
                             window.extended_style};
@@ -85,11 +88,43 @@ void MirrorWindow::guest_closed() {
     close();
 }
 
+void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
+    // Both surfaces have to exist before the link between them can be
+    // made, and it has to be made before either maps.
+    owner.createWinId();
+    createWinId();
+    QWindow* mine = windowHandle();
+    QWindow* theirs = owner.windowHandle();
+    if (mine == nullptr || theirs == nullptr) return;
+    mine->setTransientParent(theirs);
+    move(owner.pos() + guest_offset);
+    RWIN_DEBUG("popup", "{:#x} placed under {:#x} at offset {},{}", handle_,
+               owner.handle(), guest_offset.x(), guest_offset.y());
+}
+
+void MirrorWindow::wear_guest_cursor(const QCursor& cursor) {
+    guest_cursor_ = cursor;
+    // Not while the pointer is in the resize band: there the shape has to
+    // say the edge can be dragged, and the guest has no idea that band
+    // exists.
+    if (hovered_edges_ == Qt::Edges{}) {
+        setCursor(guest_cursor_);
+    }
+}
+
 void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
     const QSize reported(static_cast<int>(width), static_cast<int>(height));
     if (reported == guest_size_) return;
     guest_size_ = reported;
     if (size() == reported) return;
+    // A maximised mirror keeps the size the compositor gave it. The guest
+    // screen may be smaller than this one, so the window it manages to
+    // reach is smaller than the mirror — following it here would shrink
+    // the mirror back out of maximised the moment it got there.
+    if (isMaximized() || isFullScreen()) {
+        update();
+        return;
+    }
     // The guest resized itself. Follow it, but do not tell it what it
     // already knows — that is the echo that had the two of them growing
     // each other a few pixels at a time.
@@ -98,13 +133,22 @@ void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
     applying_guest_size_ = false;
 }
 
+QPoint MirrorWindow::frame_origin() const {
+    return QPoint(std::max(0, (width() - frame_.width()) / 2),
+                  std::max(0, (height() - frame_.height()) / 2));
+}
+
 void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
     if (frame_.isNull()) {
         painter.fillRect(rect(), palette().window());
         return;
     }
-    painter.drawImage(QPoint(0, 0), frame_);
+    const QPoint origin = frame_origin();
+    if (origin != QPoint(0, 0)) {
+        painter.fillRect(rect(), palette().window());
+    }
+    painter.drawImage(origin, frame_);
 }
 
 void MirrorWindow::closeEvent(QCloseEvent* event) {
@@ -133,16 +177,33 @@ void MirrorWindow::resizeEvent(QResizeEvent* event) {
 }
 
 void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
-    // Forwarded even over the chrome: that is how the guest updates its
-    // own hover highlighting and how it decides which cursor to show.
-    link_.send_pointer_move(handle_, static_cast<std::int32_t>(event->position().x()),
-                            static_cast<std::int32_t>(event->position().y()));
+    const Qt::Edges edges = border_.at(event->position(), size());
+    if (edges != hovered_edges_) {
+        hovered_edges_ = edges;
+        setCursor(edges == Qt::Edges{} ? guest_cursor_
+                                       : QCursor(ResizeBorder::cursor_for(edges)));
+    }
+    // Forwarded even over the chrome and the border: that is how the guest
+    // updates its own hover highlighting and decides which cursor to show.
+    const QPoint origin = frame_origin();
+    link_.send_pointer_move(
+        handle_, static_cast<std::int32_t>(event->position().x() - origin.x()),
+        static_cast<std::int32_t>(event->position().y() - origin.y()));
 }
 
 bool MirrorWindow::act_on_chrome(QMouseEvent* event) {
-    if (event->button() != Qt::LeftButton || !hit_.is_host_action()) {
-        return false;
+    if (event->button() != Qt::LeftButton) return false;
+
+    QWindow* surface = windowHandle();
+    // The host's own band first: the guest cannot report an edge that is
+    // outside its visible frame, which all of them are.
+    if (const Qt::Edges edges = border_.at(event->position(), size());
+        edges != Qt::Edges{} && !isMaximized()) {
+        RWIN_DEBUG("chrome", "{:#x} resize from edges {:#x}", handle_,
+                   static_cast<unsigned>(edges.toInt()));
+        return surface != nullptr && surface->startSystemResize(edges);
     }
+    if (!hit_.is_host_action()) return false;
     RWIN_DEBUG("chrome", "{:#x} press in zone {}", handle_, hit_.code());
 
     if (hit_.is_close()) {
@@ -154,11 +215,16 @@ bool MirrorWindow::act_on_chrome(QMouseEvent* event) {
         return true;
     }
     if (hit_.is_maximize()) {
-        setWindowState(windowState() ^ Qt::WindowMaximized);
+        if (isMaximized()) {
+            showNormal();
+        } else {
+            showMaximized();
+        }
         return true;
     }
-    QWindow* surface = windowHandle();
     if (surface == nullptr) return false;
+    // Whatever the guest called an edge is inside its frame — a sizing
+    // grip, say — so honour it as a resize too.
     if (const Qt::Edges edges = hit_.resize_edges(); edges != Qt::Edges{}) {
         return surface->startSystemResize(edges);
     }
@@ -166,9 +232,11 @@ bool MirrorWindow::act_on_chrome(QMouseEvent* event) {
 }
 
 void MirrorWindow::send_button(QMouseEvent* event, bool pressed) {
-    link_.send_pointer_button(handle_, static_cast<std::int32_t>(event->position().x()),
-                              static_cast<std::int32_t>(event->position().y()),
-                              button_index(event->button()), pressed);
+    const QPoint origin = frame_origin();
+    link_.send_pointer_button(
+        handle_, static_cast<std::int32_t>(event->position().x() - origin.x()),
+        static_cast<std::int32_t>(event->position().y() - origin.y()),
+        button_index(event->button()), pressed);
 }
 
 void MirrorWindow::mousePressEvent(QMouseEvent* event) {

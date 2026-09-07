@@ -6,6 +6,7 @@
 #include "guest/input/pointer_injector.hpp"
 #include "guest/session/tcp_client.hpp"
 #include "guest/windows/window_enumerator.hpp"
+#include "guest/windows/window_list_watcher.hpp"
 #include "guest/windows/window_focus.hpp"
 #include "guest/windows/window_hit_test.hpp"
 #include "guest/windows/window_resizer.hpp"
@@ -35,14 +36,14 @@ public:
 
 private:
     void handle(MessageReader& message);
-    void send_window_list(std::uint32_t process_id);
+    void send_window_list(const std::vector<GuestWindow>& windows);
+    void push_window_changes();
     void send_frames();
     void send_window_gone(std::uint64_t window_handle);
     void report_hit(std::uint64_t window_handle, std::int32_t x, std::int32_t y);
     void report_cursor();
 
     TcpClient& link_;
-    WindowEnumerator windows_;
     WindowFocus focus_;
     PointerInjector pointer_{focus_};
     KeyboardInjector keyboard_{focus_};
@@ -50,6 +51,9 @@ private:
     WindowResizer resizer_;
     CursorWatcher cursor_;
     FrameDecoder decoder_;
+    // Created on the first request, because until the host says which
+    // process it wants there is nothing to watch.
+    std::unique_ptr<WindowListWatcher> watcher_;
     // One capture per subscribed window: each keeps its own bitmap, sized
     // to that window, across frames.
     std::map<std::uint64_t, std::unique_ptr<WindowCapture>> captures_;

@@ -10,6 +10,7 @@ add_executable(remotewin-guest
     windows/window_enumerator.cpp
     windows/window_focus.cpp
     windows/window_hit_test.cpp
+    windows/window_list_watcher.cpp
     windows/window_resizer.cpp
     windows/window_surface.cpp
 )

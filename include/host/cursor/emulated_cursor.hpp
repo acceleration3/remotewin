@@ -5,8 +5,6 @@
 
 #include <cstdint>
 
-class QWidget;
-
 namespace rwin::host {
 
 // The guest's cursor, wearing this desktop's clothes.
@@ -21,9 +19,9 @@ public:
                   std::uint32_t hotspot_x, std::uint32_t hotspot_y,
                   const std::uint8_t* pixels);
 
-    // False when the shape has not arrived yet, which happens only if the
+    // Null when the shape has not arrived yet, which happens only if the
     // guest names one before sending it.
-    [[nodiscard]] bool apply(std::uint64_t id, QWidget& to) const;
+    [[nodiscard]] const QCursor* find(std::uint64_t id) const;
 
 private:
     QHash<quint64, QCursor> shapes_;

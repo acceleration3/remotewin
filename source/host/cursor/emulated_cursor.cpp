@@ -4,7 +4,6 @@
 
 #include <QImage>
 #include <QPixmap>
-#include <QWidget>
 
 namespace rwin::host {
 
@@ -21,11 +20,9 @@ void EmulatedCursor::remember(std::uint64_t id, std::uint32_t width, std::uint32
     RWIN_DEBUG("cursor", "remembered shape {:#x} ({}x{})", id, width, height);
 }
 
-bool EmulatedCursor::apply(std::uint64_t id, QWidget& to) const {
+const QCursor* EmulatedCursor::find(std::uint64_t id) const {
     const auto found = shapes_.constFind(id);
-    if (found == shapes_.constEnd()) return false;
-    to.setCursor(found.value());
-    return true;
+    return found == shapes_.constEnd() ? nullptr : &found.value();
 }
 
 }  // namespace rwin::host
