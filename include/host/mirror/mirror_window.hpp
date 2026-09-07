@@ -115,7 +115,8 @@ protected:
 private:
     [[nodiscard]] Qt::WindowFlags flags_for(const Win32Style& style) const noexcept;
     void wear(const Win32Style& style);
-    void take_shape(const QList<QRect>& region);
+    void take_shape(QList<QRect> region);
+    void apply_shape();
     [[nodiscard]] Qt::Edges edges_at(QPointF position) const noexcept;
     [[nodiscard]] bool start_edge_resize(QMouseEvent* event);
     [[nodiscard]] QSize host_size() const;
@@ -155,6 +156,9 @@ private:
     QSize awaiting_;
     QSize pending_;
     QSize guest_room_;
+    // The guest window's own region, in the guest's pixels. Kept because
+    // where it lands here moves with the scale.
+    QList<QRect> guest_region_;
     // Host units per guest pixel, kept by the toplevel; a popup is drawn
     // and placed at its owner's, or it would not land where the guest put
     // it.

@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace rwin::host {
 
@@ -87,13 +88,31 @@ MirrorWindow::MirrorWindow(GuestLink& link, const GuestWindowInfo& window,
 // A window region shapes both what is seen and what is hit: a point
 // outside it belongs to whatever is behind. Qt's mask is the same two
 // things — the painted area and the input region of the surface.
-void MirrorWindow::take_shape(const QList<QRect>& region) {
-    if (region.isEmpty()) {
+void MirrorWindow::take_shape(QList<QRect> region) {
+    if (region == guest_region_) return;
+    guest_region_ = std::move(region);
+    apply_shape();
+}
+
+// The region is where the picture is, so it is placed and scaled with the
+// picture. Left in the guest's own pixels it clipped a fitted mirror to
+// the top corner of itself: the rest was painted as nothing and, being
+// outside the input region a mask also sets, took no clicks either.
+void MirrorWindow::apply_shape() {
+    if (guest_region_.isEmpty()) {
         if (!mask().isEmpty()) clearMask();
         return;
     }
+    const double s = scale();
+    const QPoint origin = content_rect().topLeft();
     QRegion shape;
-    for (const QRect& rect : region) shape += rect;
+    for (const QRect& rect : guest_region_) {
+        const QPoint at = origin + QPoint(static_cast<int>(std::lround(rect.x() * s)),
+                                          static_cast<int>(std::lround(rect.y() * s)));
+        const QSize covers(static_cast<int>(std::lround(rect.width() * s)),
+                           static_cast<int>(std::lround(rect.height() * s)));
+        shape += QRect(at, covers);
+    }
     if (shape != mask()) setMask(shape);
 }
 
@@ -401,6 +420,7 @@ void MirrorWindow::refit() {
                height(), guest_size_.width(), guest_size_.height(), scale_);
     // Every window under this one, not only those parented straight to
     // it: a menu opened from a panel is a popup of a popup.
+    apply_shape();
     for (MirrorWindow* popup : findChildren<MirrorWindow*>()) {
         popup->follow_root_scale();
     }
@@ -421,6 +441,7 @@ void MirrorWindow::follow_root_scale() {
         setFixedSize(wanted);
     }
     applying_guest_size_ = false;
+    apply_shape();
 }
 
 void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
@@ -521,8 +542,9 @@ void MirrorWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
     if (parentWidget() != nullptr) return;
     // Whatever the mirror's size came from, the guest's window has to be
-    // fitted into it again.
+    // fitted into it again — and its shape put where the picture now is.
     refit();
+    apply_shape();
     if (applying_guest_size_ || applying_guest_state_ || !isVisible()) return;
     // A maximised mirror's size is the screen's, and says nothing about
     // how big the guest window should be; that was settled when it was
