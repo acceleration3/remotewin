@@ -18,7 +18,7 @@ namespace rwin::host {
 
 namespace {
 
-// Only the keys a character cannot express: everything printable arrives
+// Only the keys a character cannot express; everything printable arrives
 // as text and is typed as a character on the other side.
 std::uint32_t virtual_key_for(int key) {
     switch (key) {
@@ -56,20 +56,24 @@ MirrorWindow::MirrorWindow(GuestLink& link, const GuestWindowInfo& window,
       owner_(window.owner),
       guest_size_(static_cast<int>(window.width), static_cast<int>(window.height)) {
     const WindowStyle style{window.class_name.toStdString(), window.style,
-                            window.extended_style};
+                            window.extended_style, window.owner != 0};
     setWindowFlags(style.window_flags());
     setWindowTitle(window.title.isEmpty() ? QStringLiteral("Guest window")
                                           : window.title);
     setAttribute(Qt::WA_DeleteOnClose);
+    if (style.is_popup()) {
+        // Opening a menu must not pull host focus off the window it
+        // belongs to, the way a real menu does not.
+        setAttribute(Qt::WA_ShowWithoutActivating);
+    }
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
-    RWIN_DEBUG("style", "{:#x} -> menu={} dialog={} popup={} resizable={}", handle_,
-               style.is_menu(), style.is_dialog(), style.is_popup(),
-               style.is_resizable());
-    resize(static_cast<int>(window.width), static_cast<int>(window.height));
+    resize(guest_size_);
     if (!style.is_resizable()) {
         setFixedSize(size());
     }
+    RWIN_DEBUG("style", "{:#x} {}x{} popup={} dialog={} menu={}", handle_, window.width,
+               window.height, style.is_popup(), style.is_dialog(), style.is_menu());
 }
 
 void MirrorWindow::present(const QImage& pixels) {
@@ -88,20 +92,6 @@ void MirrorWindow::guest_closed() {
     close();
 }
 
-void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
-    // Both surfaces have to exist before the link between them can be
-    // made, and it has to be made before either maps.
-    owner.createWinId();
-    createWinId();
-    QWindow* mine = windowHandle();
-    QWindow* theirs = owner.windowHandle();
-    if (mine == nullptr || theirs == nullptr) return;
-    mine->setTransientParent(theirs);
-    move(owner.pos() + guest_offset);
-    RWIN_DEBUG("popup", "{:#x} placed under {:#x} at offset {},{}", handle_,
-               owner.handle(), guest_offset.x(), guest_offset.y());
-}
-
 void MirrorWindow::wear_guest_cursor(const QCursor& cursor) {
     guest_cursor_ = cursor;
     // Not while the pointer is in the resize band: there the shape has to
@@ -112,11 +102,47 @@ void MirrorWindow::wear_guest_cursor(const QCursor& cursor) {
     }
 }
 
+void MirrorWindow::take_over_drag() {
+    QWindow* surface = windowHandle();
+    if (surface == nullptr) return;
+    swallow_release_ = true;
+    if (!surface->startSystemMove()) {
+        RWIN_WARN("chrome", "{:#x} compositor refused the drag", handle_);
+        swallow_release_ = false;
+    }
+}
+
+void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
+    if (minimized == isMinimized() && maximized == isMaximized()) return;
+    applying_guest_state_ = true;
+    if (minimized) {
+        showMinimized();
+    } else if (maximized) {
+        showMaximized();
+    } else {
+        showNormal();
+    }
+    applying_guest_state_ = false;
+    RWIN_DEBUG("chrome", "{:#x} follows guest state minimized={} maximized={}", handle_,
+               minimized, maximized);
+}
+
+void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
+    const QPoint offset = guest_offset;
+    // Only before it maps: re-parenting a shown widget hides it, and a
+    // Wayland popup's parent is fixed when its surface is created anyway.
+    if (!isVisible() && parentWidget() != &owner) {
+        setParent(&owner, windowFlags());
+    }
+    move(owner.pos() + offset);
+    RWIN_DEBUG("popup", "{:#x} under {:#x} at offset {},{} (owner at {},{})", handle_,
+               owner.handle(), offset.x(), offset.y(), owner.pos().x(), owner.pos().y());
+}
+
 void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
     const QSize reported(static_cast<int>(width), static_cast<int>(height));
     if (reported == guest_size_) return;
     guest_size_ = reported;
-    if (size() == reported) return;
     // A maximised mirror keeps the size the compositor gave it. The guest
     // screen may be smaller than this one, so the window it manages to
     // reach is smaller than the mirror — following it here would shrink
@@ -125,9 +151,7 @@ void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
         update();
         return;
     }
-    // The guest resized itself. Follow it, but do not tell it what it
-    // already knows — that is the echo that had the two of them growing
-    // each other a few pixels at a time.
+    if (size() == reported) return;
     applying_guest_size_ = true;
     resize(reported);
     applying_guest_size_ = false;
@@ -168,13 +192,19 @@ void MirrorWindow::focusInEvent(QFocusEvent* event) {
 
 void MirrorWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    if (applying_guest_size_ || applying_guest_state_ || event->size() == guest_size_
-        || !isVisible()) {
-        return;
-    }
-    guest_size_ = event->size();
-    link_.send_resize(handle_, static_cast<std::uint32_t>(event->size().width()),
-                      static_cast<std::uint32_t>(event->size().height()));
+    if (applying_guest_size_ || applying_guest_state_ || !isVisible()) return;
+    const QSize wanted = event->size();
+    if (wanted == guest_size_) return;
+    guest_size_ = wanted;
+    RWIN_DEBUG("mirror", "{:#x} resized to {}x{} guest pixels", handle_, wanted.width(),
+               wanted.height());
+    link_.send_resize(handle_, static_cast<std::uint32_t>(wanted.width()),
+                      static_cast<std::uint32_t>(wanted.height()));
+}
+
+QPoint MirrorWindow::guest_position_of(QMouseEvent* event) const {
+    const QPointF at = event->position() - QPointF(frame_origin());
+    return QPoint(static_cast<int>(at.x()), static_cast<int>(at.y()));
 }
 
 void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
@@ -186,41 +216,14 @@ void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
     }
     // Forwarded even over the chrome and the border: that is how the guest
     // updates its own hover highlighting and decides which cursor to show.
-    const QPoint origin = frame_origin();
-    link_.send_pointer_move(
-        handle_, static_cast<std::int32_t>(event->position().x() - origin.x()),
-        static_cast<std::int32_t>(event->position().y() - origin.y()));
-}
-
-void MirrorWindow::take_over_drag() {
-    QWindow* surface = windowHandle();
-    if (surface == nullptr) return;
-    swallow_release_ = true;
-    if (!surface->startSystemMove()) {
-        RWIN_WARN("chrome", "{:#x} compositor refused the drag", handle_);
-        swallow_release_ = false;
-    }
-}
-
-void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
-    if (minimized == isMinimized() && maximized == isMaximized()) return;
-    applying_guest_state_ = true;
-    if (minimized) {
-        showMinimized();
-    } else if (maximized) {
-        showMaximized();
-    } else {
-        showNormal();
-    }
-    applying_guest_state_ = false;
-    RWIN_DEBUG("chrome", "{:#x} follows guest state minimized={} maximized={}", handle_,
-               minimized, maximized);
+    const QPoint at = guest_position_of(event);
+    link_.send_pointer_move(handle_, at.x(), at.y());
 }
 
 // The host's own band, which the guest cannot report: a window's resize
 // border is outside its visible frame, so no point inside a mirror is in
 // it.
-bool MirrorWindow::act_on_chrome(QMouseEvent* event) {
+bool MirrorWindow::start_edge_resize(QMouseEvent* event) {
     if (event->button() != Qt::LeftButton || isMaximized()) return false;
     const Qt::Edges edges = border_.at(event->position(), size());
     if (edges == Qt::Edges{}) return false;
@@ -233,20 +236,14 @@ bool MirrorWindow::act_on_chrome(QMouseEvent* event) {
     return surface->startSystemResize(edges);
 }
 
-void MirrorWindow::send_button(QMouseEvent* event, bool pressed) {
-    const QPoint origin = frame_origin();
-    link_.send_pointer_button(
-        handle_, static_cast<std::int32_t>(event->position().x() - origin.x()),
-        static_cast<std::int32_t>(event->position().y() - origin.y()),
-        button_index(event->button()), pressed);
-}
-
 void MirrorWindow::mousePressEvent(QMouseEvent* event) {
-    if (act_on_chrome(event)) {
+    if (start_edge_resize(event)) {
         event->accept();
         return;
     }
-    send_button(event, true);
+    const QPoint at = guest_position_of(event);
+    link_.send_pointer_button(handle_, at.x(), at.y(), button_index(event->button()),
+                              true);
 }
 
 void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
@@ -254,7 +251,9 @@ void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
         swallow_release_ = false;
         return;
     }
-    send_button(event, false);
+    const QPoint at = guest_position_of(event);
+    link_.send_pointer_button(handle_, at.x(), at.y(), button_index(event->button()),
+                              false);
 }
 
 void MirrorWindow::send_key(QKeyEvent* event, bool pressed) {
@@ -265,8 +264,6 @@ void MirrorWindow::send_key(QKeyEvent* event, bool pressed) {
             ? text.at(0).unicode()
             : 0;
     if (virtual_key == 0 && character == 0) return;
-    RWIN_DEBUG("input", "{:#x} key {} vk={:#x} char={:#x}", handle_,
-               pressed ? "down" : "up", virtual_key, character);
     link_.send_key(handle_, virtual_key, character, pressed);
 }
 

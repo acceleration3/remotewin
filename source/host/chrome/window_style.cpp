@@ -21,10 +21,11 @@ constexpr const char* kDialogClass = "#32770";
 }  // namespace
 
 WindowStyle::WindowStyle(std::string class_name, std::uint32_t style,
-                         std::uint32_t extended_style)
+                         std::uint32_t extended_style, bool owned)
     : class_name_(std::move(class_name)),
       style_(style),
       extended_style_(extended_style),
+      owned_(owned),
       is_menu_(class_name_ == kMenuClass),
       is_dialog_(class_name_ == kDialogClass) {}
 
@@ -32,9 +33,11 @@ bool WindowStyle::has(std::uint32_t bit) const noexcept { return (style_ & bit) 
 
 bool WindowStyle::is_popup() const noexcept {
     // WS_POPUP alone does not make a popup: plenty of ordinary
-    // application windows set it and then add a caption. What makes a
-    // window a popup is having no caption to be dragged by.
-    return is_menu_ || ((style_ & kPopup) != 0 && !has(kCaption));
+    // application windows set it and then add a caption. What makes one
+    // is having no caption to be dragged by, and belonging to a window
+    // that does.
+    return is_menu_ || (owned_ && !has(kCaption))
+           || ((style_ & kPopup) != 0 && !has(kCaption));
 }
 
 bool WindowStyle::is_resizable() const noexcept {
@@ -43,16 +46,22 @@ bool WindowStyle::is_resizable() const noexcept {
 
 Qt::WindowFlags WindowStyle::window_flags() const {
     // Frameless in every case; see the header. Only the kind varies.
-    if (is_menu_) {
-        // Qt::Popup takes the pointer grab and dismisses on a click
-        // outside, which is what makes a menu feel like one.
-        return Qt::Popup | Qt::FramelessWindowHint;
+    //
+    // A popup is Qt::ToolTip because that is the only kind Qt turns into
+    // an xdg_popup, which is the only Wayland surface a client may
+    // position: it is placed by an offset from its parent. Qt::Tool is a
+    // plain toplevel, and a toplevel cannot be positioned at all — the
+    // compositor puts it in the middle of its parent, which is exactly
+    // where every menu was landing. Qt::Popup would position correctly
+    // too, but it takes a pointer grab and closes itself on a click
+    // outside, and the guest is the one that decides when its menu is
+    // finished.
+    if (is_popup()) {
+        return Qt::ToolTip | Qt::FramelessWindowHint;
     }
 
     Qt::WindowFlags flags = Qt::FramelessWindowHint;
-    if (is_popup()) {
-        flags |= Qt::Tool;
-    } else if (is_dialog_) {
+    if (is_dialog_) {
         flags |= Qt::Dialog;
     } else {
         flags |= Qt::Window;

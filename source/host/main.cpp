@@ -4,6 +4,7 @@
 #include "logging/logger.hpp"
 
 #include <QApplication>
+#include <QGuiApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 

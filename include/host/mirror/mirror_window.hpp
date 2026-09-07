@@ -5,6 +5,7 @@
 
 #include <QCursor>
 #include <QImage>
+#include <QPoint>
 #include <QSize>
 #include <QWidget>
 
@@ -15,10 +16,10 @@ class GuestLink;
 // One guest window, shown as a window of this desktop.
 //
 // Frameless: what looks like a title bar is the guest's own, arriving in
-// the pixels. Pressing it does not go back to the guest — NonClientArea
-// says which part of its chrome the pointer is over, and a press there
-// moves, resizes, minimises, maximises or closes THIS window instead. The
-// guest keeps drawing its chrome; the host keeps owning what it means.
+// the pixels. Nothing about that chrome is interpreted here — a press on
+// it is forwarded, and if Windows decides it began a drag the guest says
+// so and the drag is taken over. Minimised and maximised are followed
+// from what the guest reports its window became.
 class MirrorWindow : public QWidget {
     Q_OBJECT
 public:
@@ -31,24 +32,24 @@ public:
     void present(const QImage& pixels);
     void retitle(const QString& title);
     void note_guest_size(std::uint32_t width, std::uint32_t height);
-    // The guest tried to move this window and was stopped. The drag is
-    // this window's now, carried out by the compositor that actually has
-    // it on a screen.
-    void take_over_drag();
-
-    // Follow the guest window's own minimised and maximised state, which
-    // is how a press on the chrome it drew reaches this window: the press
-    // is forwarded, the application acts on it, and the state it ended up
-    // in comes back.
-    void follow_guest_state(bool minimized, bool maximized);
     void wear_guest_cursor(const QCursor& cursor);
 
-    // Make this window transient to ``owner`` and put it where the guest
-    // put it: ``guest_offset`` is this window's guest position measured
-    // from the owner's. Must happen before the first show — a Wayland
-    // popup's parent is fixed when its surface is created, and one mapped
-    // without a parent becomes a toplevel the compositor places wherever
-    // it likes.
+    // Windows started moving this window and the guest stopped it. The
+    // drag belongs to the compositor that actually has the window.
+    void take_over_drag();
+
+    // Follow the state the guest window ended up in. That is how a press
+    // on chrome this side does not interpret still reaches this window.
+    void follow_guest_state(bool minimized, bool maximized);
+
+    // Put this window where the guest put it, relative to its owner.
+    // ``guest_offset`` is in guest pixels.
+    //
+    // Wayland has no global coordinates, so a popup is positioned by its
+    // offset from its parent surface and nothing else. Being a child of
+    // the owner widget is what gives Qt that parent — without it the
+    // compositor is handed a popup with nothing to be relative to, and
+    // puts it in the middle of the window.
     void place_under(MirrorWindow& owner, QPoint guest_offset);
 
     // The guest window is verifiably gone: close without asking the guest
@@ -67,19 +68,24 @@ protected:
     void focusInEvent(QFocusEvent* event) override;
 
 private:
-    // True when the press was the guest's chrome asking for something this
-    // window does itself.
-    [[nodiscard]] bool act_on_chrome(QMouseEvent* event);
-    // Where the guest frame is drawn when the window is larger than it,
-    // which is what maximising a mirror of a smaller guest screen makes.
+    [[nodiscard]] bool start_edge_resize(QMouseEvent* event);
     [[nodiscard]] QPoint frame_origin() const;
-    void send_button(QMouseEvent* event, bool pressed);
+    [[nodiscard]] QPoint guest_position_of(QMouseEvent* event) const;
     void send_key(QKeyEvent* event, bool pressed);
 
     GuestLink& link_;
     std::uint64_t handle_;
     std::uint64_t owner_;
     QImage frame_;
+    // One guest pixel is one logical unit here, deliberately.
+    //
+    // A scaled desktop makes those different sizes on the glass, and that
+    // is the point: a native window of N units and a guest window of N
+    // pixels take up the same share of their own screen, so the mirror
+    // keeps the proportions the application was laid out for. Dividing by
+    // the scale would shrink every mirror below what it looks like in the
+    // guest. Positions and offsets follow the same rule, which is what
+    // keeps a popup where the guest put it.
     QSize guest_size_;
     ResizeBorder border_;
     QCursor guest_cursor_;
@@ -87,8 +93,8 @@ private:
     bool guest_closed_ = false;
     bool applying_guest_size_ = false;
     bool applying_guest_state_ = false;
-    // The press that began a drag was consumed by it; its release would
-    // otherwise reach the guest as a click nobody made.
+    // The press that began a drag or a resize was consumed by it; its
+    // release would otherwise reach the guest as a click nobody made.
     bool swallow_release_ = false;
 };
 

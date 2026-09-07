@@ -34,6 +34,8 @@ Q_SIGNALS:
 
 private:
     void refresh(const QList<GuestWindowInfo>& windows);
+    void reposition(const GuestWindowInfo& window,
+                    const QList<GuestWindowInfo>& all);
     void hand_over_drag(quint64 window);
     void show_cursor(quint64 id);
     void show_frame(quint64 window, const QImage& pixels);

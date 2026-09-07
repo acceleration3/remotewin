@@ -52,6 +52,7 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
                 it.value()->retitle(window.title);
                 it.value()->follow_guest_state(window.minimized, window.maximized);
                 it.value()->note_guest_size(window.width, window.height);
+                reposition(window, windows);
             }
             continue;
         }
@@ -67,19 +68,7 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
     for (const GuestWindowInfo* window : awaiting_placement) {
         auto mirror = mirrors_.value(window->handle);
         if (mirror.isNull()) continue;
-        // An owner we are not mirroring is no owner at all — the window
-        // stands on its own rather than being placed against nothing.
-        auto owner = mirrors_.value(window->owner);
-        if (mirror->is_owned() && !owner.isNull()) {
-            const GuestWindowInfo* placed_against = nullptr;
-            for (const GuestWindowInfo& candidate : windows) {
-                if (candidate.handle == window->owner) placed_against = &candidate;
-            }
-            if (placed_against != nullptr) {
-                mirror->place_under(*owner, QPoint(window->x - placed_against->x,
-                                                   window->y - placed_against->y));
-            }
-        }
+        reposition(*window, windows);
         mirror->show();
         link_.subscribe(window->handle);
     }
@@ -100,6 +89,22 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
     if (saw_any_ && mirrors_.isEmpty()) {
         RWIN_INFO("mirror", "every window closed; session is done");
         Q_EMIT finished();
+    }
+}
+
+void MirrorSession::reposition(const GuestWindowInfo& window,
+                               const QList<GuestWindowInfo>& all) {
+    auto mirror = mirrors_.value(window.handle);
+    if (mirror.isNull() || !mirror->is_owned()) return;
+    // An owner we are not mirroring is no owner at all: the window stands
+    // on its own rather than being placed against nothing.
+    auto owner = mirrors_.value(window.owner);
+    if (owner.isNull()) return;
+    for (const GuestWindowInfo& candidate : all) {
+        if (candidate.handle != window.owner) continue;
+        mirror->place_under(*owner,
+                            QPoint(window.x - candidate.x, window.y - candidate.y));
+        return;
     }
 }
 

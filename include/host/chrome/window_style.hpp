@@ -22,8 +22,12 @@ namespace rwin::host {
 // which turns a press on those pixels into an action on this window.
 class WindowStyle {
 public:
+    // ``owned`` is whether the guest window belongs to another. It is
+    // half of what makes a window a popup: a menu class says so outright,
+    // but an application's own dropdown is just an owned window with no
+    // caption, and only its owner distinguishes it from a plain toplevel.
     WindowStyle(std::string class_name, std::uint32_t style,
-                std::uint32_t extended_style);
+                std::uint32_t extended_style, bool owned);
 
     [[nodiscard]] bool is_menu() const noexcept { return is_menu_; }
     [[nodiscard]] bool is_dialog() const noexcept { return is_dialog_; }
@@ -38,6 +42,7 @@ private:
     std::string class_name_;
     std::uint32_t style_;
     std::uint32_t extended_style_;
+    bool owned_;
     bool is_menu_;
     bool is_dialog_;
 };
