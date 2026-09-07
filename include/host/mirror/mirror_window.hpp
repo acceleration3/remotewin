@@ -106,6 +106,7 @@ private:
     [[nodiscard]] const MirrorWindow& root() const;
     [[nodiscard]] QPoint guest_position_of(QMouseEvent* event) const;
     void send_key(QKeyEvent* event, bool pressed);
+    void ask_guest_for(QSize size);
 
     GuestLink& link_;
     std::uint64_t handle_;
@@ -123,6 +124,14 @@ private:
     // guest. Positions and offsets follow the same rule, which is what
     // keeps a popup where the guest put it.
     QSize guest_size_;
+    // A resize is asked for one at a time. The compositor reports a new
+    // size for every step of a drag, tens of them a second, and a guest
+    // application laying itself out for each falls behind and answers
+    // sizes the user has long since dragged past. So the newest size
+    // waits for the last one to be answered, and the ones between are
+    // never asked for at all.
+    QSize awaiting_;
+    QSize pending_;
     ResizeBorder border_;
     QCursor guest_cursor_;
     Qt::Edges hovered_edges_;

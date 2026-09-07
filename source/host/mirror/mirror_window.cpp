@@ -267,6 +267,21 @@ void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
         update();
         return;
     }
+    if (!awaiting_.isValid()) {
+        // Nothing was asked for: the application sized itself, and the
+        // mirror follows.
+    } else if (reported == awaiting_) {
+        awaiting_ = QSize();
+        if (pending_.isValid()) {
+            const QSize next = pending_;
+            pending_ = QSize();
+            ask_guest_for(next);
+        }
+        return;
+    } else {
+        // An answer to something asked for earlier, overtaken since.
+        return;
+    }
     if (size() == reported) return;
     applying_guest_size_ = true;
     // A window without a sizing border is pinned here, so plain resize()
@@ -332,16 +347,25 @@ void MirrorWindow::focusInEvent(QFocusEvent* event) {
     link_.send_focus(handle_);
 }
 
+void MirrorWindow::ask_guest_for(QSize size) {
+    awaiting_ = size;
+    RWIN_DEBUG("mirror", "{:#x} resized to {}x{} guest pixels", handle_, size.width(),
+               size.height());
+    link_.send_resize(handle_, static_cast<std::uint32_t>(size.width()),
+                      static_cast<std::uint32_t>(size.height()));
+}
+
 void MirrorWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
     if (applying_guest_size_ || applying_guest_state_ || !isVisible()) return;
     const QSize wanted = event->size();
     if (wanted == guest_size_) return;
     guest_size_ = wanted;
-    RWIN_DEBUG("mirror", "{:#x} resized to {}x{} guest pixels", handle_, wanted.width(),
-               wanted.height());
-    link_.send_resize(handle_, static_cast<std::uint32_t>(wanted.width()),
-                      static_cast<std::uint32_t>(wanted.height()));
+    if (awaiting_.isValid()) {
+        pending_ = wanted;
+        return;
+    }
+    ask_guest_for(wanted);
 }
 
 const MirrorWindow& MirrorWindow::root() const {

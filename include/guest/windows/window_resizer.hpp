@@ -6,18 +6,17 @@ namespace rwin::guest {
 
 // Gives a guest window the size the host asked for.
 //
-// Where the window already sits decides how big it can get: one whose
-// left edge is most of the way across the guest screen has only the
-// remainder to grow into, so a host mirror dragged wider stops short and
-// springs back at whatever width the window happened to allow. Centring
-// it on the screen first removes that limit — from the middle, every size
-// up to the whole screen is reachable, whatever the window's position
-// was.
+// Exactly that size, and where the window already is. The guest's screen
+// is not a limit on a window nobody is looking at directly: the mirror is
+// on another desktop, of another size, and a window may be larger than
+// the display it is not being shown on. Windows honours a size given
+// through SetWindowPos whatever the monitor is — the sizing loop's limits
+// are the sizing loop's, not the window's — and DWM composes the whole
+// window either way, so the capture is whole too.
 //
-// The screen is still the ceiling. A host display larger than the guest's
-// cannot be filled by a guest window, so the size is clamped to what the
-// guest has and the host follows the size it is told the window ended up
-// with.
+// Answering with a size other than the one asked for is what a host
+// cannot use: the mirror is already that size, the reply arrives after
+// the user has dragged further, and the window jumps back under them.
 class WindowResizer {
 public:
     void resize(std::uint64_t window_handle, std::uint32_t width,
