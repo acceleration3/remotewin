@@ -57,20 +57,16 @@ bool worth_showing(HWND window) {
     return rect.right > rect.left && rect.bottom > rect.top;
 }
 
-// Windows answers MN_GETHMENU with the menu a window is showing, and
-// with nothing for a window that is showing none. It is a message into
-// another process, so it is asked with a timeout: a hung one must not
-// hang the enumeration.
-bool shows_a_menu(HWND window) {
-    // Long enough for a busy message loop, short enough that a hung one
-    // costs one pass a bounded wait.
-    constexpr UINT kReplyWaitMs = 50;
-    DWORD_PTR menu = 0;
-    if (::SendMessageTimeoutW(window, MN_GETHMENU, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK,
-                              kReplyWaitMs, &menu) == 0) {
-        return false;
-    }
-    return menu != 0;
+// Whether this is the window Windows itself opens to show a menu.
+//
+// Windows registers that window under the system class atom 32768 — the
+// class every menu on the desktop is an instance of, named "#32768" in
+// the documentation of the system classes. Read from the class table,
+// which never enters another thread: asking the window with MN_GETHMENU
+// did, and a thread in the middle of taking its menu down did not answer.
+bool is_windows_menu(HWND window) {
+    constexpr ULONG_PTR kMenuClassAtom = 32768;
+    return ::GetClassLongPtrW(window, GCW_ATOM) == kMenuClassAtom;
 }
 
 HWND root_owner_of(HWND window) {
@@ -99,7 +95,7 @@ HWND owner_of(HWND window) {
     if (::GetGUIThreadInfo(::GetWindowThreadProcessId(window, nullptr), &gui) == FALSE) {
         return nullptr;
     }
-    if (gui.hwndMenuOwner != nullptr && shows_a_menu(window)) {
+    if (gui.hwndMenuOwner != nullptr && is_windows_menu(window)) {
         return root_owner_of(gui.hwndMenuOwner);
     }
     // A child window with no parent but the desktop: a combo box's
