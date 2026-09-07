@@ -43,10 +43,22 @@ public:
     void retitle(const QString& title);
     void note_guest_size(std::uint32_t width, std::uint32_t height);
 
-    // The most the guest has room for. The compositor holds a drag at
-    // this, so the user is stopped by the guest's own limit rather than
-    // by the window springing back from it.
+    // The most the guest has room for: the whole of its screen less what
+    // is reserved on it. A drag is held at this, so the user is stopped
+    // by the guest's own limit rather than by the window springing back
+    // from it — and a mirror maximised past it is filled by fitting the
+    // guest's screen into it rather than by a window that cannot be that
+    // large.
     void limit_to(QSize guest_room);
+
+    // Host units per guest pixel. One whenever the mirror is the size of
+    // the window it shows, which is every case but a maximised mirror on
+    // a screen the guest's does not fit.
+    [[nodiscard]] double scale() const;
+
+    // Where in this widget the guest's pixels are drawn: the frame at the
+    // scale above, centred, with the rest of the widget left transparent.
+    [[nodiscard]] QRect content_rect() const;
     void wear_guest_cursor(const QCursor& cursor);
 
     // The style words as the guest last reported them. A window changes
@@ -97,6 +109,7 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void changeEvent(QEvent* event) override;
     void focusInEvent(QFocusEvent* event) override;
 
 private:
@@ -105,7 +118,10 @@ private:
     void take_shape(const QList<QRect>& region);
     [[nodiscard]] Qt::Edges edges_at(QPointF position) const noexcept;
     [[nodiscard]] bool start_edge_resize(QMouseEvent* event);
-    [[nodiscard]] QPoint frame_origin() const;
+    void refit();
+    void follow_root_scale();
+    void settle_request(QSize reported);
+    void apply_size_limits();
     // The toplevel this window descends from: itself, or the owner of the
     // owner of ... this popup.
     [[nodiscard]] const MirrorWindow& root() const;
@@ -138,6 +154,11 @@ private:
     QSize awaiting_;
     QSize pending_;
     QSize guest_room_;
+    // Host units per guest pixel, kept by the toplevel; a popup is drawn
+    // and placed at its owner's, or it would not land where the guest put
+    // it.
+    double scale_ = 1.0;
+    bool maximized_ = false;
     ResizeBorder border_;
     QCursor guest_cursor_;
     Qt::Edges hovered_edges_;

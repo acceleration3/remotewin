@@ -4,6 +4,7 @@
 #include "logging/logger.hpp"
 
 #include <QCloseEvent>
+#include <QEvent>
 #include <QFocusEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -13,6 +14,7 @@
 #include <QWindow>
 
 #include <algorithm>
+#include <cmath>
 
 namespace rwin::host {
 
@@ -116,14 +118,24 @@ void MirrorWindow::wear(const Win32Style& style) {
     // Showing it must not pull host focus off whatever the user is in.
     setAttribute(Qt::WA_ShowWithoutActivating, !style.activates());
     setEnabled(!style.disabled());
-    if (style.sizable()) {
-        setMinimumSize(QSize{0, 0});
-        setMaximumSize(guest_room_.isValid() && !guest_room_.isEmpty()
-                           ? guest_room_
-                           : QSize{QWIDGETSIZE_MAX, QWIDGETSIZE_MAX});
-    } else {
+    apply_size_limits();
+}
+
+// A sizable mirror is held at what the guest has room for, so a drag
+// stops where the guest window would have stopped.
+//
+// Except maximised: the compositor gives a maximised window the size of
+// the screen and a maximum that refuses it leaves the window part
+// maximised and part not. There the mirror takes the whole screen and the
+// guest's is fitted inside it.
+void MirrorWindow::apply_size_limits() {
+    if (!style_.sizable()) {
         setFixedSize(guest_size_);
+        return;
     }
+    setMinimumSize(QSize{0, 0});
+    const bool held = !maximized_ && guest_room_.isValid() && !guest_room_.isEmpty();
+    setMaximumSize(held ? guest_room_ : QSize{QWIDGETSIZE_MAX, QWIDGETSIZE_MAX});
 }
 
 void MirrorWindow::follow_guest_style(const GuestWindowInfo& window) {
@@ -224,21 +236,30 @@ void MirrorWindow::take_over_drag() {
 void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
     // A popup has no state of its own: it shows and hides with its parent.
     if (parentWidget() != nullptr) return;
-    if (minimized == isMinimized() && maximized == isMaximized()) return;
+    // A guest window that maximised itself is a window the size of the
+    // guest's screen, which the mirror already follows as a size. Nothing
+    // is done with it here: maximising the mirror too would make its own
+    // size mean something different again, and the two chased each other.
+    if (minimized == isMinimized()) return;
     applying_guest_state_ = true;
     if (minimized) {
         showMinimized();
-    } else if (maximized) {
-        showMaximized();
     } else {
         showNormal();
     }
     applying_guest_state_ = false;
-    RWIN_DEBUG("chrome", "{:#x} follows guest state minimized={} maximized={}", handle_,
+    RWIN_DEBUG("chrome", "{:#x} follows guest minimized={} (guest maximized={})", handle_,
                minimized, maximized);
 }
 
 void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
+    // Where the owner draws the guest's pixels, plus the offset at the
+    // scale they are drawn at: a popup lands on the part of the picture
+    // the guest opened it against, whatever size that picture is here.
+    const double s = owner.scale();
+    const QPoint at = owner.pos() + owner.content_rect().topLeft()
+                      + QPoint(static_cast<int>(std::lround(guest_offset.x() * s)),
+                               static_cast<int>(std::lround(guest_offset.y() * s)));
     if (parentWidget() != &owner) {
         // Re-parenting hides the widget, and gives it the parent surface
         // its popup is positioned against. The native window goes first:
@@ -248,60 +269,107 @@ void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
         const bool shown = isVisible();
         destroy();
         setParent(&owner, Qt::ToolTip | style_.hints());
-        move(owner.pos() + guest_offset);
+        move(at);
         if (shown) show();
         RWIN_DEBUG("popup", "{:#x} now a popup of {:#x}", handle_, owner.handle());
     }
     // A shown popup moving is xdg_popup.reposition: this is how a window
     // the guest dragged follows on this side.
-    move(owner.pos() + guest_offset);
+    move(at);
+}
+
+// The guest answered a request of ours, or sized its own window.
+void MirrorWindow::settle_request(QSize reported) {
+    if (!awaiting_.isValid()) return;
+    // Any answer ends the wait: the guest applies what it is sent in
+    // order, so a report is the end of the last request whatever size it
+    // came out as. Waiting for the exact size asked for would wait
+    // forever the first time the guest gave a different one.
+    awaiting_ = QSize();
+    if (!pending_.isValid()) return;
+    const QSize next = pending_;
+    pending_ = QSize();
+    if (next != reported) ask_guest_for(next);
 }
 
 void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
     const QSize reported(static_cast<int>(width), static_cast<int>(height));
+    settle_request(reported);
     if (reported == guest_size_) return;
     guest_size_ = reported;
-    // A maximised mirror keeps the size the compositor gave it. The guest
-    // screen may be smaller than this one, so the window it manages to
-    // reach is smaller than the mirror — following it here would shrink
-    // the mirror back out of maximised the moment it got there.
-    if (isMaximized() || isFullScreen()) {
+
+    if (parentWidget() != nullptr) {
+        follow_root_scale();
+        return;
+    }
+    // A maximised mirror keeps the size the compositor gave it; the guest
+    // window is the guest's whole screen, and it is fitted into that.
+    if (maximized_ || isFullScreen()) {
+        refit();
+        return;
+    }
+    if (size() != reported) {
+        applying_guest_size_ = true;
+        // A window without a sizing border is pinned here, so plain
+        // resize() does nothing to it. It still has to follow the guest:
+        // what a window draws is not what its rectangle claims, and the
+        // mirror is made before the first frame says which. Pinned at the
+        // wrong size, the frame is centred inside it and the difference
+        // shows as a border.
+        if (style_.sizable()) {
+            resize(reported);
+        } else {
+            setFixedSize(reported);
+        }
+        applying_guest_size_ = false;
+    }
+    refit();
+}
+
+double MirrorWindow::scale() const { return root().scale_; }
+
+QRect MirrorWindow::content_rect() const {
+    if (frame_.isNull()) return rect();
+    const double s = scale();
+    const QSize drawn(static_cast<int>(std::lround(frame_.width() * s)),
+                      static_cast<int>(std::lround(frame_.height() * s)));
+    return QRect(QPoint((width() - drawn.width()) / 2, (height() - drawn.height()) / 2),
+                 drawn);
+}
+
+// The scale that fits the guest window into this mirror. One whenever the
+// mirror is the size of that window, which the guest is asked for and
+// answers with — so this is not 1 only where the mirror cannot be that
+// size: maximised, against a screen the guest's own does not match.
+void MirrorWindow::refit() {
+    if (parentWidget() != nullptr) return;
+    double fitted = 1.0;
+    if (!guest_size_.isEmpty()) {
+        fitted = std::min(static_cast<double>(width()) / guest_size_.width(),
+                          static_cast<double>(height()) / guest_size_.height());
+    }
+    if (fitted == scale_) return;
+    scale_ = fitted;
+    RWIN_DEBUG("mirror", "{:#x} {}x{} shows {}x{} guest pixels at {:.3f}", handle_, width(),
+               height(), guest_size_.width(), guest_size_.height(), scale_);
+    for (MirrorWindow* popup : findChildren<MirrorWindow*>(Qt::FindDirectChildrenOnly)) {
+        popup->follow_root_scale();
+    }
+    update();
+}
+
+// A popup is the size its own guest window is, at its owner's scale.
+void MirrorWindow::follow_root_scale() {
+    const double s = scale();
+    const QSize wanted(static_cast<int>(std::lround(guest_size_.width() * s)),
+                       static_cast<int>(std::lround(guest_size_.height() * s)));
+    if (wanted.isEmpty() || wanted == size()) {
         update();
         return;
     }
-    if (!awaiting_.isValid()) {
-        // Nothing was asked for: the application sized itself, and the
-        // mirror follows.
-    } else if (reported == awaiting_) {
-        awaiting_ = QSize();
-        if (pending_.isValid()) {
-            const QSize next = pending_;
-            pending_ = QSize();
-            ask_guest_for(next);
-        }
-        return;
-    } else {
-        // An answer to something asked for earlier, overtaken since.
-        return;
-    }
-    if (size() == reported) return;
     applying_guest_size_ = true;
-    // A window without a sizing border is pinned here, so plain resize()
-    // does nothing to it. It still has to follow the guest: what a window
-    // draws is not what its rectangle claims, and the mirror is made
-    // before the first frame says which. Pinned at the wrong size, the
-    // frame is centred inside it and the difference shows as a border.
-    if (style_.sizable()) {
-        resize(reported);
-    } else {
-        setFixedSize(reported);
-    }
+    setFixedSize(wanted);
     applying_guest_size_ = false;
-}
-
-QPoint MirrorWindow::frame_origin() const {
-    return QPoint(std::max(0, (width() - frame_.width()) / 2),
-                  std::max(0, (height() - frame_.height()) / 2));
 }
 
 void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
@@ -318,11 +386,18 @@ void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
         painter.fillRect(rect(), Qt::transparent);
         return;
     }
-    const QPoint origin = frame_origin();
-    if (origin != QPoint(0, 0)) {
+    const QRect where = content_rect();
+    if (where != rect()) {
+        // The bars beside a fitted frame, and any part of the mirror the
+        // guest window has not caught up with.
         painter.fillRect(rect(), Qt::transparent);
     }
-    painter.drawImage(origin, frame_);
+    if (where.size() == frame_.size()) {
+        painter.drawImage(where.topLeft(), frame_);
+        return;
+    }
+    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+    painter.drawImage(where, frame_);
 }
 
 void MirrorWindow::closeEvent(QCloseEvent* event) {
@@ -352,10 +427,33 @@ void MirrorWindow::focusInEvent(QFocusEvent* event) {
 void MirrorWindow::limit_to(QSize guest_room) {
     if (!guest_room.isValid() || guest_room.isEmpty() || guest_room == guest_room_) return;
     guest_room_ = guest_room;
-    if (style_.sizable()) setMaximumSize(guest_room);
+    apply_size_limits();
+    if (maximized_) ask_guest_for(guest_room_);
+}
+
+// Maximised here, and the guest window is given the whole of the guest's
+// screen — the largest it can be, and never a maximise of its own: a
+// guest window maximised is sized to a screen this mirror is not on, and
+// the two disagreed about what its size meant. What comes back is fitted
+// into the mirror, letterboxed where the two screens are not the same
+// shape.
+void MirrorWindow::changeEvent(QEvent* event) {
+    QWidget::changeEvent(event);
+    if (event->type() != QEvent::WindowStateChange || parentWidget() != nullptr) return;
+    const bool maximized = isMaximized();
+    if (maximized == maximized_) return;
+    maximized_ = maximized;
+    apply_size_limits();
+    RWIN_DEBUG("chrome", "{:#x} maximised={} here", handle_, maximized_);
+    if (applying_guest_state_) return;
+    const QSize wanted = maximized_ && guest_room_.isValid() && !guest_room_.isEmpty()
+                             ? guest_room_
+                             : size();
+    if (wanted != guest_size_) ask_guest_for(wanted);
 }
 
 void MirrorWindow::ask_guest_for(QSize size) {
+    if (size.isEmpty()) return;
     awaiting_ = size;
     RWIN_DEBUG("mirror", "{:#x} resized to {}x{} guest pixels", handle_, size.width(),
                size.height());
@@ -365,10 +463,17 @@ void MirrorWindow::ask_guest_for(QSize size) {
 
 void MirrorWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
+    if (parentWidget() != nullptr) return;
+    // Whatever the mirror's size came from, the guest's window has to be
+    // fitted into it again.
+    refit();
     if (applying_guest_size_ || applying_guest_state_ || !isVisible()) return;
+    // A maximised mirror's size is the screen's, and says nothing about
+    // how big the guest window should be; that was settled when it was
+    // maximised, and it is the guest's whole screen.
+    if (maximized_) return;
     const QSize wanted = event->size();
     if (wanted == guest_size_) return;
-    guest_size_ = wanted;
     if (awaiting_.isValid()) {
         pending_ = wanted;
         return;
@@ -397,8 +502,9 @@ const MirrorWindow& MirrorWindow::root() const {
 // does neither.
 QPoint MirrorWindow::guest_position_of(QMouseEvent* event) const {
     const MirrorWindow& top = root();
-    const QPointF at = event->position() + QPointF(pos() - top.pos())
-                       - QPointF(top.frame_origin());
+    const QPointF here = event->position() + QPointF(pos() - top.pos())
+                         - QPointF(top.content_rect().topLeft());
+    const QPointF at = here / top.scale();
     return QPoint(static_cast<int>(at.x()), static_cast<int>(at.y()));
 }
 
