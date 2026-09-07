@@ -1,5 +1,6 @@
 #pragma once
 
+#include "guest/capture/graphics_device.hpp"
 #include "guest/capture/window_capture.hpp"
 #include "guest/cursor/cursor_watcher.hpp"
 #include "guest/input/keyboard_injector.hpp"
@@ -44,6 +45,7 @@ private:
     void report_cursor();
 
     TcpClient& link_;
+    GraphicsDevice graphics_;
     WindowFocus focus_;
     PointerInjector pointer_{focus_};
     KeyboardInjector keyboard_{focus_};

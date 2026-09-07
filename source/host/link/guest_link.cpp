@@ -127,8 +127,13 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
             RWIN_TRACE("link", "frame {:#x} {}x{}", window, width, height);
             // Copied out of the decoder's buffer, which the next read
             // invalidates.
+            // Premultiplied, because that is how the compositor composed
+            // it: a window with rounded corners, a shadow, or one that is
+            // deliberately see-through arrives with the alpha that says
+            // so, and reading it as RGB32 would paint all of that black.
             const QImage frame(pixels, static_cast<int>(width), static_cast<int>(height),
-                               static_cast<int>(width * 4), QImage::Format_RGB32);
+                               static_cast<int>(width * 4),
+                               QImage::Format_ARGB32_Premultiplied);
             Q_EMIT frame_arrived(window, frame.copy());
             break;
         }

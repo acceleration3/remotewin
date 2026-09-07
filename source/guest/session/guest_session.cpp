@@ -58,7 +58,7 @@ void GuestSession::handle(MessageReader& message) {
         case MessageId::Subscribe: {
             const std::uint64_t window = message.u64();
             if (!message.ok()) break;
-            captures_.try_emplace(window, std::make_unique<WindowCapture>());
+            captures_.try_emplace(window, std::make_unique<WindowCapture>(graphics_));
             RWIN_INFO("session", "subscribed to window {:#x} ({} now)", window,
                       captures_.size());
             break;
@@ -211,11 +211,16 @@ void GuestSession::send_frames() {
     for (auto& [handle, capture] : captures_) {
         const WindowSurface surface{handle};
         if (surface.minimized()) continue;
-        if (!capture->grab(surface)) {
-            RWIN_INFO("frames", "window {:#x} no longer captures; dropping", handle);
+        const WindowCapture::Result grabbed = capture->grab(surface);
+        if (grabbed == WindowCapture::Result::Gone) {
+            RWIN_INFO("frames", "window {:#x} can no longer be captured; dropping",
+                      handle);
             vanished.push_back(handle);
             continue;
         }
+        // Nothing new to send. The compositor produces a frame only when
+        // it composed one, so a window sitting still simply has no news.
+        if (grabbed == WindowCapture::Result::Unchanged) continue;
         MessageWriter out{MessageId::Frame};
         out.put_u64(handle);
         out.put_u32(capture->width());

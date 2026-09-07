@@ -1,117 +1,303 @@
 #include "guest/capture/window_capture.hpp"
 
+#include "guest/capture/graphics_device.hpp"
 #include "guest/windows/window_surface.hpp"
+#include "logging/logger.hpp"
+
+// mingw's windows.foundation.h declares IReference<boolean> and
+// IReference<BYTE> separately, and its own boolean is unsigned char — so
+// the two are one type defined twice and the header does not compile.
+// Suppressing the later of the pair leaves the type present under the
+// other name, which is the one nothing here asks for by name.
+#define ____FIReference_1_boolean_INTERFACE_DEFINED__
 
 // clang-format off
 #include <windows.h>
+#include <d3d11.h>
+#include <inspectable.h>
+#include <roapi.h>
+#include <winstring.h>
+#include <windows.graphics.capture.h>
+#include <windows.graphics.capture.interop.h>
 // clang-format on
 
+#include <algorithm>
 #include <cstring>
+
+namespace capture_abi = ABI::Windows::Graphics::Capture;
+using capture_abi::IDirect3D11CaptureFrame;
+using capture_abi::IDirect3D11CaptureFramePool;
+using capture_abi::IDirect3D11CaptureFramePoolStatics2;
+using capture_abi::IGraphicsCaptureItem;
+using capture_abi::IGraphicsCaptureSession;
+using capture_abi::IGraphicsCaptureSession3;
+using ABI::Windows::Foundation::IClosable;
+
+// mingw ships the capture headers but not the Direct3D11 interop one, so
+// the interface it declares is declared here — at namespace scope and
+// with its identifier attached, which is what makes a COM interface
+// callable rather than merely nameable.
+MIDL_INTERFACE("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1")
+IDirect3DDxgiInterfaceAccess : public IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE GetInterface(REFIID iid, void** object) = 0;
+};
+__CRT_UUID_DECL(IDirect3DDxgiInterfaceAccess, 0xA9B3D012, 0x3DF2, 0x4EE3, 0xB8, 0xD1,
+                0x86, 0x95, 0xF4, 0x57, 0xD3, 0xC1)
 
 namespace rwin::guest {
 
 namespace {
 
 constexpr std::size_t kBytesPerPixel = 4;
+// Two buffers: one being composed into while the other is read.
+constexpr int kPoolBuffers = 2;
+// DirectXPixelFormat::B8G8R8A8UIntNormalized. The only format the
+// compositor hands out, and the one that carries alpha.
+constexpr int kBgra8 = 87;
 
-// Undocumented in older SDK headers, and what makes PrintWindow copy a
-// composited window instead of asking it to redraw itself into the DC —
-// without it a DWM-composited window comes back blank.
-constexpr UINT kRenderFullContent = 0x00000002;
+template <typename T>
+HRESULT activation_factory(const wchar_t* runtime_class, T** out) {
+    HSTRING_HEADER header{};
+    HSTRING name = nullptr;
+    const HRESULT named = ::WindowsCreateStringReference(
+        runtime_class, static_cast<UINT32>(::wcslen(runtime_class)), &header, &name);
+    if (FAILED(named)) return named;
+    return ::RoGetActivationFactory(name, __uuidof(T), reinterpret_cast<void**>(out));
+}
+
+void release(void** object) {
+    if (*object != nullptr) {
+        static_cast<IUnknown*>(*object)->Release();
+        *object = nullptr;
+    }
+}
 
 }  // namespace
 
-WindowCapture::WindowCapture() = default;
+WindowCapture::WindowCapture(const GraphicsDevice& device) : device_(device) {}
 
-WindowCapture::~WindowCapture() { release(); }
+WindowCapture::~WindowCapture() { stop(); }
 
-void WindowCapture::release() {
-    auto* dc = static_cast<HDC>(device_context_);
-    if (dc != nullptr) {
-        if (previous_bitmap_ != nullptr) {
-            ::SelectObject(dc, static_cast<HGDIOBJ>(previous_bitmap_));
+void WindowCapture::stop() {
+    if (session_ != nullptr) {
+        // Closing the session is what stops the compositor copying into
+        // the pool; releasing alone leaves it running.
+        IClosable* closable = nullptr;
+        if (SUCCEEDED(static_cast<IGraphicsCaptureSession*>(session_)->QueryInterface(
+                __uuidof(IClosable), reinterpret_cast<void**>(&closable)))) {
+            closable->Close();
+            closable->Release();
         }
-        ::DeleteDC(dc);
     }
-    if (bitmap_ != nullptr) {
-        ::DeleteObject(static_cast<HGDIOBJ>(bitmap_));
-    }
-    device_context_ = nullptr;
-    bitmap_ = nullptr;
-    previous_bitmap_ = nullptr;
-    captured_ = nullptr;
-    captured_width_ = 0;
-    captured_height_ = 0;
-    width_ = 0;
-    height_ = 0;
+    release(&session_);
+    release(&pool_);
+    release(&item_);
+    release(&staging_);
+    started_for_ = 0;
+    pool_width_ = 0;
+    pool_height_ = 0;
 }
 
-bool WindowCapture::resize(const WindowSurface& surface) {
-    release();
+bool WindowCapture::start(const WindowSurface& surface) {
+    stop();
+    if (!device_.valid()) return false;
 
-    HDC screen = ::GetDC(nullptr);
-    HDC dc = ::CreateCompatibleDC(screen);
-    ::ReleaseDC(nullptr, screen);
-    if (dc == nullptr) return false;
-
-    BITMAPINFO info{};
-    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    info.bmiHeader.biWidth = static_cast<LONG>(surface.captured_width());
-    // Negative height is a top-down DIB, which is the row order the host
-    // wants; a bottom-up one would have to be flipped on every frame.
-    info.bmiHeader.biHeight = -static_cast<LONG>(surface.captured_height());
-    info.bmiHeader.biPlanes = 1;
-    info.bmiHeader.biBitCount = 32;
-    info.bmiHeader.biCompression = BI_RGB;
-
-    void* bits = nullptr;
-    HBITMAP bitmap = ::CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (bitmap == nullptr || bits == nullptr) {
-        ::DeleteDC(dc);
+    IGraphicsCaptureItemInterop* interop = nullptr;
+    if (FAILED(activation_factory(
+            RuntimeClass_Windows_Graphics_Capture_GraphicsCaptureItem, &interop))) {
+        RWIN_ERROR("capture", "no capture item factory");
+        return false;
+    }
+    const HRESULT made = interop->CreateForWindow(
+        static_cast<HWND>(surface.handle()), __uuidof(IGraphicsCaptureItem), &item_);
+    interop->Release();
+    if (FAILED(made) || item_ == nullptr) {
+        RWIN_WARN("capture", "cannot capture this window: {:#010x}",
+                  static_cast<unsigned>(made));
         return false;
     }
 
-    device_context_ = dc;
-    bitmap_ = bitmap;
-    previous_bitmap_ = ::SelectObject(dc, bitmap);
-    captured_ = static_cast<std::uint8_t*>(bits);
-    captured_width_ = surface.captured_width();
-    captured_height_ = surface.captured_height();
-    width_ = surface.width();
-    height_ = surface.height();
-    visible_.assign(static_cast<std::size_t>(width_) * height_ * kBytesPerPixel, 0);
+    if (!resize_pool(surface)) return false;
+    started_for_ =
+        static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(surface.handle()));
     return true;
 }
 
-void WindowCapture::crop(const WindowSurface& surface) {
-    const std::size_t captured_stride =
-        static_cast<std::size_t>(captured_width_) * kBytesPerPixel;
-    const std::size_t visible_stride = static_cast<std::size_t>(width_) * kBytesPerPixel;
-    const std::size_t left = static_cast<std::size_t>(surface.inset_x()) * kBytesPerPixel;
-
-    for (std::uint32_t row = 0; row < height_; ++row) {
-        std::memcpy(visible_.data() + row * visible_stride,
-                    captured_ + (surface.inset_y() + row) * captured_stride + left,
-                    visible_stride);
+bool WindowCapture::resize_pool(const WindowSurface& surface) {
+    IDirect3D11CaptureFramePoolStatics2* statics = nullptr;
+    if (FAILED(activation_factory(
+            RuntimeClass_Windows_Graphics_Capture_Direct3D11CaptureFramePool,
+            &statics))) {
+        return false;
     }
+    const ABI::Windows::Graphics::SizeInt32 size{
+        static_cast<INT32>(surface.captured_width()),
+        static_cast<INT32>(surface.captured_height())};
+
+    release(&session_);
+    release(&pool_);
+
+    // The wrapped device, asked for by the interface a frame pool takes.
+    ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* wrapped = nullptr;
+    if (FAILED(device_.winrt_device()->QueryInterface(
+            __uuidof(ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice),
+            reinterpret_cast<void**>(&wrapped)))) {
+        statics->Release();
+        RWIN_ERROR("capture", "the wrapped device is not a Direct3D device");
+        return false;
+    }
+
+    // Free-threaded: frames then arrive without a dispatcher on this
+    // thread to pump, which a console program does not have.
+    const HRESULT created = statics->CreateFreeThreaded(
+        wrapped,
+        static_cast<ABI::Windows::Graphics::DirectX::DirectXPixelFormat>(kBgra8),
+        kPoolBuffers, size, reinterpret_cast<IDirect3D11CaptureFramePool**>(&pool_));
+    wrapped->Release();
+    statics->Release();
+    if (FAILED(created) || pool_ == nullptr) {
+        RWIN_ERROR("capture", "no frame pool: {:#010x}", static_cast<unsigned>(created));
+        return false;
+    }
+    if (FAILED(static_cast<IDirect3D11CaptureFramePool*>(pool_)->CreateCaptureSession(
+            static_cast<IGraphicsCaptureItem*>(item_),
+            reinterpret_cast<IGraphicsCaptureSession**>(&session_)))
+        || session_ == nullptr) {
+        RWIN_ERROR("capture", "no capture session");
+        return false;
+    }
+
+    // The yellow "you are being captured" border, which is not part of
+    // the window and would be mirrored as if it were. Only newer builds
+    // allow turning it off; on older ones the request simply fails.
+    IGraphicsCaptureSession3* borders = nullptr;
+    if (SUCCEEDED(static_cast<IGraphicsCaptureSession*>(session_)->QueryInterface(
+            __uuidof(IGraphicsCaptureSession3), reinterpret_cast<void**>(&borders)))) {
+        borders->put_IsBorderRequired(false);
+        borders->Release();
+    }
+
+    if (FAILED(static_cast<IGraphicsCaptureSession*>(session_)->StartCapture())) {
+        RWIN_ERROR("capture", "the session would not start");
+        return false;
+    }
+    pool_width_ = surface.captured_width();
+    pool_height_ = surface.captured_height();
+    release(&staging_);
+    RWIN_DEBUG("capture", "capturing {}x{}", pool_width_, pool_height_);
+    return true;
 }
 
-bool WindowCapture::grab(const WindowSurface& surface) {
-    if (!surface.valid()) return false;
+bool WindowCapture::read_back(void* frame_texture, const WindowSurface& surface) {
+    auto* frame = static_cast<ID3D11Texture2D*>(frame_texture);
+    D3D11_TEXTURE2D_DESC described{};
+    frame->GetDesc(&described);
+    RWIN_TRACE("capture", "frame texture {}x{}", described.Width, described.Height);
 
-    if ((surface.captured_width() != captured_width_
-         || surface.captured_height() != captured_height_
-         || surface.width() != width_ || surface.height() != height_)
-        && !resize(surface)) {
+    if (staging_ != nullptr) {
+        D3D11_TEXTURE2D_DESC existing{};
+        static_cast<ID3D11Texture2D*>(staging_)->GetDesc(&existing);
+        if (existing.Width != described.Width || existing.Height != described.Height) {
+            release(&staging_);
+        }
+    }
+    if (staging_ == nullptr) {
+        D3D11_TEXTURE2D_DESC wanted = described;
+        wanted.Usage = D3D11_USAGE_STAGING;
+        wanted.BindFlags = 0;
+        wanted.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        wanted.MiscFlags = 0;
+        if (FAILED(device_.device()->CreateTexture2D(
+                &wanted, nullptr, reinterpret_cast<ID3D11Texture2D**>(&staging_)))) {
+            RWIN_ERROR("capture", "no staging texture");
+            return false;
+        }
+    }
+    auto* staging = static_cast<ID3D11Texture2D*>(staging_);
+    device_.context()->CopyResource(staging, frame);
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(device_.context()->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
         return false;
     }
-    if (::PrintWindow(static_cast<HWND>(surface.handle()),
-                      static_cast<HDC>(device_context_), kRenderFullContent)
-        == FALSE) {
+
+    // What the compositor actually handed over, which is not required to
+    // be the size that was asked for: the pool can serve a frame from
+    // before a resize, and a texture is free to be wider than its content.
+    // Everything below is measured against this rather than against the
+    // window, because reading past it reads somebody else's memory.
+    const std::uint32_t inset_x = surface.inset_x();
+    const std::uint32_t inset_y = surface.inset_y();
+    if (inset_x >= described.Width || inset_y >= described.Height) {
+        device_.context()->Unmap(staging, 0);
         return false;
     }
-    crop(surface);
+    width_ = std::min(surface.width(), described.Width - inset_x);
+    height_ = std::min(surface.height(), described.Height - inset_y);
+    if (width_ == 0 || height_ == 0) {
+        device_.context()->Unmap(staging, 0);
+        return false;
+    }
+
+    const std::size_t row = static_cast<std::size_t>(width_) * kBytesPerPixel;
+    visible_.resize(row * height_);
+
+    const auto* from = static_cast<const std::uint8_t*>(mapped.pData);
+    const std::size_t left = static_cast<std::size_t>(inset_x) * kBytesPerPixel;
+    for (std::uint32_t y = 0; y < height_; ++y) {
+        std::memcpy(visible_.data() + y * row,
+                    from + static_cast<std::size_t>(inset_y + y) * mapped.RowPitch + left,
+                    row);
+    }
+    device_.context()->Unmap(staging, 0);
     return true;
+}
+
+WindowCapture::Result WindowCapture::grab(const WindowSurface& surface) {
+    if (!surface.valid()) return Result::Gone;
+
+    const auto handle =
+        static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(surface.handle()));
+    if (started_for_ != handle && !start(surface)) return Result::Gone;
+    if ((surface.captured_width() != pool_width_
+         || surface.captured_height() != pool_height_)
+        && !resize_pool(surface)) {
+        return Result::Gone;
+    }
+
+    RWIN_TRACE("capture", "asking for a frame");
+    IDirect3D11CaptureFrame* frame = nullptr;
+    if (FAILED(static_cast<IDirect3D11CaptureFramePool*>(pool_)->TryGetNextFrame(&frame))
+        || frame == nullptr) {
+        return Result::Unchanged;
+    }
+    RWIN_TRACE("capture", "got a frame");
+
+    ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface* surface_of_frame =
+        nullptr;
+    bool read = false;
+    if (SUCCEEDED(frame->get_Surface(&surface_of_frame)) && surface_of_frame != nullptr) {
+        RWIN_TRACE("capture", "got the surface");
+        IDirect3DDxgiInterfaceAccess* access = nullptr;
+        if (SUCCEEDED(surface_of_frame->QueryInterface(
+                __uuidof(IDirect3DDxgiInterfaceAccess),
+                reinterpret_cast<void**>(&access)))
+            && access != nullptr) {
+            RWIN_TRACE("capture", "got dxgi access");
+            ID3D11Texture2D* texture = nullptr;
+            if (SUCCEEDED(access->GetInterface(__uuidof(ID3D11Texture2D),
+                                               reinterpret_cast<void**>(&texture)))
+                && texture != nullptr) {
+                RWIN_TRACE("capture", "got the texture");
+                read = read_back(texture, surface);
+                texture->Release();
+            }
+            access->Release();
+        }
+        surface_of_frame->Release();
+    }
+    frame->Release();
+    return read ? Result::Fresh : Result::Unchanged;
 }
 
 }  // namespace rwin::guest

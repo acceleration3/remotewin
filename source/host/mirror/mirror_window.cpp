@@ -61,6 +61,11 @@ MirrorWindow::MirrorWindow(GuestLink& link, const GuestWindowInfo& window,
     setWindowTitle(window.title.isEmpty() ? QStringLiteral("Guest window")
                                           : window.title);
     setAttribute(Qt::WA_DeleteOnClose);
+    // The guest's pixels carry their own alpha. Without this the widget
+    // paints an opaque background first and every transparent part of the
+    // window — a rounded corner, a shadow, a see-through panel — lands on
+    // top of it.
+    setAttribute(Qt::WA_TranslucentBackground);
     if (style.is_popup()) {
         // Opening a menu must not pull host focus off the window it
         // belongs to, the way a real menu does not.
@@ -164,13 +169,17 @@ QPoint MirrorWindow::frame_origin() const {
 
 void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
+    // Source, not SourceOver: the frame replaces what is under it,
+    // transparency and all. Blending would composite the guest's
+    // see-through pixels onto whatever the widget last held.
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
     if (frame_.isNull()) {
-        painter.fillRect(rect(), palette().window());
+        painter.fillRect(rect(), Qt::transparent);
         return;
     }
     const QPoint origin = frame_origin();
     if (origin != QPoint(0, 0)) {
-        painter.fillRect(rect(), palette().window());
+        painter.fillRect(rect(), Qt::transparent);
     }
     painter.drawImage(origin, frame_);
 }
