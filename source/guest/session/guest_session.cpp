@@ -119,7 +119,9 @@ void GuestSession::handle(MessageReader& message) {
         case MessageId::WindowState: {
             const std::uint64_t window = message.u64();
             const std::uint8_t state = message.u8();
-            if (message.ok()) state_.apply(window, (state & 1) != 0, (state & 2) != 0);
+            if (message.ok()) {
+                state_.apply(window, (state & 1) != 0, (state & 2) != 0, (state & 4) != 0);
+            }
             break;
         }
         case MessageId::ResizeWindow: {

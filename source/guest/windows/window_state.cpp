@@ -8,9 +8,15 @@
 
 namespace rwin::guest {
 
-void WindowState::apply(std::uint64_t window_handle, bool minimized, bool maximized) const {
+void WindowState::apply(std::uint64_t window_handle, bool minimized, bool maximized,
+                        bool active) const {
     auto window = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(window_handle));
     if (::IsWindow(window) == FALSE) return;
+    if (!active && ::GetForegroundWindow() == window) {
+        ::PostMessageW(window, WM_CANCELMODE, 0, 0);
+        RWIN_DEBUG("state", "{:#x} deactivated on the host; modal state cancelled",
+                   window_handle);
+    }
     const bool is_minimized = ::IsIconic(window) != FALSE;
     const bool is_maximized = ::IsZoomed(window) != FALSE;
     if (minimized == is_minimized && maximized == is_maximized) return;

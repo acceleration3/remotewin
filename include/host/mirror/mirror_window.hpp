@@ -93,6 +93,8 @@ protected:
     void keyReleaseEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* event) override;
+    void showEvent(QShowEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void focusInEvent(QFocusEvent* event) override;
 
 private:
@@ -107,6 +109,7 @@ private:
     [[nodiscard]] const MirrorWindow& root() const;
     [[nodiscard]] QPoint guest_position_of(QMouseEvent* event) const;
     void send_key(QKeyEvent* event, bool pressed);
+    void tell_guest_state();
 
     GuestLink& link_;
     std::uint64_t handle_;
@@ -132,6 +135,10 @@ private:
     bool guest_closed_ = false;
     bool applying_guest_size_ = false;
     bool applying_guest_state_ = false;
+    // Wayland tells a client nothing about being minimised; what it does
+    // tell it is that its surface is no longer exposed. That is what a
+    // minimised mirror is, here.
+    bool hidden_by_desktop_ = false;
     // The press that began a drag or a resize was consumed by it; its
     // release would otherwise reach the guest as a click nobody made.
     bool swallow_release_ = false;

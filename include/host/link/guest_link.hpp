@@ -38,7 +38,7 @@ public:
     void send_close(std::uint64_t window);
     void send_focus(std::uint64_t window);
     void send_resize(std::uint64_t window, std::uint32_t width, std::uint32_t height);
-    void send_window_state(std::uint64_t window, bool minimized, bool maximized);
+    void send_window_state(std::uint64_t window, bool minimized, bool maximized, bool active);
 
 Q_SIGNALS:
     void connected();
