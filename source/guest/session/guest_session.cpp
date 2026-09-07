@@ -75,7 +75,8 @@ void GuestSession::handle(MessageReader& message) {
             const std::int32_t x = message.i32();
             const std::int32_t y = message.i32();
             if (!message.ok()) break;
-            pointer_.move_to(WindowSurface{window}, x, y);
+            const auto [into_x, into_y] = picture_offset(window);
+            pointer_.move_to(WindowSurface{window}, x + into_x, y + into_y);
             break;
         }
         case MessageId::PointerButton: {
@@ -85,7 +86,8 @@ void GuestSession::handle(MessageReader& message) {
             const auto button = static_cast<PointerInjector::Button>(message.u8());
             const bool pressed = message.u8() != 0;
             if (!message.ok()) break;
-            pointer_.press(WindowSurface{window}, x, y, button, pressed);
+            const auto [into_x, into_y] = picture_offset(window);
+            pointer_.press(WindowSurface{window}, x + into_x, y + into_y, button, pressed);
             break;
         }
         case MessageId::Key: {
@@ -184,6 +186,14 @@ void GuestSession::push_window_changes() {
                    window.y, window.class_name, window.title);
     }
     send_window_list(*changed);
+}
+
+std::pair<std::int32_t, std::int32_t> GuestSession::picture_offset(
+    std::uint64_t window_handle) const {
+    const auto area = drawn_.find(window_handle);
+    if (area == drawn_.end()) return {0, 0};
+    return {static_cast<std::int32_t>(area->second.offset_x),
+            static_cast<std::int32_t>(area->second.offset_y)};
 }
 
 void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {

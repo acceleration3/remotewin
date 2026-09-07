@@ -120,7 +120,14 @@ Qt::WindowFlags MirrorWindow::flags_for(const Win32Style& style) const noexcept 
 
 void MirrorWindow::wear(const Win32Style& style) {
     // Showing it must not pull host focus off whatever the user is in.
-    setAttribute(Qt::WA_ShowWithoutActivating, !style.activates());
+    //
+    // A popup never asks for it either, whatever the guest window's own
+    // styles say. It is a surface of its owner, which already has the
+    // focus, and a window that asks this compositor for activation it was
+    // given no token for is a window flashing for attention — once for
+    // every menu opened.
+    setAttribute(Qt::WA_ShowWithoutActivating,
+                 !style.activates() || parentWidget() != nullptr);
     setEnabled(!style.disabled());
     apply_size_limits();
 }
@@ -291,6 +298,7 @@ void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
         const bool shown = isVisible();
         destroy();
         setParent(&owner, Qt::ToolTip | style_.hints());
+        setAttribute(Qt::WA_ShowWithoutActivating);
         move(at);
         if (shown) show();
         RWIN_DEBUG("popup", "{:#x} now a popup of {:#x}", handle_, owner.handle());

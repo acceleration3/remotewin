@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <map>
+#include <utility>
 #include <memory>
 #include <set>
 #include <vector>
@@ -66,6 +67,14 @@ private:
     // and position the host is given are the size and position of the
     // pixels it receives — a window that reserves a shadow margin is
     // otherwise reported larger than anything it ever fills.
+    // Where in the window the host's coordinates start. What the host
+    // has is the picture, and the picture is the part of the window that
+    // draws something; the window's own rectangle begins outside it —
+    // eight pixels out on a composited window, and further on a maximised
+    // one, whose rectangle hangs off every edge of the screen.
+    [[nodiscard]] std::pair<std::int32_t, std::int32_t> picture_offset(
+        std::uint64_t window_handle) const;
+
     struct DrawnArea {
         std::uint32_t offset_x = 0;
         std::uint32_t offset_y = 0;
