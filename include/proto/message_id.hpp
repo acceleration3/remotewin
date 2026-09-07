@@ -19,6 +19,10 @@ enum class MessageId : std::uint8_t {
     CloseWindow = 7,
     ResizeWindow = 8,
     FocusWindow = 9,
+    // The mirror was minimised, maximised or restored here; the guest
+    // window follows. Windows ends the window's menu on the way down,
+    // as it does for any window minimised.
+    WindowState = 10,
 
     WindowList = 64,
     Frame = 65,

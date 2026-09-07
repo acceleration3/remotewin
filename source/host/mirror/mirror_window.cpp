@@ -4,6 +4,7 @@
 #include "logging/logger.hpp"
 
 #include <QCloseEvent>
+#include <QEvent>
 #include <QFocusEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -330,6 +331,21 @@ void MirrorWindow::focusInEvent(QFocusEvent* event) {
     // mirror here has to move it there, or the keystrokes land in
     // whichever guest window was last touched.
     link_.send_focus(handle_);
+}
+
+// The user minimised, maximised or restored this mirror from the
+// desktop — its taskbar entry, a shortcut, a title-bar the compositor
+// draws. The guest window is put in the same state, and Windows does
+// with that what it always does: a minimised window's menu is cancelled.
+void MirrorWindow::changeEvent(QEvent* event) {
+    QWidget::changeEvent(event);
+    if (event->type() != QEvent::WindowStateChange || applying_guest_state_
+        || parentWidget() != nullptr) {
+        return;
+    }
+    RWIN_DEBUG("chrome", "{:#x} state here minimized={} maximized={}", handle_, isMinimized(),
+               isMaximized());
+    link_.send_window_state(handle_, isMinimized(), isMaximized());
 }
 
 void MirrorWindow::resizeEvent(QResizeEvent* event) {

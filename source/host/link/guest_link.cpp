@@ -263,6 +263,13 @@ void GuestLink::send_focus(std::uint64_t window) {
     send(out.take());
 }
 
+void GuestLink::send_window_state(std::uint64_t window, bool minimized, bool maximized) {
+    MessageWriter out{MessageId::WindowState};
+    out.put_u64(window);
+    out.put_u8(static_cast<std::uint8_t>((minimized ? 1 : 0) | (maximized ? 2 : 0)));
+    send(out.take());
+}
+
 void GuestLink::send_resize(std::uint64_t window, std::uint32_t width,
                             std::uint32_t height) {
     MessageWriter out{MessageId::ResizeWindow};
