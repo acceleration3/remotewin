@@ -15,8 +15,6 @@ add_executable(remotewin-guest
     windows/launch_scope.cpp
     windows/window_list_watcher.cpp
     windows/window_resizer.cpp
-    windows/window_state.cpp
-    windows/desktop_stand_in.cpp
     windows/window_surface.cpp
 )
 target_link_libraries(remotewin-guest PRIVATE

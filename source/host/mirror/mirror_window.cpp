@@ -4,14 +4,12 @@
 #include "logging/logger.hpp"
 
 #include <QCloseEvent>
-#include <QEvent>
 #include <QFocusEvent>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QRegion>
 #include <QResizeEvent>
-#include <QShowEvent>
 #include <QWindow>
 
 #include <algorithm>
@@ -224,9 +222,7 @@ void MirrorWindow::take_over_drag() {
 void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
     // A popup has no state of its own: it shows and hides with its parent.
     if (parentWidget() != nullptr) return;
-    if (minimized == guest_minimized_ && maximized == guest_maximized_) return;
-    guest_minimized_ = minimized;
-    guest_maximized_ = maximized;
+    if (minimized == isMinimized() && maximized == isMaximized()) return;
     applying_guest_state_ = true;
     if (minimized) {
         showMinimized();
@@ -334,54 +330,6 @@ void MirrorWindow::focusInEvent(QFocusEvent* event) {
     // mirror here has to move it there, or the keystrokes land in
     // whichever guest window was last touched.
     link_.send_focus(handle_);
-}
-
-// What the desktop did to this mirror — minimised or restored it from
-// the taskbar, maximised it, took the focus elsewhere — the guest window
-// has done to it, and Windows does with that what it always does: a
-// window minimised or deactivated has its menu cancelled.
-void MirrorWindow::tell_guest_state() {
-    if (applying_guest_state_ || parentWidget() != nullptr || guest_closed_) return;
-    const DesktopState now{.minimized = hidden_by_desktop_,
-                           .maximized = isMaximized(),
-                           .active = isActiveWindow()};
-    if (now == told_) return;
-    told_ = now;
-    RWIN_DEBUG("chrome", "{:#x} state here minimized={} maximized={} active={}", handle_,
-               now.minimized, now.maximized, now.active);
-    link_.send_window_state(handle_, now.minimized, now.maximized, now.active);
-}
-
-void MirrorWindow::changeEvent(QEvent* event) {
-    QWidget::changeEvent(event);
-    if (event->type() == QEvent::WindowStateChange
-        || event->type() == QEvent::ActivationChange) {
-        tell_guest_state();
-    }
-}
-
-void MirrorWindow::showEvent(QShowEvent* event) {
-    QWidget::showEvent(event);
-    // The expose events arrive at the QWindow, not the widget. Installed
-    // once; a re-made window (new flags, new parent) gets its own.
-    if (QWindow* surface = windowHandle(); surface != nullptr) {
-        surface->removeEventFilter(this);
-        surface->installEventFilter(this);
-    }
-}
-
-bool MirrorWindow::eventFilter(QObject* watched, QEvent* event) {
-    if (event->type() == QEvent::Expose && watched == windowHandle()
-        && parentWidget() == nullptr) {
-        // Not exposed while shown and not minimised by anyone here is the
-        // compositor's minimise, which xdg-shell has no other word for.
-        const bool hidden = !windowHandle()->isExposed() && isVisible();
-        if (hidden != hidden_by_desktop_) {
-            hidden_by_desktop_ = hidden;
-            tell_guest_state();
-        }
-    }
-    return QWidget::eventFilter(watched, event);
 }
 
 void MirrorWindow::resizeEvent(QResizeEvent* event) {
