@@ -137,8 +137,24 @@ private:
     bool applying_guest_state_ = false;
     // Wayland tells a client nothing about being minimised; what it does
     // tell it is that its surface is no longer exposed. That is what a
-    // minimised mirror is, here.
+    // minimised mirror is, here. Qt's own minimised flag is not consulted
+    // for anything: on this platform it is whatever was last asked for.
     bool hidden_by_desktop_ = false;
+    struct DesktopState {
+        bool minimized = false;
+        bool maximized = false;
+        bool active = false;
+        [[nodiscard]] bool operator==(const DesktopState&) const noexcept = default;
+    };
+    // What the guest was last told, so that it is told only of changes: a
+    // stale report — "not minimised" in the instant between asking the
+    // compositor and the surface going unexposed — restored the guest
+    // window it was following.
+    DesktopState told_;
+    // What the guest last reported, so the mirror follows changes rather
+    // than Qt's idea of its own state.
+    bool guest_minimized_ = false;
+    bool guest_maximized_ = false;
     // The press that began a drag or a resize was consumed by it; its
     // release would otherwise reach the guest as a click nobody made.
     bool swallow_release_ = false;

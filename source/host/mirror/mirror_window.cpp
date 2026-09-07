@@ -224,7 +224,9 @@ void MirrorWindow::take_over_drag() {
 void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
     // A popup has no state of its own: it shows and hides with its parent.
     if (parentWidget() != nullptr) return;
-    if (minimized == isMinimized() && maximized == isMaximized()) return;
+    if (minimized == guest_minimized_ && maximized == guest_maximized_) return;
+    guest_minimized_ = minimized;
+    guest_maximized_ = maximized;
     applying_guest_state_ = true;
     if (minimized) {
         showMinimized();
@@ -340,10 +342,14 @@ void MirrorWindow::focusInEvent(QFocusEvent* event) {
 // window minimised or deactivated has its menu cancelled.
 void MirrorWindow::tell_guest_state() {
     if (applying_guest_state_ || parentWidget() != nullptr || guest_closed_) return;
-    const bool minimized = isMinimized() || hidden_by_desktop_;
+    const DesktopState now{.minimized = hidden_by_desktop_,
+                           .maximized = isMaximized(),
+                           .active = isActiveWindow()};
+    if (now == told_) return;
+    told_ = now;
     RWIN_DEBUG("chrome", "{:#x} state here minimized={} maximized={} active={}", handle_,
-               minimized, isMaximized(), isActiveWindow());
-    link_.send_window_state(handle_, minimized, isMaximized(), isActiveWindow());
+               now.minimized, now.maximized, now.active);
+    link_.send_window_state(handle_, now.minimized, now.maximized, now.active);
 }
 
 void MirrorWindow::changeEvent(QEvent* event) {
