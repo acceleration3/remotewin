@@ -189,6 +189,10 @@ void GuestSession::push_window_changes() {
 void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
     MessageWriter out{MessageId::WindowList};
     out.put_u8(watcher_->application_alive() ? 1 : 0);
+    // What the guest has room for, so a mirror is not dragged past a size
+    // the window could never be given.
+    out.put_u32(room_.width());
+    out.put_u32(room_.height());
     out.put_u32(static_cast<std::uint32_t>(windows.size()));
     for (const GuestWindow& window : windows) {
         // Reported as what it draws, not as the rectangle it owns.

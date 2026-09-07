@@ -7,6 +7,7 @@
 #include <QImage>
 #include <QList>
 #include <QObject>
+#include <QSize>
 
 #include <cstdint>
 
@@ -46,7 +47,7 @@ Q_SIGNALS:
     // process. An empty list from a live application is a program between
     // windows, not one that is done.
     void windows_listed(const QList<rwin::host::GuestWindowInfo>& windows,
-                        bool application_alive);
+                        bool application_alive, QSize guest_room);
     void frame_arrived(quint64 window, const QImage& pixels);
     void window_gone(quint64 window);
     void drag_started(quint64 window);

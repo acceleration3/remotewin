@@ -47,7 +47,7 @@ MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id,
 }
 
 void MirrorSession::refresh(const QList<GuestWindowInfo>& windows,
-                            bool application_alive) {
+                            bool application_alive, QSize guest_room) {
     application_alive_ = application_alive;
     Listed listed;
     listed.reserve(windows.size());
@@ -62,6 +62,7 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows,
     open_mirrors(std::move(arrivals), listed);
     for (const GuestWindowInfo& window : windows) {
         if (auto mirror = mirrors_.value(window.handle); !mirror.isNull()) {
+            mirror->limit_to(guest_room);
             follow(*mirror, window, listed);
         }
     }

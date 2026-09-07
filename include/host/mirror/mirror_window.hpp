@@ -42,6 +42,11 @@ public:
     void present(const QImage& pixels);
     void retitle(const QString& title);
     void note_guest_size(std::uint32_t width, std::uint32_t height);
+
+    // The most the guest has room for. The compositor holds a drag at
+    // this, so the user is stopped by the guest's own limit rather than
+    // by the window springing back from it.
+    void limit_to(QSize guest_room);
     void wear_guest_cursor(const QCursor& cursor);
 
     // The style words as the guest last reported them. A window changes
@@ -132,6 +137,7 @@ private:
     // never asked for at all.
     QSize awaiting_;
     QSize pending_;
+    QSize guest_room_;
     ResizeBorder border_;
     QCursor guest_cursor_;
     Qt::Edges hovered_edges_;

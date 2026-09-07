@@ -37,7 +37,8 @@ Q_SIGNALS:
 private:
     using Listed = QHash<quint64, const GuestWindowInfo*>;
 
-    void refresh(const QList<GuestWindowInfo>& windows, bool application_alive);
+    void refresh(const QList<GuestWindowInfo>& windows, bool application_alive,
+                 QSize guest_room);
     void finish_if_done();
     void open_mirrors(QList<const GuestWindowInfo*> arrivals, const Listed& listed);
     void open(const GuestWindowInfo& window, MirrorWindow* owner);

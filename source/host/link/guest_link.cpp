@@ -77,6 +77,13 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
     switch (message.id()) {
         case MessageId::WindowList: {
             const bool application_alive = message.u8() != 0;
+            // Read in order into names: the order two calls in an argument
+            // list are made in is the compiler's to choose, and a width
+            // and a height that swap are a mirror capped at the wrong one.
+            const std::uint32_t room_width = message.u32();
+            const std::uint32_t room_height = message.u32();
+            const QSize guest_room(static_cast<int>(room_width),
+                                   static_cast<int>(room_height));
             const std::uint32_t count = message.u32();
             QList<GuestWindowInfo> windows;
             windows.reserve(static_cast<qsizetype>(count));
@@ -126,7 +133,7 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
                            w.extended_style, w.class_name.toStdString(),
                            w.title.toStdString());
             }
-            Q_EMIT windows_listed(windows, application_alive);
+            Q_EMIT windows_listed(windows, application_alive, guest_room);
             break;
         }
         case MessageId::Frame: {

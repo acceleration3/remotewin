@@ -118,7 +118,9 @@ void MirrorWindow::wear(const Win32Style& style) {
     setEnabled(!style.disabled());
     if (style.sizable()) {
         setMinimumSize(QSize{0, 0});
-        setMaximumSize(QSize{QWIDGETSIZE_MAX, QWIDGETSIZE_MAX});
+        setMaximumSize(guest_room_.isValid() && !guest_room_.isEmpty()
+                           ? guest_room_
+                           : QSize{QWIDGETSIZE_MAX, QWIDGETSIZE_MAX});
     } else {
         setFixedSize(guest_size_);
     }
@@ -345,6 +347,12 @@ void MirrorWindow::focusInEvent(QFocusEvent* event) {
     // mirror here has to move it there, or the keystrokes land in
     // whichever guest window was last touched.
     link_.send_focus(handle_);
+}
+
+void MirrorWindow::limit_to(QSize guest_room) {
+    if (!guest_room.isValid() || guest_room.isEmpty() || guest_room == guest_room_) return;
+    guest_room_ = guest_room;
+    if (style_.sizable()) setMaximumSize(guest_room);
 }
 
 void MirrorWindow::ask_guest_for(QSize size) {
