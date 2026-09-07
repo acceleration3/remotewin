@@ -70,6 +70,10 @@ MirrorWindow::MirrorWindow(GuestLink& link, const GuestWindowInfo& window,
     setFocusPolicy(Qt::StrongFocus);
     resize(guest_size_);
     wear(style_);
+    // Made as a popup of a mirror that is already fitted: it is drawn at
+    // that mirror's scale from its first frame, not from its first
+    // change of size.
+    if (owner != nullptr) follow_root_scale();
     take_shape(window.region);
     RWIN_DEBUG("win32",
                "{:#x} {}x{} owned={} sizable={} activates={} taskbar={} topmost={} "
@@ -130,7 +134,7 @@ void MirrorWindow::wear(const Win32Style& style) {
 // guest's is fitted inside it.
 void MirrorWindow::apply_size_limits() {
     if (!style_.sizable()) {
-        setFixedSize(guest_size_);
+        setFixedSize(host_size());
         return;
     }
     setMinimumSize(QSize{0, 0});
@@ -313,13 +317,19 @@ void MirrorWindow::settle_request(QSize reported) {
 void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
     const QSize reported(static_cast<int>(width), static_cast<int>(height));
     settle_request(reported);
-    if (reported == guest_size_) return;
+    if (reported == guest_size_) {
+        // The window is the size it was, which is not to say the mirror
+        // is: the scale it is drawn at may have changed under it.
+        if (parentWidget() != nullptr) follow_root_scale();
+        return;
+    }
     guest_size_ = reported;
 
     if (parentWidget() != nullptr) {
         follow_root_scale();
         return;
     }
+
     // A maximised mirror keeps the size the compositor gave it; the guest
     // window is the guest's whole screen, and it is fitted into that.
     if (maximized_ || isFullScreen()) {
@@ -346,6 +356,17 @@ void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
 
 double MirrorWindow::scale() const { return root().scale_; }
 
+// The guest window's size in this desktop's units. The same number until
+// a mirror is fitted into something other than its own size, and then
+// every window of that application is drawn at the same scale — a menu
+// beside a picture half its size is a menu in the wrong place.
+QSize MirrorWindow::host_size() const {
+    const double s = scale();
+    if (s == 1.0) return guest_size_;
+    return QSize(static_cast<int>(std::lround(guest_size_.width() * s)),
+                 static_cast<int>(std::lround(guest_size_.height() * s)));
+}
+
 QRect MirrorWindow::content_rect() const {
     if (frame_.isNull()) return rect();
     const double s = scale();
@@ -370,7 +391,9 @@ void MirrorWindow::refit() {
     scale_ = fitted;
     RWIN_DEBUG("mirror", "{:#x} {}x{} shows {}x{} guest pixels at {:.3f}", handle_, width(),
                height(), guest_size_.width(), guest_size_.height(), scale_);
-    for (MirrorWindow* popup : findChildren<MirrorWindow*>(Qt::FindDirectChildrenOnly)) {
+    // Every window under this one, not only those parented straight to
+    // it: a menu opened from a panel is a popup of a popup.
+    for (MirrorWindow* popup : findChildren<MirrorWindow*>()) {
         popup->follow_root_scale();
     }
     update();
@@ -378,15 +401,17 @@ void MirrorWindow::refit() {
 
 // A popup is the size its own guest window is, at its owner's scale.
 void MirrorWindow::follow_root_scale() {
-    const double s = scale();
-    const QSize wanted(static_cast<int>(std::lround(guest_size_.width() * s)),
-                       static_cast<int>(std::lround(guest_size_.height() * s)));
+    const QSize wanted = host_size();
     if (wanted.isEmpty() || wanted == size()) {
         update();
         return;
     }
     applying_guest_size_ = true;
-    setFixedSize(wanted);
+    if (style_.sizable()) {
+        resize(wanted);
+    } else {
+        setFixedSize(wanted);
+    }
     applying_guest_size_ = false;
 }
 

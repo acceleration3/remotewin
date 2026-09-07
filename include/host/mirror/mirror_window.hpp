@@ -118,6 +118,7 @@ private:
     void take_shape(const QList<QRect>& region);
     [[nodiscard]] Qt::Edges edges_at(QPointF position) const noexcept;
     [[nodiscard]] bool start_edge_resize(QMouseEvent* event);
+    [[nodiscard]] QSize host_size() const;
     void refit();
     void follow_root_scale();
     void settle_request(QSize reported);
