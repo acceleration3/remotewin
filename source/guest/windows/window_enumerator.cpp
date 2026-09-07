@@ -71,26 +71,42 @@ bool shows_a_menu(HWND window) {
     return menu != 0;
 }
 
+HWND root_owner_of(HWND window) {
+    HWND root = ::GetAncestor(window, GA_ROOTOWNER);
+    return root != nullptr ? root : window;
+}
+
 // Who a window belongs to, as Windows keeps it.
 //
-// GW_OWNER answers for nearly everything. It does not answer for a menu:
-// the window Windows opens to show one has no owner, and the association
-// lives in its thread's input state instead — GUITHREADINFO names the
-// window whose menu is up while one is. That window is often not one
-// anybody sees (an application with its own menu bar opens menus from an
-// internal window), so the answer is taken up to its root owner, which
-// is.
+// GW_OWNER answers for nearly everything. Two kinds of window it does not
+// answer for are the two whose owner matters most, because they are
+// placed against it: a menu, and a combo box's dropped list. Neither has
+// an owner — the list is a child of the desktop — and the association
+// lives in the thread's input state instead. GUITHREADINFO names the
+// window whose menu is up while one is, and the window holding the mouse
+// capture while the active window's list is dropped.
+//
+// That window is often not one anybody sees (an application with its own
+// menu bar opens menus from an internal window), so the answer is taken
+// up to its root owner, which is.
 HWND owner_of(HWND window) {
     if (HWND owner = ::GetWindow(window, GW_OWNER); owner != nullptr) return owner;
 
     GUITHREADINFO gui{};
     gui.cbSize = sizeof(gui);
-    if (::GetGUIThreadInfo(::GetWindowThreadProcessId(window, nullptr), &gui) == FALSE
-        || gui.hwndMenuOwner == nullptr || !shows_a_menu(window)) {
+    if (::GetGUIThreadInfo(::GetWindowThreadProcessId(window, nullptr), &gui) == FALSE) {
         return nullptr;
     }
-    HWND root = ::GetAncestor(gui.hwndMenuOwner, GA_ROOTOWNER);
-    return root != nullptr ? root : gui.hwndMenuOwner;
+    if (gui.hwndMenuOwner != nullptr && shows_a_menu(window)) {
+        return root_owner_of(gui.hwndMenuOwner);
+    }
+    if (gui.hwndCapture == window && gui.hwndActive != nullptr) {
+        HWND root = root_owner_of(gui.hwndActive);
+        // A window capturing the mouse for itself — a drag inside it —
+        // belongs to nobody.
+        if (root != window) return root;
+    }
+    return nullptr;
 }
 
 bool dwm_draws_frame(HWND window) {
