@@ -26,6 +26,14 @@ void CALLBACK on_move_size_start(HWINEVENTHOOK /*hook*/, DWORD event, HWND windo
     WindowDragWatcher* watcher = listening.load();
     if (watcher == nullptr) return;
 
+    // An owned window is mirrored as a popup of its owner, placed where
+    // the guest put it — the one surface the compositor lets the client
+    // position, and the one it will not drag. So Windows keeps this drag:
+    // the guest window moves, and the mirror follows the positions the
+    // window list reports.
+    HWND owner = ::GetWindow(window, GW_OWNER);
+    if (owner != nullptr && ::IsWindowVisible(owner) != FALSE) return;
+
     // Break the move loop before it moves anything. WM_CANCELMODE is what
     // ends any modal tracking state, and the window's own procedure acts
     // on it at its next message — microseconds after it began, so the

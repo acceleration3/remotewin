@@ -195,9 +195,13 @@ void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
         std::int32_t y = window.y;
         std::uint32_t width = window.width;
         std::uint32_t height = window.height;
+        std::int32_t drawn_x = 0;
+        std::int32_t drawn_y = 0;
         if (const auto area = drawn_.find(window.handle); area != drawn_.end()) {
-            x += static_cast<std::int32_t>(area->second.offset_x);
-            y += static_cast<std::int32_t>(area->second.offset_y);
+            drawn_x = static_cast<std::int32_t>(area->second.offset_x);
+            drawn_y = static_cast<std::int32_t>(area->second.offset_y);
+            x += drawn_x;
+            y += drawn_y;
             width = area->second.width;
             height = area->second.height;
         }
@@ -211,10 +215,26 @@ void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
         out.put_u32(height);
         out.put_u32(window.style);
         out.put_u32(window.extended_style);
+        out.put_u32(window.class_style);
         out.put_string(window.title);
         out.put_string(window.class_name);
         out.put_u8(static_cast<std::uint8_t>((window.minimized ? 1 : 0)
-                                             | (window.maximized ? 2 : 0)));
+                                             | (window.maximized ? 2 : 0)
+                                             | (window.dwm_frame ? 4 : 0)
+                                             | (window.foreground ? 8 : 0)));
+        out.put_u32(window.layered_flags);
+        out.put_u8(window.layered_alpha);
+        out.put_u32(window.color_key);
+        out.put_u32(window.band);
+        // The region is in the window's own coordinates; the host's
+        // window begins where the drawn area does.
+        out.put_u32(static_cast<std::uint32_t>(window.region.size()));
+        for (const WindowRect& rect : window.region) {
+            out.put_i32(rect.left - drawn_x);
+            out.put_i32(rect.top - drawn_y);
+            out.put_i32(rect.right - drawn_x);
+            out.put_i32(rect.bottom - drawn_y);
+        }
     }
     running_ = link_.send(out.take());
 }

@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 add_executable(remotewin
     main.cpp
     chrome/resize_border.cpp
-    chrome/window_style.cpp
+    chrome/win32_style.cpp
     cursor/emulated_cursor.cpp
     link/guest_link.cpp
     mirror/mirror_session.cpp

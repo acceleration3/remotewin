@@ -55,9 +55,115 @@ bool worth_showing(HWND window) {
     return rect.right > rect.left && rect.bottom > rect.top;
 }
 
+// Windows answers MN_GETHMENU with the menu a window is showing, and
+// with nothing for a window that is showing none. It is a message into
+// another process, so it is asked with a timeout: a hung one must not
+// hang the enumeration.
+bool shows_a_menu(HWND window) {
+    // Long enough for a busy message loop, short enough that a hung one
+    // costs one pass a bounded wait.
+    constexpr UINT kReplyWaitMs = 50;
+    DWORD_PTR menu = 0;
+    if (::SendMessageTimeoutW(window, MN_GETHMENU, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK,
+                              kReplyWaitMs, &menu) == 0) {
+        return false;
+    }
+    return menu != 0;
+}
+
+// Who a window belongs to, as Windows keeps it.
+//
+// GW_OWNER answers for nearly everything. It does not answer for a menu:
+// the window Windows opens to show one has no owner, and the association
+// lives in its thread's input state instead — GUITHREADINFO names the
+// window whose menu is up while one is. That window is often not one
+// anybody sees (an application with its own menu bar opens menus from an
+// internal window), so the answer is taken up to its root owner, which
+// is.
+HWND owner_of(HWND window) {
+    if (HWND owner = ::GetWindow(window, GW_OWNER); owner != nullptr) return owner;
+
+    GUITHREADINFO gui{};
+    gui.cbSize = sizeof(gui);
+    if (::GetGUIThreadInfo(::GetWindowThreadProcessId(window, nullptr), &gui) == FALSE
+        || gui.hwndMenuOwner == nullptr || !shows_a_menu(window)) {
+        return nullptr;
+    }
+    HWND root = ::GetAncestor(gui.hwndMenuOwner, GA_ROOTOWNER);
+    return root != nullptr ? root : gui.hwndMenuOwner;
+}
+
+bool dwm_draws_frame(HWND window) {
+    BOOL enabled = FALSE;
+    if (FAILED(::DwmGetWindowAttribute(window, DWMWA_NCRENDERING_ENABLED, &enabled,
+                                       sizeof(enabled)))) {
+        return false;
+    }
+    return enabled != FALSE;
+}
+
+// GetWindowBand is exported by user32 and not declared by any header:
+// the z-order bands are Windows' own, undocumented, and how the shell
+// keeps its own windows above every application's. Resolved once.
+DWORD band_of(HWND window) {
+    using GetWindowBandFn = BOOL(WINAPI*)(HWND, PDWORD);
+    static const auto get_window_band = reinterpret_cast<GetWindowBandFn>(
+        reinterpret_cast<void*>(::GetProcAddress(::GetModuleHandleW(L"user32.dll"),
+                                                 "GetWindowBand")));
+    DWORD band = 0;
+    if (get_window_band == nullptr || get_window_band(window, &band) == FALSE) return 0;
+    return band;
+}
+
+void read_layering(HWND window, GuestWindow& into) {
+    COLORREF key = 0;
+    BYTE alpha = 255;
+    DWORD flags = 0;
+    // Fails for a window that never called SetLayeredWindowAttributes,
+    // including one drawn with UpdateLayeredWindow, whose alpha is in its
+    // pixels already.
+    if (::GetLayeredWindowAttributes(window, &key, &alpha, &flags) == FALSE) return;
+    into.layered_flags = flags;
+    into.layered_alpha = alpha;
+    into.color_key = key;
+}
+
+void read_region(HWND window, std::vector<WindowRect>& into) {
+    // More rectangles than this and it is a mask no shape needs — an
+    // antialiased edge scanned into rows. Sent whole, such a region is a
+    // window list several times the size of every frame; the window is
+    // shown as its rectangle instead.
+    constexpr std::size_t kMaxRects = 256;
+
+    HRGN region = ::CreateRectRgn(0, 0, 0, 0);
+    if (region == nullptr) return;
+    const int kind = ::GetWindowRgn(window, region);
+    if (kind == ERROR || kind == NULLREGION) {
+        ::DeleteObject(region);
+        return;
+    }
+    const DWORD bytes = ::GetRegionData(region, 0, nullptr);
+    if (bytes == 0 || bytes > sizeof(RGNDATAHEADER) + kMaxRects * sizeof(RECT)) {
+        ::DeleteObject(region);
+        return;
+    }
+    std::vector<std::uint8_t> raw(bytes);
+    auto* data = reinterpret_cast<RGNDATA*>(raw.data());
+    if (::GetRegionData(region, bytes, data) != 0) {
+        const auto* rects = reinterpret_cast<const RECT*>(data->Buffer);
+        into.reserve(data->rdh.nCount);
+        for (DWORD i = 0; i < data->rdh.nCount; ++i) {
+            into.push_back(WindowRect{rects[i].left, rects[i].top, rects[i].right,
+                                      rects[i].bottom});
+        }
+    }
+    ::DeleteObject(region);
+}
+
 struct Collector {
     std::vector<GuestWindow>* into;
     const LaunchScope* scope;
+    HWND foreground;
 };
 
 BOOL CALLBACK collect(HWND window, LPARAM param) {
@@ -72,7 +178,7 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
     found.handle = reinterpret_cast<std::uintptr_t>(window);
     const WindowSurface surface{found.handle};
     if (!surface.valid()) return TRUE;
-    found.owner = reinterpret_cast<std::uintptr_t>(::GetWindow(window, GW_OWNER));
+    found.owner = reinterpret_cast<std::uintptr_t>(owner_of(window));
     found.process_id = process_id;
     found.x = surface.screen_x(0);
     found.y = surface.screen_y(0);
@@ -81,10 +187,17 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
     found.style = static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_STYLE));
     found.extended_style =
         static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_EXSTYLE));
-    found.minimized = ::IsIconic(window) != FALSE;
-    found.maximized = ::IsZoomed(window) != FALSE;
+    found.class_style =
+        static_cast<std::uint32_t>(::GetClassLongPtrW(window, GCL_STYLE));
     found.title = text_of(window, window_title);
     found.class_name = text_of(window, window_class);
+    found.minimized = ::IsIconic(window) != FALSE;
+    found.maximized = ::IsZoomed(window) != FALSE;
+    found.dwm_frame = dwm_draws_frame(window);
+    if ((found.extended_style & WS_EX_LAYERED) != 0) read_layering(window, found);
+    found.band = band_of(window);
+    found.foreground = window == collector->foreground;
+    read_region(window, found.region);
     collector->into->push_back(std::move(found));
     return TRUE;
 }
@@ -93,7 +206,7 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
 
 std::vector<GuestWindow> WindowEnumerator::windows_in(const LaunchScope& scope) const {
     std::vector<GuestWindow> found;
-    Collector collector{&found, &scope};
+    Collector collector{&found, &scope, ::GetForegroundWindow()};
     ::EnumWindows(&collect, reinterpret_cast<LPARAM>(&collector));
     return found;
 }

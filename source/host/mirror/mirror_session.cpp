@@ -7,7 +7,6 @@
 
 #include <QImage>
 #include <QPoint>
-#include <QSet>
 #include <QTimer>
 
 #include <utility>
@@ -48,40 +47,101 @@ MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id,
 }
 
 void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
-    // Every mirror is made before any is placed: a popup can arrive in
-    // the same list as the window it belongs to, and ahead of it.
-    QSet<quint64> present;
-    QList<const GuestWindowInfo*> awaiting_placement;
+    Listed listed;
+    listed.reserve(windows.size());
+    QList<const GuestWindowInfo*> arrivals;
     for (const GuestWindowInfo& window : windows) {
-        present.insert(window.handle);
-        if (auto it = mirrors_.find(window.handle); it != mirrors_.end()) {
-            if (!it.value().isNull()) {
-                it.value()->retitle(window.title);
-                it.value()->follow_guest_state(window.minimized, window.maximized);
-                it.value()->note_guest_size(window.width, window.height);
-                reposition(window, windows);
-            }
-            continue;
+        listed.insert(window.handle, &window);
+        if (!mirrors_.contains(window.handle) || mirrors_.value(window.handle).isNull()) {
+            arrivals.push_back(&window);
         }
-        RWIN_INFO("mirror", "new window {:#x} owner={:#x} '{}' {}x{} class='{}'",
-                  window.handle, window.owner, window.title.toStdString(), window.width,
-                  window.height, window.class_name.toStdString());
-        auto* mirror = new MirrorWindow(link_, window);
-        mirrors_.insert(window.handle, mirror);
-        saw_any_ = true;
-        awaiting_placement.push_back(&window);
     }
 
-    for (const GuestWindowInfo* window : awaiting_placement) {
+    open_mirrors(std::move(arrivals), listed);
+    for (const GuestWindowInfo& window : windows) {
+        if (auto mirror = mirrors_.value(window.handle); !mirror.isNull()) {
+            follow(*mirror, window, listed);
+        }
+    }
+    close_departed(listed);
+
+    if (saw_any_ && mirrors_.isEmpty()) {
+        RWIN_INFO("mirror", "every window closed; session is done");
+        Q_EMIT finished();
+    }
+}
+
+// An owner is opened before what it owns, whatever order the list came
+// in, so an owned window has the surface it is placed against from the
+// start. One whose owner is not on the list opens on its own, as a
+// toplevel; so does one whose owner chain loops back on itself, which
+// Windows does not produce but a wire can.
+void MirrorSession::open_mirrors(QList<const GuestWindowInfo*> arrivals,
+                                 const Listed& listed) {
+    QList<const GuestWindowInfo*> opened;
+    opened.reserve(arrivals.size());
+    while (!arrivals.isEmpty()) {
+        const qsizetype before = arrivals.size();
+        for (auto it = arrivals.begin(); it != arrivals.end();) {
+            const GuestWindowInfo& window = **it;
+            const bool owner_listed = window.owner != 0 && listed.contains(window.owner);
+            MirrorWindow* owner = mirrors_.value(window.owner).data();
+            if (owner_listed && owner == nullptr) {
+                ++it;
+                continue;
+            }
+            open(window, owner);
+            opened.push_back(&window);
+            it = arrivals.erase(it);
+        }
+        if (arrivals.size() == before) {
+            open(*arrivals.first(), nullptr);
+            opened.push_back(arrivals.takeFirst());
+        }
+    }
+
+    for (const GuestWindowInfo* window : opened) {
         auto mirror = mirrors_.value(window->handle);
         if (mirror.isNull()) continue;
-        reposition(*window, windows);
+        place(*mirror, *window, listed);
         mirror->show();
         link_.subscribe(window->handle);
     }
+}
 
+void MirrorSession::open(const GuestWindowInfo& window, MirrorWindow* owner) {
+    RWIN_INFO("mirror", "new window {:#x} owner={:#x}{} '{}' {}x{} class='{}'",
+              window.handle, window.owner, owner == nullptr ? "" : " (mirrored)",
+              window.title.toStdString(), window.width, window.height,
+              window.class_name.toStdString());
+    mirrors_.insert(window.handle, new MirrorWindow(link_, window, owner));
+    saw_any_ = true;
+}
+
+void MirrorSession::follow(MirrorWindow& mirror, const GuestWindowInfo& window,
+                           const Listed& listed) {
+    mirror.retitle(window.title);
+    mirror.follow_guest_style(window);
+    mirror.follow_guest_state(window.minimized, window.maximized);
+    mirror.follow_guest_foreground(window.foreground);
+    mirror.note_guest_size(window.width, window.height);
+    place(mirror, window, listed);
+}
+
+// An owner we are not mirroring is no owner at all: the window stands on
+// its own rather than being placed against nothing.
+void MirrorSession::place(MirrorWindow& mirror, const GuestWindowInfo& window,
+                          const Listed& listed) {
+    if (window.owner == 0) return;
+    auto owner = mirrors_.value(window.owner);
+    const GuestWindowInfo* owner_window = listed.value(window.owner);
+    if (owner.isNull() || owner_window == nullptr) return;
+    mirror.place_under(*owner, QPoint(window.x - owner_window->x, window.y - owner_window->y));
+}
+
+void MirrorSession::close_departed(const Listed& listed) {
     for (auto it = mirrors_.begin(); it != mirrors_.end();) {
-        if (present.contains(it.key()) && !it.value().isNull()) {
+        if (listed.contains(it.key()) && !it.value().isNull()) {
             ++it;
             continue;
         }
@@ -91,27 +151,6 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
         }
         link_.unsubscribe(it.key());
         it = mirrors_.erase(it);
-    }
-
-    if (saw_any_ && mirrors_.isEmpty()) {
-        RWIN_INFO("mirror", "every window closed; session is done");
-        Q_EMIT finished();
-    }
-}
-
-void MirrorSession::reposition(const GuestWindowInfo& window,
-                               const QList<GuestWindowInfo>& all) {
-    auto mirror = mirrors_.value(window.handle);
-    if (mirror.isNull() || !mirror->is_placed_by_owner()) return;
-    // An owner we are not mirroring is no owner at all: the window stands
-    // on its own rather than being placed against nothing.
-    auto owner = mirrors_.value(window.owner);
-    if (owner.isNull()) return;
-    for (const GuestWindowInfo& candidate : all) {
-        if (candidate.handle != window.owner) continue;
-        mirror->place_under(*owner,
-                            QPoint(window.x - candidate.x, window.y - candidate.y));
-        return;
     }
 }
 

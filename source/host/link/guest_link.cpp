@@ -90,11 +90,26 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
                 window.height = message.u32();
                 window.style = message.u32();
                 window.extended_style = message.u32();
+                window.class_style = message.u32();
                 window.title = QString::fromStdString(message.string());
                 window.class_name = QString::fromStdString(message.string());
                 const std::uint8_t state = message.u8();
                 window.minimized = (state & 1) != 0;
                 window.maximized = (state & 2) != 0;
+                window.dwm_frame = (state & 4) != 0;
+                window.foreground = (state & 8) != 0;
+                window.layered_flags = message.u32();
+                window.layered_alpha = message.u8();
+                window.color_key = message.u32();
+                window.band = message.u32();
+                const std::uint32_t rects = message.u32();
+                for (std::uint32_t r = 0; r < rects && message.ok(); ++r) {
+                    const std::int32_t left = message.i32();
+                    const std::int32_t top = message.i32();
+                    const std::int32_t right = message.i32();
+                    const std::int32_t bottom = message.i32();
+                    window.region.push_back(QRect(QPoint(left, top), QPoint(right - 1, bottom - 1)));
+                }
                 windows.push_back(std::move(window));
             }
             if (!message.ok()) {

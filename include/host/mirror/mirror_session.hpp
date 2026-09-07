@@ -35,9 +35,14 @@ Q_SIGNALS:
     void finished();
 
 private:
+    using Listed = QHash<quint64, const GuestWindowInfo*>;
+
     void refresh(const QList<GuestWindowInfo>& windows);
-    void reposition(const GuestWindowInfo& window,
-                    const QList<GuestWindowInfo>& all);
+    void open_mirrors(QList<const GuestWindowInfo*> arrivals, const Listed& listed);
+    void open(const GuestWindowInfo& window, MirrorWindow* owner);
+    void follow(MirrorWindow& mirror, const GuestWindowInfo& window, const Listed& listed);
+    void place(MirrorWindow& mirror, const GuestWindowInfo& window, const Listed& listed);
+    void close_departed(const Listed& listed);
     void hand_over_drag(quint64 window);
     void show_cursor(quint64 id);
     void show_frame(quint64 window, const QImage& pixels);
