@@ -1,10 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 project(remotewin CXX)
 
-# A project of its own. It knows how to move windows, pixels and input
-# across a boundary, and nothing about virtual machines, libvirt or
-# whoever is managing them — so it builds and tests on its own, and a
-# caller consumes the executables rather than linking the code.
+# A project of its own: it knows how to move windows, pixels and input
+# across a boundary, and nothing about virtual machines or whoever is
+# managing them.
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -18,6 +17,15 @@ if(RWIN_BUILD_TESTS)
     enable_testing()
 endif()
 
-# The wire format and the vocabulary: header-only, dependency-free, and
-# compiled by both toolchains. Everything else is built on top of it.
-add_subdirectory(src/proto)
+add_subdirectory(log)
+add_subdirectory(proto)
+
+# The two halves are each built by the toolchain that can: the guest is a
+# Windows executable, the host a Linux one. A native Linux build makes the
+# host, a mingw cross build makes the guest, and neither pretends it can
+# make the other.
+if(WIN32)
+    add_subdirectory(guest)
+else()
+    add_subdirectory(host)
+endif()

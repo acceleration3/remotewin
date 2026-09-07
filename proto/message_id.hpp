@@ -1,0 +1,24 @@
+#pragma once
+
+#include <cstdint>
+
+namespace rwin {
+
+// Host ids below 64, guest ids at 64 and above, so a message decoded on
+// the wrong side is obviously wrong rather than plausibly right.
+enum class MessageId : std::uint8_t {
+    ListWindows = 1,
+    Subscribe = 2,
+    Unsubscribe = 3,
+    PointerMove = 4,
+    PointerButton = 5,
+    Key = 6,
+    CloseWindow = 7,
+    ResizeWindow = 8,
+
+    WindowList = 64,
+    Frame = 65,
+    WindowGone = 66,
+};
+
+}  // namespace rwin
