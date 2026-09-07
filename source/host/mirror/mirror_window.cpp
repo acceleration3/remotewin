@@ -99,13 +99,18 @@ void MirrorWindow::take_shape(QList<QRect> region) {
 // the top corner of itself: the rest was painted as nothing and, being
 // outside the input region a mask also sets, took no clicks either.
 void MirrorWindow::apply_shape() {
+    const QRect where = content_rect();
     if (guest_region_.isEmpty()) {
         if (!mask().isEmpty()) clearMask();
         return;
     }
     const double s = scale();
-    const QPoint origin = content_rect().topLeft();
-    QRegion shape;
+    const QPoint origin = where.topLeft();
+    // The bars are the mirror's, not the window's: they are drawn and
+    // they take clicks, so a shape that describes only the window has to
+    // have them added back or they would be cut away with everything else
+    // outside it.
+    QRegion shape = QRegion(rect()) - QRegion(where);
     for (const QRect& rect : guest_region_) {
         const QPoint at = origin + QPoint(static_cast<int>(std::lround(rect.x() * s)),
                                           static_cast<int>(std::lround(rect.y() * s)));
@@ -460,9 +465,12 @@ void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
     }
     const QRect where = content_rect();
     if (where != rect()) {
-        // The bars beside a fitted frame, and any part of the mirror the
-        // guest window has not caught up with.
-        painter.fillRect(rect(), Qt::transparent);
+        // The bars beside a fitted picture: black, and opaque, because
+        // they are this mirror's own and not a part of the window that
+        // happens to be see-through. The picture is drawn over the middle
+        // of them, and its own transparent pixels replace the black
+        // rather than blending with it, Source mode being what is set.
+        painter.fillRect(rect(), Qt::black);
     }
     if (where.size() == frame_.size()) {
         painter.drawImage(where.topLeft(), frame_);
@@ -578,12 +586,14 @@ const MirrorWindow& MirrorWindow::root() const {
 // Photoshop hides a panel the moment it is picked up, and a release told
 // in the frame of a window that is gone reaches nothing. The toplevel
 // does neither.
-QPoint MirrorWindow::guest_position_of(QMouseEvent* event) const {
+std::optional<QPoint> MirrorWindow::guest_position_of(QMouseEvent* event) const {
     const MirrorWindow& top = root();
     const QPointF here = event->position() + QPointF(pos() - top.pos())
                          - QPointF(top.content_rect().topLeft());
     const QPointF at = here / top.scale();
-    return QPoint(static_cast<int>(at.x()), static_cast<int>(at.y()));
+    const QPoint guest(static_cast<int>(at.x()), static_cast<int>(at.y()));
+    if (!QRect(QPoint(0, 0), top.guest_size_).contains(guest)) return std::nullopt;
+    return guest;
 }
 
 // The host's own band, which the guest cannot report: a window's resize
@@ -603,8 +613,9 @@ void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
     }
     // Forwarded even over the chrome and the border: that is how the guest
     // updates its own hover highlighting and decides which cursor to show.
-    const QPoint at = guest_position_of(event);
-    link_.send_pointer_move(root().handle(), at.x(), at.y());
+    const std::optional<QPoint> at = guest_position_of(event);
+    if (!at.has_value()) return;
+    link_.send_pointer_move(root().handle(), at->x(), at->y());
 }
 
 bool MirrorWindow::start_edge_resize(QMouseEvent* event) {
@@ -632,10 +643,11 @@ void MirrorWindow::mousePressEvent(QMouseEvent* event) {
         event->accept();
         return;
     }
-    const QPoint at = guest_position_of(event);
+    const std::optional<QPoint> at = guest_position_of(event);
+    if (!at.has_value()) return;
     held_ |= event->button();
-    link_.send_pointer_button(root().handle(), at.x(), at.y(), button_index(event->button()),
-                              true);
+    link_.send_pointer_button(root().handle(), at->x(), at->y(),
+                              button_index(event->button()), true);
 }
 
 void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
@@ -644,9 +656,11 @@ void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
         swallow_release_ = false;
         return;
     }
-    const QPoint at = guest_position_of(event);
-    link_.send_pointer_button(root().handle(), at.x(), at.y(), button_index(event->button()),
-                              false);
+    const std::optional<QPoint> at = guest_position_of(event);
+    if (at.has_value()) {
+        link_.send_pointer_button(root().handle(), at->x(), at->y(),
+                                  button_index(event->button()), false);
+    }
     if (held_ == Qt::NoButton) Q_EMIT let_go();
 }
 

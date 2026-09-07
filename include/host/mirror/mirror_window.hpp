@@ -12,6 +12,8 @@
 #include <QSize>
 #include <QWidget>
 
+#include <optional>
+
 namespace rwin::host {
 
 class GuestLink;
@@ -127,7 +129,11 @@ private:
     // The toplevel this window descends from: itself, or the owner of the
     // owner of ... this popup.
     [[nodiscard]] const MirrorWindow& root() const;
-    [[nodiscard]] QPoint guest_position_of(QMouseEvent* event) const;
+    // Which guest pixel the pointer is on, or nothing when it is on a
+    // letterbox bar: that is this desktop's, not any part of the window,
+    // and a press there put through would land on whatever the guest has
+    // at a place the window does not cover.
+    [[nodiscard]] std::optional<QPoint> guest_position_of(QMouseEvent* event) const;
     void send_key(QKeyEvent* event, bool pressed);
     void ask_guest_for(QSize size);
 
