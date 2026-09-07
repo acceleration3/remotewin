@@ -327,8 +327,29 @@ void MirrorWindow::resizeEvent(QResizeEvent* event) {
                       static_cast<std::uint32_t>(wanted.height()));
 }
 
+const MirrorWindow& MirrorWindow::root() const {
+    const MirrorWindow* window = this;
+    while (const auto* owner = qobject_cast<const MirrorWindow*>(window->parentWidget())) {
+        window = owner;
+    }
+    return *window;
+}
+
+// Pointer positions are told in the frame of the toplevel this window
+// descends from, never in the frame of a popup.
+//
+// A popup sits where the guest said it was a frame ago. While the guest
+// drags one, the pointer here is measured against a window that is
+// already behind it, and the guest then measures that against where the
+// window is now, so the drag is fed its own lag and shakes. And the
+// window that took the press may not be the window under the release:
+// Photoshop hides a panel the moment it is picked up, and a release told
+// in the frame of a window that is gone reaches nothing. The toplevel
+// does neither.
 QPoint MirrorWindow::guest_position_of(QMouseEvent* event) const {
-    const QPointF at = event->position() - QPointF(frame_origin());
+    const MirrorWindow& top = root();
+    const QPointF at = event->position() + QPointF(pos() - top.pos())
+                       - QPointF(top.frame_origin());
     return QPoint(static_cast<int>(at.x()), static_cast<int>(at.y()));
 }
 
@@ -350,7 +371,7 @@ void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
     // Forwarded even over the chrome and the border: that is how the guest
     // updates its own hover highlighting and decides which cursor to show.
     const QPoint at = guest_position_of(event);
-    link_.send_pointer_move(handle_, at.x(), at.y());
+    link_.send_pointer_move(root().handle(), at.x(), at.y());
 }
 
 bool MirrorWindow::start_edge_resize(QMouseEvent* event) {
@@ -370,12 +391,16 @@ bool MirrorWindow::start_edge_resize(QMouseEvent* event) {
 }
 
 void MirrorWindow::mousePressEvent(QMouseEvent* event) {
+    // A release still owed from a drag the compositor took over never
+    // comes: the compositor kept it. A new press means that wait is over,
+    // or this press's own release would be the one swallowed.
+    swallow_release_ = false;
     if (start_edge_resize(event)) {
         event->accept();
         return;
     }
     const QPoint at = guest_position_of(event);
-    link_.send_pointer_button(handle_, at.x(), at.y(), button_index(event->button()),
+    link_.send_pointer_button(root().handle(), at.x(), at.y(), button_index(event->button()),
                               true);
 }
 
@@ -385,7 +410,7 @@ void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
         return;
     }
     const QPoint at = guest_position_of(event);
-    link_.send_pointer_button(handle_, at.x(), at.y(), button_index(event->button()),
+    link_.send_pointer_button(root().handle(), at.x(), at.y(), button_index(event->button()),
                               false);
 }
 

@@ -87,6 +87,9 @@ private:
     [[nodiscard]] Qt::Edges edges_at(QPointF position) const noexcept;
     [[nodiscard]] bool start_edge_resize(QMouseEvent* event);
     [[nodiscard]] QPoint frame_origin() const;
+    // The toplevel this window descends from: itself, or the owner of the
+    // owner of ... this popup.
+    [[nodiscard]] const MirrorWindow& root() const;
     [[nodiscard]] QPoint guest_position_of(QMouseEvent* event) const;
     void send_key(QKeyEvent* event, bool pressed);
 
