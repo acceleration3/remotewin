@@ -46,10 +46,10 @@ bool is_cloaked(HWND window) {
 bool worth_showing(HWND window) {
     if (::IsWindowVisible(window) == FALSE) return false;
     if (is_cloaked(window)) return false;
-    // An owned tool window is chrome for another window, not a window of
-    // its own; the host draws those as part of their owner.
-    const LONG_PTR extended = ::GetWindowLongPtrW(window, GWL_EXSTYLE);
-    if ((extended & WS_EX_TOOLWINDOW) != 0) return false;
+    // Tool windows are NOT skipped. Windows registers a menu as a tool
+    // window, so dropping them dropped every menu an application opened —
+    // and palettes and inspectors with them, which are just as much a
+    // window as anything else here.
     RECT rect{};
     if (::GetWindowRect(window, &rect) == FALSE) return false;
     return rect.right > rect.left && rect.bottom > rect.top;

@@ -102,7 +102,7 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
 void MirrorSession::reposition(const GuestWindowInfo& window,
                                const QList<GuestWindowInfo>& all) {
     auto mirror = mirrors_.value(window.handle);
-    if (mirror.isNull() || !mirror->is_owned()) return;
+    if (mirror.isNull() || !mirror->is_placed_by_owner()) return;
     // An owner we are not mirroring is no owner at all: the window stands
     // on its own rather than being placed against nothing.
     auto owner = mirrors_.value(window.owner);

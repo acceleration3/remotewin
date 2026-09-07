@@ -28,6 +28,11 @@ public:
 
     [[nodiscard]] std::uint64_t handle() const noexcept { return handle_; }
     [[nodiscard]] bool is_owned() const noexcept { return owner_ != 0; }
+    // Only a menu is placed from its owner. Anything else is a toplevel,
+    // which on Wayland the client cannot position at all.
+    [[nodiscard]] bool is_placed_by_owner() const noexcept {
+        return owner_ != 0 && placed_by_owner_;
+    }
 
     void present(const QImage& pixels);
     void retitle(const QString& title);
@@ -90,6 +95,7 @@ private:
     ResizeBorder border_;
     QCursor guest_cursor_;
     Qt::Edges hovered_edges_;
+    bool placed_by_owner_ = false;
     bool guest_closed_ = false;
     bool applying_guest_size_ = false;
     bool applying_guest_state_ = false;

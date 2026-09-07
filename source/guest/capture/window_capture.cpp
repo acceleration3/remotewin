@@ -31,6 +31,7 @@ using capture_abi::IDirect3D11CaptureFramePool;
 using capture_abi::IDirect3D11CaptureFramePoolStatics2;
 using capture_abi::IGraphicsCaptureItem;
 using capture_abi::IGraphicsCaptureSession;
+using capture_abi::IGraphicsCaptureSession2;
 using capture_abi::IGraphicsCaptureSession3;
 using ABI::Windows::Foundation::IClosable;
 
@@ -167,6 +168,19 @@ bool WindowCapture::resize_pool(const WindowSurface& surface) {
         || session_ == nullptr) {
         RWIN_ERROR("capture", "no capture session");
         return false;
+    }
+
+    // The pointer, which belongs to the desktop rather than to the
+    // window. Left on, the guest's cursor is painted into the frame and
+    // arrives as part of the picture — so the host shows two, its own and
+    // a drawn one that lags behind it.
+    IGraphicsCaptureSession2* pointer = nullptr;
+    if (SUCCEEDED(static_cast<IGraphicsCaptureSession*>(session_)->QueryInterface(
+            __uuidof(IGraphicsCaptureSession2), reinterpret_cast<void**>(&pointer)))) {
+        pointer->put_IsCursorCaptureEnabled(false);
+        pointer->Release();
+    } else {
+        RWIN_WARN("capture", "this build cannot turn off cursor capture");
     }
 
     // The yellow "you are being captured" border, which is not part of

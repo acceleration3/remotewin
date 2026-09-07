@@ -158,7 +158,16 @@ void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
     }
     if (size() == reported) return;
     applying_guest_size_ = true;
-    resize(reported);
+    // A window the guest will not let be resized is pinned here, so plain
+    // resize() does nothing to it. It still has to follow the guest: what
+    // a window draws is not what its rectangle claims, and the mirror is
+    // made before the first frame says which. Pinned at the wrong size,
+    // the frame is centred inside it and the difference shows as a border.
+    if (minimumSize() == maximumSize()) {
+        setFixedSize(reported);
+    } else {
+        resize(reported);
+    }
     applying_guest_size_ = false;
 }
 

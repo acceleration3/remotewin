@@ -17,6 +17,9 @@ constexpr std::uint32_t kExTopMost = 0x00000008;
 // just "a window": the menu class and the dialog class.
 constexpr const char* kMenuClass = "#32768";
 constexpr const char* kDialogClass = "#32770";
+// What a WinUI application opens instead of a classic menu. Notepad's
+// File menu is one of these.
+constexpr const char* kXamlPopupClass = "Xaml_WindowedPopupClass";
 
 }  // namespace
 
@@ -26,18 +29,19 @@ WindowStyle::WindowStyle(std::string class_name, std::uint32_t style,
       style_(style),
       extended_style_(extended_style),
       owned_(owned),
-      is_menu_(class_name_ == kMenuClass),
+      is_menu_(class_name_ == kMenuClass || class_name_ == kXamlPopupClass),
       is_dialog_(class_name_ == kDialogClass) {}
 
 bool WindowStyle::has(std::uint32_t bit) const noexcept { return (style_ & bit) == bit; }
 
 bool WindowStyle::is_popup() const noexcept {
-    // WS_POPUP alone does not make a popup: plenty of ordinary
-    // application windows set it and then add a caption. What makes one
-    // is having no caption to be dragged by, and belonging to a window
-    // that does.
-    return is_menu_ || (owned_ && !has(kCaption))
-           || ((style_ & kPopup) != 0 && !has(kCaption));
+    // Only a menu. Being owned and captionless does not make a window a
+    // menu — an application's floating panels are exactly that and are
+    // ordinary windows that happen to draw their own frame. Treating them
+    // as popups made them surfaces the compositor positions from their
+    // parent, which cannot be moved or resized at all, so Photoshop's
+    // docks arrived unmovable.
+    return is_menu_;
 }
 
 bool WindowStyle::is_resizable() const noexcept {
@@ -69,7 +73,11 @@ Qt::WindowFlags WindowStyle::window_flags() const {
     } else {
         flags |= Qt::Window;
     }
-    if ((extended_style_ & kExToolWindow) != 0) flags |= Qt::Tool;
+    // An owned window belongs to another and is not an application in
+    // its own right: a panel, a palette, an inspector. Qt::Tool keeps it
+    // above its owner and out of the task bar, while leaving it a real
+    // toplevel the compositor will move and resize.
+    if (owned_ || (extended_style_ & kExToolWindow) != 0) flags |= Qt::Tool;
     if ((extended_style_ & kExTopMost) != 0) flags |= Qt::WindowStaysOnTopHint;
     return flags;
 }
