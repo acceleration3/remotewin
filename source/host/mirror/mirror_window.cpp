@@ -152,7 +152,13 @@ void MirrorWindow::wear(const Win32Style& style) {
     // every menu opened.
     setAttribute(Qt::WA_ShowWithoutActivating,
                  !style.activates() || parentWidget() != nullptr);
-    setEnabled(!style.disabled());
+    // WS_DISABLED is not setEnabled(false). Qt hands a disabled widget's
+    // state down to its children, and a mirror's children are the popups
+    // of that window — so a main window disabled behind its own modal
+    // dialog took the dialog's mirror down with it, and nothing in it
+    // could be clicked. Windows disables the one window and no other.
+    // What it means is that the window takes no input from the user,
+    // which is done where the input arrives.
     apply_size_limits();
 }
 
@@ -600,11 +606,12 @@ std::optional<QPoint> MirrorWindow::guest_position_of(QMouseEvent* event) const 
 // border is outside its visible frame, so no point inside a mirror is in
 // it. Only a window with a sizing border has one.
 Qt::Edges MirrorWindow::edges_at(QPointF position) const noexcept {
-    if (!style_.sizable() || isMaximized()) return Qt::Edges{};
+    if (!style_.sizable() || style_.disabled() || isMaximized()) return Qt::Edges{};
     return border_.at(position, size());
 }
 
 void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
+    if (style_.disabled()) return;
     const Qt::Edges edges = edges_at(event->position());
     if (edges != hovered_edges_) {
         hovered_edges_ = edges;
@@ -635,6 +642,8 @@ bool MirrorWindow::start_edge_resize(QMouseEvent* event) {
 }
 
 void MirrorWindow::mousePressEvent(QMouseEvent* event) {
+    // WS_DISABLED: "A disabled window cannot receive input from the user."
+    if (style_.disabled()) return;
     // A release still owed from a drag the compositor took over never
     // comes: the compositor kept it. A new press means that wait is over,
     // or this press's own release would be the one swallowed.
@@ -651,6 +660,7 @@ void MirrorWindow::mousePressEvent(QMouseEvent* event) {
 }
 
 void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
+    if (style_.disabled()) return;
     held_ &= ~event->button();
     if (swallow_release_) {
         swallow_release_ = false;
@@ -665,6 +675,7 @@ void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 void MirrorWindow::send_key(QKeyEvent* event, bool pressed) {
+    if (style_.disabled()) return;
     const std::uint32_t virtual_key = virtual_key_for(event->key());
     const QString text = event->text();
     const std::uint32_t character =
