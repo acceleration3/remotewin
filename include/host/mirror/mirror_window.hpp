@@ -170,6 +170,12 @@ private:
     // it.
     double scale_ = 1.0;
     bool maximized_ = false;
+    // Whether this mirror was minimised for the guest. Kept, because
+    // Wayland tells a client nothing about being minimised: Qt's own flag
+    // stays false through it, so a guest window coming back out of
+    // minimised was compared against a mirror that claimed never to have
+    // gone in, and the mirror stayed away.
+    bool minimized_ = false;
     // Whether it was the guest's own maximise that maximised this mirror.
     // Which side began it decides what the other is told: a mirror
     // maximised here asks the guest for its whole screen, and one

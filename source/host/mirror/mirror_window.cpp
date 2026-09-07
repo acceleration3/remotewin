@@ -278,12 +278,14 @@ void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
     // A popup has no state of its own: it shows and hides with its parent.
     if (parentWidget() != nullptr) return;
 
-    if (minimized != isMinimized()) {
+    if (minimized != minimized_) {
+        minimized_ = minimized;
         applying_guest_state_ = true;
         if (minimized) {
             showMinimized();
         } else {
             showNormal();
+            raise();
         }
         applying_guest_state_ = false;
         RWIN_DEBUG("chrome", "{:#x} follows guest minimized={}", handle_, minimized);
