@@ -3,6 +3,7 @@
 #include "guest/cursor/cursor_image.hpp"
 
 #include <optional>
+#include <string>
 #include "guest/windows/window_surface.hpp"
 #include "logging/logger.hpp"
 #include "proto/message_id.hpp"
@@ -45,15 +46,13 @@ void GuestSession::run() {
 
 void GuestSession::handle(MessageReader& message) {
     switch (message.id()) {
-        case MessageId::ListWindows: {
+        case MessageId::WatchScope: {
             const std::uint32_t process_id = message.u32();
+            const std::string job = message.string();
             if (!message.ok()) break;
-            if (watcher_ == nullptr) {
-                watcher_ = std::make_unique<WindowListWatcher>(process_id);
-            }
-            watcher_->forget();
+            RWIN_INFO("scope", "asked to watch pid {} job '{}'", process_id, job);
+            watcher_ = std::make_unique<WindowListWatcher>(job, process_id);
             push_window_changes();
-        report_drags();
             break;
         }
         case MessageId::Subscribe: {

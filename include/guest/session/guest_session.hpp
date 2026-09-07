@@ -51,8 +51,8 @@ private:
     WindowDragWatcher drags_;
     CursorWatcher cursor_;
     FrameDecoder decoder_;
-    // Created on the first request, because until the host says which
-    // process it wants there is nothing to watch.
+    // Created when the host says what to watch; until then there is no
+    // application to have windows.
     std::unique_ptr<WindowListWatcher> watcher_;
     // One capture per subscribed window: each keeps its own bitmap, sized
     // to that window, across frames.

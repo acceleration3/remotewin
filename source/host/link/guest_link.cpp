@@ -182,9 +182,10 @@ void GuestLink::send(std::vector<std::uint8_t> bytes) {
                   static_cast<qint64>(bytes.size()));
 }
 
-void GuestLink::request_window_list(std::uint32_t process_id) {
-    MessageWriter out{MessageId::ListWindows};
+void GuestLink::watch_scope(std::uint32_t process_id, const QString& job_name) {
+    MessageWriter out{MessageId::WatchScope};
     out.put_u32(process_id);
+    out.put_string(job_name.toStdString());
     send(out.take());
 }
 

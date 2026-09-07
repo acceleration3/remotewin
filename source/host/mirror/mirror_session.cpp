@@ -10,6 +10,8 @@
 #include <QSet>
 #include <QTimer>
 
+#include <utility>
+
 namespace rwin::host {
 
 namespace {
@@ -19,8 +21,13 @@ namespace {
 constexpr int kPollIntervalMs = 1000;
 }  // namespace
 
-MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id, QObject* parent)
-    : QObject(parent), link_(link), process_id_(process_id), poll_(new QTimer(this)) {
+MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id,
+                             QString job_name, QObject* parent)
+    : QObject(parent),
+      link_(link),
+      process_id_(process_id),
+      job_name_(std::move(job_name)),
+      poll_(new QTimer(this)) {
     connect(&link_, &GuestLink::windows_listed, this, &MirrorSession::refresh);
     connect(&link_, &GuestLink::frame_arrived, this, &MirrorSession::show_frame);
     connect(&link_, &GuestLink::window_gone, this, &MirrorSession::forget);
@@ -35,9 +42,9 @@ MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id, QObject*
 
     poll_->setInterval(kPollIntervalMs);
     connect(poll_, &QTimer::timeout, this,
-            [this] { link_.request_window_list(process_id_); });
+            [this] { link_.watch_scope(process_id_, job_name_); });
     poll_->start();
-    link_.request_window_list(process_id_);
+    link_.watch_scope(process_id_, job_name_);
 }
 
 void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {

@@ -6,6 +6,7 @@
 #include <QByteArray>
 #include <QHash>
 #include <QObject>
+#include <QString>
 #include <QPointer>
 
 #include <cstdint>
@@ -26,7 +27,8 @@ class MirrorWindow;
 class MirrorSession : public QObject {
     Q_OBJECT
 public:
-    MirrorSession(GuestLink& link, std::uint32_t process_id, QObject* parent = nullptr);
+    MirrorSession(GuestLink& link, std::uint32_t process_id, QString job_name,
+                  QObject* parent = nullptr);
 
 Q_SIGNALS:
     // No windows left, and the guest had some. The process is done.
@@ -43,6 +45,7 @@ private:
 
     GuestLink& link_;
     std::uint32_t process_id_;
+    QString job_name_;
     QTimer* poll_;
     QHash<quint64, QPointer<MirrorWindow>> mirrors_;
     EmulatedCursor cursor_;

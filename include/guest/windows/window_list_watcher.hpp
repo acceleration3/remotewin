@@ -1,9 +1,11 @@
 #pragma once
 
+#include "guest/windows/launch_scope.hpp"
 #include "guest/windows/window_enumerator.hpp"
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace rwin::guest {
@@ -17,8 +19,8 @@ namespace rwin::guest {
 // when something is different.
 class WindowListWatcher {
 public:
-    explicit WindowListWatcher(std::uint32_t process_id) noexcept
-        : process_id_(process_id) {}
+    WindowListWatcher(const std::string& job_name, std::uint32_t process_id)
+        : scope_(job_name, process_id) {}
 
     // The new set, or nothing when it is the set reported last. Geometry
     // and titles count as part of the set: a window that moved has to
@@ -31,9 +33,9 @@ public:
     void forget() noexcept { known_.clear(); }
 
 private:
+    LaunchScope scope_;
     WindowEnumerator windows_;
     std::vector<GuestWindow> known_;
-    std::uint32_t process_id_;
 };
 
 }  // namespace rwin::guest

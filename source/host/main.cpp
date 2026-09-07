@@ -25,12 +25,18 @@ int main(int argc, char** argv) {
         QStringList{QStringLiteral("pid")},
         QStringLiteral("Guest process to mirror; 0 mirrors every window."),
         QStringLiteral("pid"), QStringLiteral("0")};
+    const QCommandLineOption job_option{
+        QStringList{QStringLiteral("job")},
+        QStringLiteral("Job Object naming the launch to mirror. Survives a "
+                       "launcher stub exiting, which a pid does not."),
+        QStringLiteral("name")};
     const QCommandLineOption app_id_option{
         QStringList{QStringLiteral("app-id")},
         QStringLiteral("Desktop identity these windows present as."),
         QStringLiteral("app-id")};
     parser.addOption(port_option);
     parser.addOption(pid_option);
+    parser.addOption(job_option);
     parser.addOption(app_id_option);
     parser.process(app);
 
@@ -49,8 +55,10 @@ int main(int argc, char** argv) {
     }
 
     const auto process_id = static_cast<std::uint32_t>(parser.value(pid_option).toUInt());
-    RWIN_INFO("boot", "mirroring pid {} (0 = every window)", process_id);
-    rwin::host::MirrorSession session{link, process_id};
+    const QString job = parser.value(job_option);
+    RWIN_INFO("boot", "mirroring pid {} job '{}'{}", process_id, job.toStdString(),
+              (process_id == 0 && job.isEmpty()) ? " (the whole desktop)" : "");
+    rwin::host::MirrorSession session{link, process_id, job};
     QObject::connect(&session, &rwin::host::MirrorSession::finished, &app,
                      &QCoreApplication::quit);
     QObject::connect(&link, &rwin::host::GuestLink::disconnected, &app,

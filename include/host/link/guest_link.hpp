@@ -27,7 +27,7 @@ public:
 
     [[nodiscard]] bool listen(std::uint16_t port);
 
-    void request_window_list(std::uint32_t process_id);
+    void watch_scope(std::uint32_t process_id, const QString& job_name);
     void subscribe(std::uint64_t window);
     void unsubscribe(std::uint64_t window);
     void send_pointer_move(std::uint64_t window, std::int32_t x, std::int32_t y);

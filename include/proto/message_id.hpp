@@ -7,7 +7,10 @@ namespace rwin {
 // Host ids below 64, guest ids at 64 and above, so a message decoded on
 // the wrong side is obviously wrong rather than plausibly right.
 enum class MessageId : std::uint8_t {
-    ListWindows = 1,
+    // Which application to mirror: a Job Object name, and the process
+    // id that was launched as the fallback for when the job cannot be
+    // opened. Neither means the whole desktop.
+    WatchScope = 1,
     Subscribe = 2,
     Unsubscribe = 3,
     PointerMove = 4,

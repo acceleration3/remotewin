@@ -16,7 +16,7 @@ bool same(const GuestWindow& a, const GuestWindow& b) {
 }  // namespace
 
 std::optional<std::vector<GuestWindow>> WindowListWatcher::changed() {
-    std::vector<GuestWindow> found = windows_.windows_of(process_id_);
+    std::vector<GuestWindow> found = windows_.windows_in(scope_);
     if (found.size() == known_.size()
         && std::equal(found.begin(), found.end(), known_.begin(), same)) {
         return std::nullopt;

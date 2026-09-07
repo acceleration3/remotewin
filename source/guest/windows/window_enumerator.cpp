@@ -1,5 +1,6 @@
 #include "guest/windows/window_enumerator.hpp"
 
+#include "guest/windows/launch_scope.hpp"
 #include "guest/windows/window_surface.hpp"
 
 // clang-format off
@@ -56,7 +57,7 @@ bool worth_showing(HWND window) {
 
 struct Collector {
     std::vector<GuestWindow>* into;
-    std::uint32_t only_process;
+    const LaunchScope* scope;
 };
 
 BOOL CALLBACK collect(HWND window, LPARAM param) {
@@ -65,9 +66,7 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
 
     DWORD process_id = 0;
     ::GetWindowThreadProcessId(window, &process_id);
-    if (collector->only_process != 0 && process_id != collector->only_process) {
-        return TRUE;
-    }
+    if (!collector->scope->contains(process_id)) return TRUE;
 
     GuestWindow found;
     found.handle = reinterpret_cast<std::uintptr_t>(window);
@@ -94,13 +93,9 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
 
 }  // namespace
 
-std::vector<GuestWindow> WindowEnumerator::visible_windows() const {
-    return windows_of(0);
-}
-
-std::vector<GuestWindow> WindowEnumerator::windows_of(std::uint32_t process_id) const {
+std::vector<GuestWindow> WindowEnumerator::windows_in(const LaunchScope& scope) const {
     std::vector<GuestWindow> found;
-    Collector collector{&found, process_id};
+    Collector collector{&found, &scope};
     ::EnumWindows(&collect, reinterpret_cast<LPARAM>(&collector));
     return found;
 }
