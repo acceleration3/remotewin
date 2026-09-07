@@ -44,8 +44,15 @@ public:
 
     [[nodiscard]] Result grab(const WindowSurface& surface);
 
+    // The drawn part only: a window's reserved shadow margin is trimmed
+    // away, so what is sent is what the window actually put on screen.
     [[nodiscard]] std::uint32_t width() const noexcept { return width_; }
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
+    // Where that part sits inside the window's own rectangle, so the host
+    // can place the window by what is visible rather than by what is
+    // reserved.
+    [[nodiscard]] std::uint32_t offset_x() const noexcept { return offset_x_; }
+    [[nodiscard]] std::uint32_t offset_y() const noexcept { return offset_y_; }
     [[nodiscard]] const std::uint8_t* pixels() const noexcept { return visible_.data(); }
     [[nodiscard]] std::size_t size_bytes() const noexcept { return visible_.size(); }
 
@@ -67,12 +74,17 @@ private:
     void* pool_ = nullptr;
     void* session_ = nullptr;
     void* staging_ = nullptr;
+    // The frame as it arrived, before trimming; kept so neither
+    // buffer is reallocated per frame.
+    std::vector<std::uint8_t> scratch_;
     std::vector<std::uint8_t> visible_;
     std::uint64_t started_for_ = 0;
     std::uint32_t pool_width_ = 0;
     std::uint32_t pool_height_ = 0;
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
+    std::uint32_t offset_x_ = 0;
+    std::uint32_t offset_y_ = 0;
 };
 
 }  // namespace rwin::guest

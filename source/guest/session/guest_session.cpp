@@ -66,6 +66,7 @@ void GuestSession::handle(MessageReader& message) {
         case MessageId::Unsubscribe: {
             const std::uint64_t window = message.u64();
             captures_.erase(window);
+            drawn_.erase(window);
             RWIN_INFO("session", "unsubscribed from window {:#x}", window);
             break;
         }
@@ -189,13 +190,25 @@ void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
     MessageWriter out{MessageId::WindowList};
     out.put_u32(static_cast<std::uint32_t>(windows.size()));
     for (const GuestWindow& window : windows) {
+        // Reported as what it draws, not as the rectangle it owns.
+        std::int32_t x = window.x;
+        std::int32_t y = window.y;
+        std::uint32_t width = window.width;
+        std::uint32_t height = window.height;
+        if (const auto area = drawn_.find(window.handle); area != drawn_.end()) {
+            x += static_cast<std::int32_t>(area->second.offset_x);
+            y += static_cast<std::int32_t>(area->second.offset_y);
+            width = area->second.width;
+            height = area->second.height;
+        }
+
         out.put_u64(window.handle);
         out.put_u64(window.owner);
         out.put_u32(window.process_id);
-        out.put_i32(window.x);
-        out.put_i32(window.y);
-        out.put_u32(window.width);
-        out.put_u32(window.height);
+        out.put_i32(x);
+        out.put_i32(y);
+        out.put_u32(width);
+        out.put_u32(height);
         out.put_u32(window.style);
         out.put_u32(window.extended_style);
         out.put_string(window.title);
@@ -221,6 +234,20 @@ void GuestSession::send_frames() {
         // Nothing new to send. The compositor produces a frame only when
         // it composed one, so a window sitting still simply has no news.
         if (grabbed == WindowCapture::Result::Unchanged) continue;
+
+        const DrawnArea area{capture->offset_x(), capture->offset_y(), capture->width(),
+                             capture->height()};
+        auto [known, added] = drawn_.try_emplace(handle, area);
+        const bool moved = added || known->second.offset_x != area.offset_x
+                           || known->second.offset_y != area.offset_y
+                           || known->second.width != area.width
+                           || known->second.height != area.height;
+        if (moved) {
+            known->second = area;
+            // The reported geometry is derived from this, so it has to be
+            // said again now that it has changed.
+            if (watcher_ != nullptr) watcher_->forget();
+        }
         MessageWriter out{MessageId::Frame};
         out.put_u64(handle);
         out.put_u32(capture->width());
@@ -233,6 +260,7 @@ void GuestSession::send_frames() {
     }
     for (const std::uint64_t handle : vanished) {
         captures_.erase(handle);
+        drawn_.erase(handle);
         send_window_gone(handle);
     }
 }

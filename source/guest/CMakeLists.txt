@@ -1,5 +1,6 @@
 add_executable(remotewin-guest
     main.cpp
+    capture/content_bounds.cpp
     capture/graphics_device.cpp
     capture/window_capture.cpp
     input/keyboard_injector.cpp

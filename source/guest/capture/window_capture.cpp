@@ -1,5 +1,6 @@
 #include "guest/capture/window_capture.hpp"
 
+#include "guest/capture/content_bounds.hpp"
 #include "guest/capture/graphics_device.hpp"
 #include "guest/windows/window_surface.hpp"
 #include "logging/logger.hpp"
@@ -21,6 +22,7 @@
 #include <windows.graphics.capture.interop.h>
 // clang-format on
 
+#include <algorithm>
 #include <cstring>
 
 namespace capture_abi = ABI::Windows::Graphics::Capture;
@@ -222,20 +224,34 @@ bool WindowCapture::read_back(void* frame_texture, const WindowSurface& /*surfac
         return false;
     }
 
-    // Whatever the compositor handed over, whole. The rows are copied
-    // rather than the block because a texture's pitch is its own business
-    // and is routinely wider than its pixels.
-    width_ = described.Width;
-    height_ = described.Height;
-    const std::size_t row = static_cast<std::size_t>(width_) * kBytesPerPixel;
-    visible_.resize(row * height_);
-
+    // Only the drawn part. The rows are copied rather than the block
+    // because a texture's pitch is its own business and is routinely
+    // wider than its pixels.
     const auto* from = static_cast<const std::uint8_t*>(mapped.pData);
-    for (std::uint32_t y = 0; y < height_; ++y) {
-        std::memcpy(visible_.data() + y * row,
-                    from + static_cast<std::size_t>(y) * mapped.RowPitch, row);
+    const std::size_t source_row =
+        static_cast<std::size_t>(described.Width) * kBytesPerPixel;
+    scratch_.resize(source_row * described.Height);
+    for (std::uint32_t y = 0; y < described.Height; ++y) {
+        std::memcpy(scratch_.data() + y * source_row,
+                    from + static_cast<std::size_t>(y) * mapped.RowPitch, source_row);
     }
     device_.context()->Unmap(staging, 0);
+
+    const ContentBounds drawn{scratch_.data(), described.Width, described.Height};
+    if (drawn.empty()) return false;
+
+    offset_x_ = drawn.left();
+    offset_y_ = drawn.top();
+    width_ = drawn.width();
+    height_ = drawn.height();
+
+    const std::size_t row = static_cast<std::size_t>(width_) * kBytesPerPixel;
+    visible_.resize(row * height_);
+    const std::size_t left = static_cast<std::size_t>(offset_x_) * kBytesPerPixel;
+    for (std::uint32_t y = 0; y < height_; ++y) {
+        std::memcpy(visible_.data() + y * row,
+                    scratch_.data() + (offset_y_ + y) * source_row + left, row);
+    }
     return true;
 }
 

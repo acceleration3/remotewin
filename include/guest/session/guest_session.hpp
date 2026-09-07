@@ -59,6 +59,19 @@ private:
     // One capture per subscribed window: each keeps its own bitmap, sized
     // to that window, across frames.
     std::map<std::uint64_t, std::unique_ptr<WindowCapture>> captures_;
+    // What each window turned out to actually draw, learned from its
+    // last capture. The window list is reported through it, so the size
+    // and position the host is given are the size and position of the
+    // pixels it receives — a window that reserves a shadow margin is
+    // otherwise reported larger than anything it ever fills.
+    struct DrawnArea {
+        std::uint32_t offset_x = 0;
+        std::uint32_t offset_y = 0;
+        std::uint32_t width = 0;
+        std::uint32_t height = 0;
+    };
+    std::map<std::uint64_t, DrawnArea> drawn_;
+
     // Cursor handles the host already has the pixels for.
     std::set<std::uint64_t> sent_cursors_;
     std::vector<std::uint8_t> incoming_;
