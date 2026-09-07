@@ -130,9 +130,13 @@ void MirrorWindow::follow_guest_style(const GuestWindowInfo& window) {
     if (style == style_) return;
     style_ = style;
     const Qt::WindowFlags flags = flags_for(style);
-    // New flags mean a new surface; Qt hides the widget to make one.
+    // New flags mean a new surface, made from scratch: the old one keeps
+    // its role, and a role change on a live surface is a protocol error.
     const bool remap = flags != windowFlags() && isVisible();
-    if (flags != windowFlags()) setWindowFlags(flags);
+    if (flags != windowFlags()) {
+        destroy();
+        setWindowFlags(flags);
+    }
     wear(style);
     if (remap) show();
     RWIN_DEBUG("win32", "{:#x} restyled: sizable={} activates={} taskbar={} topmost={} "
@@ -218,8 +222,12 @@ void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
 void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
     if (parentWidget() != &owner) {
         // Re-parenting hides the widget, and gives it the parent surface
-        // its popup is positioned against.
+        // its popup is positioned against. The native window goes first:
+        // a Wayland surface keeps the role it was given, and asking the
+        // one that was a toplevel to be a popup is a protocol error that
+        // ends the process.
         const bool shown = isVisible();
+        destroy();
         setParent(&owner, Qt::ToolTip | style_.hints());
         move(owner.pos() + guest_offset);
         if (shown) show();
