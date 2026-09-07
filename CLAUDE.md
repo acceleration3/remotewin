@@ -3,14 +3,19 @@
 Mirror a guest Windows application's windows on a Linux host. One process per
 guest application; the windows are the host's own.
 
-Two ends, one wire: `remotewin-guest.exe` runs in the VM (capture, enumeration,
-input, icons, UIA), `remotewin-host` runs on Linux and spawns a `remotewin-app`
-per launched guest application. `src/proto/` is the contract between them —
-header-only, dependency-free, and compiled by both toolchains, so nothing in it
-may need a logger, a JSON parser, or an allocator.
+Two ends, one wire.
 
-The guest half cross-builds with mingw-w64. Anything under `src/proto/` and
-anything shared has to compile there as well as natively.
+    proto/   the wire: message ids, a writer, a reader, a stream decoder
+    log/     the logger both ends use
+    guest/   remotewin-guest.exe — enumeration, capture, input, cursors
+    host/    remotewin — the Qt windows, and what the guest's chrome means
+
+`proto/` is the contract between the two ends and is tested host-native: both
+must agree byte for byte, and when they stop agreeing nothing fails loudly.
+
+The guest half cross-builds with mingw-w64 (`cmake/mingw-w64.cmake`), the host
+half natively. Anything under `proto/` and `log/` compiles for both, so neither
+may reach for something only one toolchain has.
 
 ## C++ rules
 
