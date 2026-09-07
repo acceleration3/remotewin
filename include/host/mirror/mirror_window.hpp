@@ -159,6 +159,12 @@ private:
     // it.
     double scale_ = 1.0;
     bool maximized_ = false;
+    // Whether it was the guest's own maximise that maximised this mirror.
+    // Which side began it decides what the other is told: a mirror
+    // maximised here asks the guest for its whole screen, and one
+    // maximised because the guest maximised asks for nothing, the guest
+    // being as large as it goes already.
+    bool maximized_by_guest_ = false;
     ResizeBorder border_;
     QCursor guest_cursor_;
     Qt::Edges hovered_edges_;

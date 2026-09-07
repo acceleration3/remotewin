@@ -236,20 +236,38 @@ void MirrorWindow::take_over_drag() {
 void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
     // A popup has no state of its own: it shows and hides with its parent.
     if (parentWidget() != nullptr) return;
-    // A guest window that maximised itself is a window the size of the
-    // guest's screen, which the mirror already follows as a size. Nothing
-    // is done with it here: maximising the mirror too would make its own
-    // size mean something different again, and the two chased each other.
-    if (minimized == isMinimized()) return;
-    applying_guest_state_ = true;
-    if (minimized) {
-        showMinimized();
-    } else {
-        showNormal();
+
+    if (minimized != isMinimized()) {
+        applying_guest_state_ = true;
+        if (minimized) {
+            showMinimized();
+        } else {
+            showNormal();
+        }
+        applying_guest_state_ = false;
+        RWIN_DEBUG("chrome", "{:#x} follows guest minimized={}", handle_, minimized);
     }
-    applying_guest_state_ = false;
-    RWIN_DEBUG("chrome", "{:#x} follows guest minimized={} (guest maximized={})", handle_,
-               minimized, maximized);
+
+    // The guest window was maximised from its own chrome — the button in
+    // the pixels, which is the one the user sees. The mirror covers this
+    // screen for it, and the guest's screen is fitted into that.
+    if (maximized && !maximized_) {
+        maximized_by_guest_ = true;
+        applying_guest_state_ = true;
+        showMaximized();
+        applying_guest_state_ = false;
+        RWIN_DEBUG("chrome", "{:#x} maximised because the guest window was", handle_);
+        return;
+    }
+    // Restored from that same chrome. A mirror maximised here instead
+    // stays as it is: the window it shows got smaller, and it is shown
+    // smaller, in the middle of the screen the user gave it.
+    if (!maximized && maximized_ && maximized_by_guest_) {
+        applying_guest_state_ = true;
+        showNormal();
+        applying_guest_state_ = false;
+        RWIN_DEBUG("chrome", "{:#x} restored because the guest window was", handle_);
+    }
 }
 
 void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
@@ -444,12 +462,17 @@ void MirrorWindow::changeEvent(QEvent* event) {
     if (maximized == maximized_) return;
     maximized_ = maximized;
     apply_size_limits();
-    RWIN_DEBUG("chrome", "{:#x} maximised={} here", handle_, maximized_);
-    if (applying_guest_state_) return;
+    RWIN_DEBUG("chrome", "{:#x} maximised={} here (the guest's doing: {})", handle_,
+               maximized_, maximized_by_guest_);
+    // The guest maximised itself and this followed: it is already as
+    // large as its screen lets it be, and asking for a size would take it
+    // back out of maximised.
+    if (maximized_ && maximized_by_guest_) return;
+    if (!maximized_) maximized_by_guest_ = false;
     const QSize wanted = maximized_ && guest_room_.isValid() && !guest_room_.isEmpty()
                              ? guest_room_
                              : size();
-    if (wanted != guest_size_) ask_guest_for(wanted);
+    if (!wanted.isEmpty() && wanted != guest_size_) ask_guest_for(wanted);
 }
 
 void MirrorWindow::ask_guest_for(QSize size) {
