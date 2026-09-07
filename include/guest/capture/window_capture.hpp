@@ -53,6 +53,10 @@ private:
     [[nodiscard]] bool start(const WindowSurface& surface);
     [[nodiscard]] bool resize_pool(const WindowSurface& surface);
     [[nodiscard]] bool read_back(void* frame_texture, const WindowSurface& surface);
+    // Closing is what stops the compositor filling the pool. Releasing
+    // alone leaves the session running, and the next one cannot be made
+    // while the old is still capturing the same window.
+    void close_session();
     void stop();
 
     // Opaque: the capture interfaces are WinRT, and a header that named

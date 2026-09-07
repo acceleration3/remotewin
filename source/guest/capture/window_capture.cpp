@@ -21,7 +21,6 @@
 #include <windows.graphics.capture.interop.h>
 // clang-format on
 
-#include <algorithm>
 #include <cstring>
 
 namespace capture_abi = ABI::Windows::Graphics::Capture;
@@ -78,10 +77,8 @@ WindowCapture::WindowCapture(const GraphicsDevice& device) : device_(device) {}
 
 WindowCapture::~WindowCapture() { stop(); }
 
-void WindowCapture::stop() {
+void WindowCapture::close_session() {
     if (session_ != nullptr) {
-        // Closing the session is what stops the compositor copying into
-        // the pool; releasing alone leaves it running.
         IClosable* closable = nullptr;
         if (SUCCEEDED(static_cast<IGraphicsCaptureSession*>(session_)->QueryInterface(
                 __uuidof(IClosable), reinterpret_cast<void**>(&closable)))) {
@@ -90,6 +87,10 @@ void WindowCapture::stop() {
         }
     }
     release(&session_);
+}
+
+void WindowCapture::stop() {
+    close_session();
     release(&pool_);
     release(&item_);
     release(&staging_);
@@ -130,11 +131,10 @@ bool WindowCapture::resize_pool(const WindowSurface& surface) {
             &statics))) {
         return false;
     }
-    const ABI::Windows::Graphics::SizeInt32 size{
-        static_cast<INT32>(surface.captured_width()),
-        static_cast<INT32>(surface.captured_height())};
+    const ABI::Windows::Graphics::SizeInt32 size{static_cast<INT32>(surface.width()),
+                                                 static_cast<INT32>(surface.height())};
 
-    release(&session_);
+    close_session();
     release(&pool_);
 
     // The wrapped device, asked for by the interface a frame pool takes.
@@ -181,18 +181,18 @@ bool WindowCapture::resize_pool(const WindowSurface& surface) {
         RWIN_ERROR("capture", "the session would not start");
         return false;
     }
-    pool_width_ = surface.captured_width();
-    pool_height_ = surface.captured_height();
+    RWIN_DEBUG("capture", "session started");
+    pool_width_ = surface.width();
+    pool_height_ = surface.height();
     release(&staging_);
     RWIN_DEBUG("capture", "capturing {}x{}", pool_width_, pool_height_);
     return true;
 }
 
-bool WindowCapture::read_back(void* frame_texture, const WindowSurface& surface) {
+bool WindowCapture::read_back(void* frame_texture, const WindowSurface& /*surface*/) {
     auto* frame = static_cast<ID3D11Texture2D*>(frame_texture);
     D3D11_TEXTURE2D_DESC described{};
     frame->GetDesc(&described);
-    RWIN_TRACE("capture", "frame texture {}x{}", described.Width, described.Height);
 
     if (staging_ != nullptr) {
         D3D11_TEXTURE2D_DESC existing{};
@@ -213,6 +213,7 @@ bool WindowCapture::read_back(void* frame_texture, const WindowSurface& surface)
             return false;
         }
     }
+
     auto* staging = static_cast<ID3D11Texture2D*>(staging_);
     device_.context()->CopyResource(staging, frame);
 
@@ -221,33 +222,18 @@ bool WindowCapture::read_back(void* frame_texture, const WindowSurface& surface)
         return false;
     }
 
-    // What the compositor actually handed over, which is not required to
-    // be the size that was asked for: the pool can serve a frame from
-    // before a resize, and a texture is free to be wider than its content.
-    // Everything below is measured against this rather than against the
-    // window, because reading past it reads somebody else's memory.
-    const std::uint32_t inset_x = surface.inset_x();
-    const std::uint32_t inset_y = surface.inset_y();
-    if (inset_x >= described.Width || inset_y >= described.Height) {
-        device_.context()->Unmap(staging, 0);
-        return false;
-    }
-    width_ = std::min(surface.width(), described.Width - inset_x);
-    height_ = std::min(surface.height(), described.Height - inset_y);
-    if (width_ == 0 || height_ == 0) {
-        device_.context()->Unmap(staging, 0);
-        return false;
-    }
-
+    // Whatever the compositor handed over, whole. The rows are copied
+    // rather than the block because a texture's pitch is its own business
+    // and is routinely wider than its pixels.
+    width_ = described.Width;
+    height_ = described.Height;
     const std::size_t row = static_cast<std::size_t>(width_) * kBytesPerPixel;
     visible_.resize(row * height_);
 
     const auto* from = static_cast<const std::uint8_t*>(mapped.pData);
-    const std::size_t left = static_cast<std::size_t>(inset_x) * kBytesPerPixel;
     for (std::uint32_t y = 0; y < height_; ++y) {
         std::memcpy(visible_.data() + y * row,
-                    from + static_cast<std::size_t>(inset_y + y) * mapped.RowPitch + left,
-                    row);
+                    from + static_cast<std::size_t>(y) * mapped.RowPitch, row);
     }
     device_.context()->Unmap(staging, 0);
     return true;
@@ -259,8 +245,7 @@ WindowCapture::Result WindowCapture::grab(const WindowSurface& surface) {
     const auto handle =
         static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(surface.handle()));
     if (started_for_ != handle && !start(surface)) return Result::Gone;
-    if ((surface.captured_width() != pool_width_
-         || surface.captured_height() != pool_height_)
+    if ((surface.width() != pool_width_ || surface.height() != pool_height_)
         && !resize_pool(surface)) {
         return Result::Gone;
     }

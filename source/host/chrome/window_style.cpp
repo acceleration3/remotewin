@@ -57,7 +57,10 @@ Qt::WindowFlags WindowStyle::window_flags() const {
     // outside, and the guest is the one that decides when its menu is
     // finished.
     if (is_popup()) {
-        return Qt::ToolTip | Qt::FramelessWindowHint;
+        // NoDropShadow because the guest's shadow is already in the
+        // pixels: the compositor adding its own puts a second one around
+        // the first, which is the frame that appears around a menu.
+        return Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
     }
 
     Qt::WindowFlags flags = Qt::FramelessWindowHint;

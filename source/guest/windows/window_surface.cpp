@@ -2,7 +2,6 @@
 
 // clang-format off
 #include <windows.h>
-#include <dwmapi.h>
 // clang-format on
 
 namespace rwin::guest {
@@ -13,30 +12,14 @@ WindowSurface::WindowSurface(std::uint64_t window_handle)
     if (::IsWindow(window) == FALSE) return;
     minimized_ = ::IsIconic(window) != FALSE;
 
-    RECT window_rect{};
-    if (::GetWindowRect(window, &window_rect) == FALSE) return;
+    RECT rect{};
+    if (::GetWindowRect(window, &rect) == FALSE) return;
+    if (rect.right <= rect.left || rect.bottom <= rect.top) return;
 
-    RECT frame = window_rect;
-    if (FAILED(::DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS, &frame,
-                                       sizeof(frame)))) {
-        frame = window_rect;
-    }
-    if (frame.right <= frame.left || frame.bottom <= frame.top) return;
-
-    frame_left_ = frame.left;
-    frame_top_ = frame.top;
-    width_ = static_cast<std::uint32_t>(frame.right - frame.left);
-    height_ = static_cast<std::uint32_t>(frame.bottom - frame.top);
-    captured_width_ = static_cast<std::uint32_t>(window_rect.right - window_rect.left);
-    captured_height_ = static_cast<std::uint32_t>(window_rect.bottom - window_rect.top);
-    // A maximised window's frame can start outside its own window rect;
-    // clamped, because it indexes into the captured bitmap.
-    inset_x_ = static_cast<std::uint32_t>(
-        frame.left > window_rect.left ? frame.left - window_rect.left : 0);
-    inset_y_ = static_cast<std::uint32_t>(
-        frame.top > window_rect.top ? frame.top - window_rect.top : 0);
-    if (inset_x_ + width_ > captured_width_) width_ = captured_width_ - inset_x_;
-    if (inset_y_ + height_ > captured_height_) height_ = captured_height_ - inset_y_;
+    left_ = rect.left;
+    top_ = rect.top;
+    width_ = static_cast<std::uint32_t>(rect.right - rect.left);
+    height_ = static_cast<std::uint32_t>(rect.bottom - rect.top);
     valid_ = true;
 }
 

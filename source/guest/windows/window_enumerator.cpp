@@ -70,8 +70,6 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
 
     GuestWindow found;
     found.handle = reinterpret_cast<std::uintptr_t>(window);
-    // The visible frame, not GetWindowRect: the host sizes its mirror to
-    // this and the capture crops to it, so all three agree.
     const WindowSurface surface{found.handle};
     if (!surface.valid()) return TRUE;
     found.owner = reinterpret_cast<std::uintptr_t>(::GetWindow(window, GW_OWNER));
