@@ -46,7 +46,9 @@ MirrorSession::MirrorSession(GuestLink& link, std::uint32_t process_id,
     link_.watch_scope(process_id_, job_name_);
 }
 
-void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
+void MirrorSession::refresh(const QList<GuestWindowInfo>& windows,
+                            bool application_alive) {
+    application_alive_ = application_alive;
     Listed listed;
     listed.reserve(windows.size());
     QList<const GuestWindowInfo*> arrivals;
@@ -64,11 +66,16 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows) {
         }
     }
     close_departed(listed);
+    finish_if_done();
+}
 
-    if (saw_any_ && mirrors_.isEmpty()) {
-        RWIN_INFO("mirror", "every window closed; session is done");
-        Q_EMIT finished();
-    }
+// Done when there is nothing to show and nothing left to show anything:
+// a launcher stub's dialog closing before the program it started has a
+// window is neither.
+void MirrorSession::finish_if_done() {
+    if (application_alive_ || !mirrors_.isEmpty()) return;
+    RWIN_INFO("mirror", "no windows and no process; session is done");
+    Q_EMIT finished();
 }
 
 // An owner is opened before what it owns, whatever order the list came
@@ -115,7 +122,6 @@ void MirrorSession::open(const GuestWindowInfo& window, MirrorWindow* owner) {
               window.title.toStdString(), window.width, window.height,
               window.class_name.toStdString());
     mirrors_.insert(window.handle, new MirrorWindow(link_, window, owner));
-    saw_any_ = true;
 }
 
 void MirrorSession::follow(MirrorWindow& mirror, const GuestWindowInfo& window,
@@ -185,9 +191,7 @@ void MirrorSession::forget(quint64 window) {
     if (it == mirrors_.end()) return;
     if (!it.value().isNull()) it.value()->guest_closed();
     mirrors_.erase(it);
-    if (saw_any_ && mirrors_.isEmpty()) {
-        Q_EMIT finished();
-    }
+    finish_if_done();
 }
 
 }  // namespace rwin::host

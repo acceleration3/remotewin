@@ -30,6 +30,12 @@ public:
     LaunchScope& operator=(LaunchScope&&) = delete;
 
     [[nodiscard]] bool contains(std::uint32_t process_id) const;
+
+    // Whether anything in the scope is still running. A stub's own window
+    // can come and go before the program it started has drawn a thing,
+    // so the windows say nothing about whether the application is done;
+    // the job does. Always true for everything.
+    [[nodiscard]] bool alive() const;
     [[nodiscard]] bool everything() const noexcept {
         return job_ == nullptr && process_id_ == 0;
     }

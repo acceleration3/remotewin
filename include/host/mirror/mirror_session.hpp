@@ -31,13 +31,14 @@ public:
                   QObject* parent = nullptr);
 
 Q_SIGNALS:
-    // No windows left, and the guest had some. The process is done.
+    // No windows left and no process to make more. The application is done.
     void finished();
 
 private:
     using Listed = QHash<quint64, const GuestWindowInfo*>;
 
-    void refresh(const QList<GuestWindowInfo>& windows);
+    void refresh(const QList<GuestWindowInfo>& windows, bool application_alive);
+    void finish_if_done();
     void open_mirrors(QList<const GuestWindowInfo*> arrivals, const Listed& listed);
     void open(const GuestWindowInfo& window, MirrorWindow* owner);
     void follow(MirrorWindow& mirror, const GuestWindowInfo& window, const Listed& listed);
@@ -54,7 +55,7 @@ private:
     QTimer* poll_;
     QHash<quint64, QPointer<MirrorWindow>> mirrors_;
     EmulatedCursor cursor_;
-    bool saw_any_ = false;
+    bool application_alive_ = true;
 };
 
 }  // namespace rwin::host

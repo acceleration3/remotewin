@@ -188,6 +188,7 @@ void GuestSession::push_window_changes() {
 
 void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
     MessageWriter out{MessageId::WindowList};
+    out.put_u8(watcher_->application_alive() ? 1 : 0);
     out.put_u32(static_cast<std::uint32_t>(windows.size()));
     for (const GuestWindow& window : windows) {
         // Reported as what it draws, not as the rectangle it owns.

@@ -28,6 +28,12 @@ public:
     // where the last one was.
     [[nodiscard]] std::optional<std::vector<GuestWindow>> changed();
 
+    // Whether the application still has a process, as of the last look.
+    // Part of the set: a list that is empty because the program is
+    // between its stub and itself is a different list from one that is
+    // empty because it exited.
+    [[nodiscard]] bool application_alive() const noexcept { return alive_; }
+
     // Forces the next look to report, whatever it finds. Used when the
     // host asks outright.
     void forget() noexcept { known_.clear(); }
@@ -36,6 +42,7 @@ private:
     LaunchScope scope_;
     WindowEnumerator windows_;
     std::vector<GuestWindow> known_;
+    bool alive_ = true;
 };
 
 }  // namespace rwin::guest

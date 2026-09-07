@@ -32,6 +32,27 @@ LaunchScope::~LaunchScope() {
     if (job_ != nullptr) ::CloseHandle(job_);
 }
 
+bool LaunchScope::alive() const {
+    if (everything()) return true;
+
+    if (job_ != nullptr) {
+        JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
+        if (::QueryInformationJobObject(job_, JobObjectBasicAccountingInformation,
+                                        &accounting, sizeof(accounting), nullptr)
+            != FALSE) {
+            return accounting.ActiveProcesses > 0;
+        }
+    }
+    HANDLE process =
+        ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id_);
+    if (process == nullptr) return false;
+    DWORD exit_code = 0;
+    const bool running = ::GetExitCodeProcess(process, &exit_code) != FALSE
+                         && exit_code == STILL_ACTIVE;
+    ::CloseHandle(process);
+    return running;
+}
+
 bool LaunchScope::contains(std::uint32_t process_id) const {
     if (everything()) return true;
 
