@@ -17,6 +17,7 @@
 namespace rwin::host {
 
 class GuestLink;
+class PixelMapping;
 
 // One guest window, shown as a window of this desktop that behaves the
 // way its Win32 style words say a window behaves.
@@ -53,14 +54,7 @@ public:
     // large.
     void limit_to(QSize guest_room);
 
-    // Host units per guest pixel. One whenever the mirror is the size of
-    // the window it shows, which is every case but a maximised mirror on
-    // a screen the guest's does not fit.
-    [[nodiscard]] double scale() const;
-
-    // Where in this widget the guest's pixels are drawn: the frame at the
-    // scale above, centred, with the rest of the widget left transparent.
-    [[nodiscard]] QRect content_rect() const;
+    // The cursor as the guest drew it, in its pixels.
     void wear_guest_cursor(const QCursor& cursor);
 
     // The style words as the guest last reported them. A window changes
@@ -103,6 +97,7 @@ Q_SIGNALS:
     void let_go();
 
 protected:
+    bool event(QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -121,14 +116,24 @@ private:
     void apply_shape();
     [[nodiscard]] Qt::Edges edges_at(QPointF position) const noexcept;
     [[nodiscard]] bool start_edge_resize(QMouseEvent* event);
-    [[nodiscard]] QSize host_size() const;
+    // How this mirror's guest pixels land in it: at its own screen's ratio
+    // and its toplevel's fit, the picture centred.
+    [[nodiscard]] PixelMapping mapping() const;
+    [[nodiscard]] QSize picture_size() const;
+    // The logical units the picture covers; the rest is letterbox bars.
+    [[nodiscard]] QRect picture_rect() const;
+    [[nodiscard]] QSize logical_size() const;
     void refit();
     void follow_root_scale();
+    void follow_device_pixel_ratio();
+    [[nodiscard]] QCursor dressed(const QCursor& cursor) const;
     void settle_request(QSize reported);
     void apply_size_limits();
     // The toplevel this window descends from: itself, or the owner of the
     // owner of ... this popup.
     [[nodiscard]] const MirrorWindow& root() const;
+    // Where this window is in the guest, relative to its toplevel.
+    [[nodiscard]] QPoint guest_origin() const;
     // Which guest pixel the pointer is on, or nothing when it is on a
     // letterbox bar: that is this desktop's, not any part of the window,
     // and a press there put through would land on whatever the guest has
@@ -143,17 +148,20 @@ private:
     QImage frame_;
     // A colour-keyed window's frame after keying; reused frame to frame.
     QImage keyed_;
-    // One guest pixel is one logical unit here, deliberately.
+    // The guest window's size, in its own pixels.
     //
-    // A scaled desktop makes those different sizes on the glass, and that
-    // is the point: a native window of N units and a guest window of N
-    // pixels take up the same share of their own screen, so the mirror
-    // keeps the proportions the application was laid out for. Dividing by
-    // the scale would shrink every mirror below what it looks like in the
-    // guest. Positions and offsets follow the same rule, which is what
-    // keeps a popup where the guest put it.
+    // One guest pixel is one device pixel here. A mirror's logical size is
+    // the window's pixel size divided by the scale of the screen it is on,
+    // and its picture is copied onto that screen's pixels, never resampled.
+    // One pixel to one logical unit, as it once was, is a picture the
+    // compositor stretches by the scale - 1.2 on a desktop at 120% - and a
+    // stretch by anything not whole blurs or duplicates rows. That this is
+    // also the right size on the glass is the guest's doing: its DPI is set
+    // to this desktop's scale by whoever runs it, so it lays itself out as
+    // large as a native application would. Positions, offsets and shapes
+    // follow the same rule, through PixelMapping.
     QSize guest_size_;
-    // A resize is asked for one at a time. The compositor reports a new
+    // A resize is asked for one at a time, in guest pixels. The compositor reports a new
     // size for every step of a drag, tens of them a second, and a guest
     // application laying itself out for each falls behind and answers
     // sizes the user has long since dragged past. So the newest size
@@ -165,10 +173,16 @@ private:
     // The guest window's own region, in the guest's pixels. Kept because
     // where it lands here moves with the scale.
     QList<QRect> guest_region_;
-    // Host units per guest pixel, kept by the toplevel; a popup is drawn
+    // Device pixels per guest pixel, kept by the toplevel; a popup is drawn
     // and placed at its owner's, or it would not land where the guest put
     // it.
-    double scale_ = 1.0;
+    double fit_ = 1.0;
+    // Where the guest put this window relative to its owner, in guest
+    // pixels. Input is measured from here rather than from where the popup
+    // ended up: that is a whole number of logical units, rounded, and the
+    // compositor may have slid it to keep it on screen. A pixel of the
+    // popup is a pixel of the guest's window wherever it is shown.
+    QPoint guest_offset_;
     bool maximized_ = false;
     // Whether this mirror was minimised for the guest. Kept, because
     // Wayland tells a client nothing about being minimised: Qt's own flag

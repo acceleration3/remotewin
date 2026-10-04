@@ -11,8 +11,10 @@ add_executable(remotewin
     chrome/win32_style.cpp
     cursor/emulated_cursor.cpp
     link/guest_link.cpp
+    mirror/draw_picture.cpp
     mirror/mirror_session.cpp
     mirror/mirror_window.cpp
+    mirror/pixel_mapping.cpp
     "${RWIN_INCLUDE_DIR}/host/link/guest_link.hpp"
     "${RWIN_INCLUDE_DIR}/host/mirror/mirror_session.hpp"
     "${RWIN_INCLUDE_DIR}/host/mirror/mirror_window.hpp"

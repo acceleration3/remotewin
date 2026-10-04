@@ -1,6 +1,8 @@
 #include "host/mirror/mirror_window.hpp"
 
 #include "host/link/guest_link.hpp"
+#include "host/mirror/draw_picture.hpp"
+#include "host/mirror/pixel_mapping.hpp"
 #include "logging/logger.hpp"
 
 #include <QCloseEvent>
@@ -9,11 +11,11 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPixmap>
 #include <QRegion>
 #include <QResizeEvent>
 #include <QWindow>
 
-#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -69,7 +71,11 @@ MirrorWindow::MirrorWindow(GuestLink& link, const GuestWindowInfo& window,
     setAttribute(Qt::WA_TranslucentBackground);
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
-    resize(guest_size_);
+    // At the ratio of the screen it will open on, which on a fractionally
+    // scaled desktop is the scale rounded up to a whole one: the surface
+    // learns its own only once mapped, and is resized then, before its
+    // first frame is drawn (follow_device_pixel_ratio).
+    resize(logical_size());
     wear(style_);
     // Made as a popup of a mirror that is already fitted: it is drawn at
     // that mirror's scale from its first frame, not from its first
@@ -98,25 +104,23 @@ void MirrorWindow::take_shape(QList<QRect> region) {
 // picture. Left in the guest's own pixels it clipped a fitted mirror to
 // the top corner of itself: the rest was painted as nothing and, being
 // outside the input region a mask also sets, took no clicks either.
+//
+// A mask is in whole logical units, which a guest pixel edge falls between
+// on a fractionally scaled screen; each rectangle is rounded outward, so a
+// shape is at most a device pixel generous and never cuts into the window.
 void MirrorWindow::apply_shape() {
-    const QRect where = content_rect();
     if (guest_region_.isEmpty()) {
         if (!mask().isEmpty()) clearMask();
         return;
     }
-    const double s = scale();
-    const QPoint origin = where.topLeft();
+    const PixelMapping where = mapping();
     // The bars are the mirror's, not the window's: they are drawn and
     // they take clicks, so a shape that describes only the window has to
     // have them added back or they would be cut away with everything else
     // outside it.
-    QRegion shape = QRegion(rect()) - QRegion(where);
+    QRegion shape = QRegion(rect()) - QRegion(picture_rect());
     for (const QRect& rect : guest_region_) {
-        const QPoint at = origin + QPoint(static_cast<int>(std::lround(rect.x() * s)),
-                                          static_cast<int>(std::lround(rect.y() * s)));
-        const QSize covers(static_cast<int>(std::lround(rect.width() * s)),
-                           static_cast<int>(std::lround(rect.height() * s)));
-        shape += QRect(at, covers);
+        shape += where.logical_rect(rect);
     }
     if (shape != mask()) setMask(shape);
 }
@@ -171,12 +175,16 @@ void MirrorWindow::wear(const Win32Style& style) {
 // guest's is fitted inside it.
 void MirrorWindow::apply_size_limits() {
     if (!style_.sizable()) {
-        setFixedSize(host_size());
+        setFixedSize(logical_size());
         return;
     }
     setMinimumSize(QSize{0, 0});
     const bool held = !maximized_ && guest_room_.isValid() && !guest_room_.isEmpty();
-    setMaximumSize(held ? guest_room_ : QSize{QWIDGETSIZE_MAX, QWIDGETSIZE_MAX});
+    // Rounded up like any guest size, so a window as large as the room is
+    // shown whole. The pixel or so beyond it the guest would be asked for
+    // at that size is cut back to the room by the guest itself.
+    setMaximumSize(held ? PixelMapping{devicePixelRatioF()}.logical_size(guest_room_)
+                        : QSize{QWIDGETSIZE_MAX, QWIDGETSIZE_MAX});
 }
 
 void MirrorWindow::follow_guest_style(const GuestWindowInfo& window) {
@@ -260,8 +268,26 @@ void MirrorWindow::wear_guest_cursor(const QCursor& cursor) {
     // say the edge can be dragged, and the guest has no idea that band
     // exists.
     if (hovered_edges_ == Qt::Edges{}) {
-        setCursor(guest_cursor_);
+        setCursor(dressed(guest_cursor_));
     }
+}
+
+// The guest drew its cursor in its own pixels, which are this screen's
+// device pixels. Told nothing, Qt takes each for a logical unit and the
+// compositor scales the cursor up a second time.
+//
+// Qt's Wayland cursor takes only a whole buffer scale (6.11: the ratio
+// truncated, the hotspot scaled up to match). On a screen at 2 this is a
+// cursor drawn one to one; at 1.2 it is drawn at scale 1 and stretched by
+// the compositor, as it was before, with its hotspot still in place.
+QCursor MirrorWindow::dressed(const QCursor& cursor) const {
+    QPixmap pixels = cursor.pixmap();
+    if (pixels.isNull()) return cursor;
+    const double ratio = devicePixelRatioF();
+    pixels.setDevicePixelRatio(ratio);
+    const QPoint hotspot = cursor.hotSpot();
+    return QCursor(pixels, static_cast<int>(std::lround(hotspot.x() / ratio)),
+                   static_cast<int>(std::lround(hotspot.y() / ratio)));
 }
 
 void MirrorWindow::take_over_drag() {
@@ -314,13 +340,13 @@ void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
 }
 
 void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
+    guest_offset_ = guest_offset;
     // Where the owner draws the guest's pixels, plus the offset at the
     // scale they are drawn at: a popup lands on the part of the picture
     // the guest opened it against, whatever size that picture is here.
-    const double s = owner.scale();
-    const QPoint at = owner.pos() + owner.content_rect().topLeft()
-                      + QPoint(static_cast<int>(std::lround(guest_offset.x() * s)),
-                               static_cast<int>(std::lround(guest_offset.y() * s)));
+    // Rounded to a whole logical unit, which is all a popup is placed by:
+    // within half a unit, a device pixel at the scales anyone runs.
+    const QPoint at = owner.pos() + owner.mapping().logical_point(guest_offset).toPoint();
     if (parentWidget() != &owner) {
         // Re-parenting hides the widget, and gives it the parent surface
         // its popup is positioned against. The native window goes first:
@@ -376,7 +402,7 @@ void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
         refit();
         return;
     }
-    if (size() != reported) {
+    if (const QSize wanted = logical_size(); size() != wanted) {
         applying_guest_size_ = true;
         // A window without a sizing border is pinned here, so plain
         // resize() does nothing to it. It still has to follow the guest:
@@ -385,52 +411,52 @@ void MirrorWindow::note_guest_size(std::uint32_t width, std::uint32_t height) {
         // wrong size, the frame is centred inside it and the difference
         // shows as a border.
         if (style_.sizable()) {
-            resize(reported);
+            resize(wanted);
         } else {
-            setFixedSize(reported);
+            setFixedSize(wanted);
         }
         applying_guest_size_ = false;
     }
     refit();
 }
 
-double MirrorWindow::scale() const { return root().scale_; }
-
-// The guest window's size in this desktop's units. The same number until
-// a mirror is fitted into something other than its own size, and then
-// every window of that application is drawn at the same scale — a menu
-// beside a picture half its size is a menu in the wrong place.
-QSize MirrorWindow::host_size() const {
-    const double s = scale();
-    if (s == 1.0) return guest_size_;
-    return QSize(static_cast<int>(std::lround(guest_size_.width() * s)),
-                 static_cast<int>(std::lround(guest_size_.height() * s)));
+// A popup's own screen ratio, because that is what its buffer is made at;
+// its toplevel's fit, because a menu beside a picture half its size is a
+// menu in the wrong place.
+PixelMapping MirrorWindow::mapping() const {
+    return PixelMapping{devicePixelRatioF(), root().fit_}.centring(picture_size(), size());
 }
 
-QRect MirrorWindow::content_rect() const {
-    if (frame_.isNull()) return rect();
-    const double s = scale();
-    const QSize drawn(static_cast<int>(std::lround(frame_.width() * s)),
-                      static_cast<int>(std::lround(frame_.height() * s)));
-    return QRect(QPoint((width() - drawn.width()) / 2, (height() - drawn.height()) / 2),
-                 drawn);
+// The frame when there is one: it is what is drawn, and between a resize
+// and the guest's answer it is not the size the guest last reported.
+QSize MirrorWindow::picture_size() const {
+    return frame_.isNull() ? guest_size_ : frame_.size();
 }
 
-// The scale that fits the guest window into this mirror. One whenever the
-// mirror is the size of that window, which the guest is asked for and
-// answers with — so this is not 1 only where the mirror cannot be that
-// size: maximised, against a screen the guest's own does not match.
+QRect MirrorWindow::picture_rect() const {
+    return mapping().logical_rect(QRect(QPoint(0, 0), picture_size()));
+}
+
+// The guest window's size in this desktop's logical units. A popup is
+// drawn at its toplevel's fit. The toplevel itself is one to one: its fit
+// follows from the size it ends up, not the other way round.
+QSize MirrorWindow::logical_size() const {
+    const double fit = parentWidget() != nullptr ? root().fit_ : 1.0;
+    return PixelMapping{devicePixelRatioF(), fit}.logical_size(guest_size_);
+}
+
+// The fit of the guest window into this mirror. One whenever the mirror is
+// the size of that window, which the guest is asked for and answers with —
+// so this is not 1 only where the mirror cannot be that size: maximised,
+// against a screen the guest's own does not match.
 void MirrorWindow::refit() {
     if (parentWidget() != nullptr) return;
-    double fitted = 1.0;
-    if (!guest_size_.isEmpty()) {
-        fitted = std::min(static_cast<double>(width()) / guest_size_.width(),
-                          static_cast<double>(height()) / guest_size_.height());
-    }
-    if (fitted == scale_) return;
-    scale_ = fitted;
-    RWIN_DEBUG("mirror", "{:#x} {}x{} shows {}x{} guest pixels at {:.3f}", handle_, width(),
-               height(), guest_size_.width(), guest_size_.height(), scale_);
+    const double fitted = PixelMapping{devicePixelRatioF()}.fit_for(guest_size_, size());
+    if (fitted == fit_) return;
+    fit_ = fitted;
+    RWIN_DEBUG("mirror", "{:#x} {}x{} at ratio {:.3f} shows {}x{} guest pixels at fit {:.3f}",
+               handle_, width(), height(), devicePixelRatioF(), guest_size_.width(),
+               guest_size_.height(), fit_);
     // Every window under this one, not only those parented straight to
     // it: a menu opened from a panel is a popup of a popup.
     apply_shape();
@@ -442,7 +468,7 @@ void MirrorWindow::refit() {
 
 // A popup is the size its own guest window is, at its owner's scale.
 void MirrorWindow::follow_root_scale() {
-    const QSize wanted = host_size();
+    const QSize wanted = logical_size();
     if (wanted.isEmpty() || wanted == size()) {
         update();
         return;
@@ -471,8 +497,8 @@ void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
         painter.fillRect(rect(), Qt::transparent);
         return;
     }
-    const QRect where = content_rect();
-    if (where != rect()) {
+    const PixelMapping where = mapping();
+    if (picture_rect() != rect()) {
         // The bars beside a fitted picture: black, and opaque, because
         // they are this mirror's own and not a part of the window that
         // happens to be see-through. The picture is drawn over the middle
@@ -480,12 +506,49 @@ void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
         // rather than blending with it, Source mode being what is set.
         painter.fillRect(rect(), Qt::black);
     }
-    if (where.size() == frame_.size()) {
-        painter.drawImage(where.topLeft(), frame_);
-        return;
+    draw_picture(painter, frame_, where);
+}
+
+bool MirrorWindow::event(QEvent* event) {
+    const bool handled = QWidget::event(event);
+    // Delivered to event() and not changeEvent(), and sometimes twice:
+    // following it is idempotent.
+    if (event->type() == QEvent::DevicePixelRatioChange) follow_device_pixel_ratio();
+    return handled;
+}
+
+// On a screen of another scale - or shown at all: until the compositor
+// names a surface's scale, Qt gives it its screen's, which on a
+// fractionally scaled desktop is the scale rounded up to a whole one.
+//
+// The guest window keeps its pixels, and the mirror changes its logical
+// size to go on showing them one to one. Keeping the logical size instead
+// would mean asking the guest for as many pixels as that is on the new
+// screen: an application laid out for one DPI given a different number of
+// pixels at the same DPI is cut short or padded, not rescaled. So on a
+// screen less dense than the guest's DPI was set for, a mirror is larger
+// than a native window would be, and still sharp.
+void MirrorWindow::follow_device_pixel_ratio() {
+    RWIN_DEBUG("mirror", "{:#x} device pixel ratio {:.3f}", handle_, devicePixelRatioF());
+    apply_size_limits();
+    if (hovered_edges_ == Qt::Edges{}) setCursor(dressed(guest_cursor_));
+    if (parentWidget() != nullptr) {
+        follow_root_scale();
+    } else {
+        if (!maximized_ && !isFullScreen() && style_.sizable()) {
+            applying_guest_size_ = true;
+            resize(logical_size());
+            applying_guest_size_ = false;
+        }
+        refit();
+        apply_shape();
+        update();
     }
-    painter.setRenderHint(QPainter::SmoothPixmapTransform);
-    painter.drawImage(where, frame_);
+    // Every popup's place against this window is in this window's logical
+    // units, which have just changed under it.
+    for (MirrorWindow* popup : findChildren<MirrorWindow*>(Qt::FindDirectChildrenOnly)) {
+        popup->place_under(*this, popup->guest_offset_);
+    }
 }
 
 void MirrorWindow::closeEvent(QCloseEvent* event) {
@@ -541,7 +604,7 @@ void MirrorWindow::changeEvent(QEvent* event) {
     if (!maximized_) maximized_by_guest_ = false;
     const QSize wanted = maximized_ && guest_room_.isValid() && !guest_room_.isEmpty()
                              ? guest_room_
-                             : size();
+                             : PixelMapping{devicePixelRatioF()}.guest_size(size());
     if (!wanted.isEmpty() && wanted != guest_size_) ask_guest_for(wanted);
 }
 
@@ -566,8 +629,12 @@ void MirrorWindow::resizeEvent(QResizeEvent* event) {
     // how big the guest window should be; that was settled when it was
     // maximised, and it is the guest's whole screen.
     if (maximized_) return;
-    const QSize wanted = event->size();
-    if (wanted == guest_size_) return;
+    // Compared in logical units: the guest size a mirror holds is not
+    // always the size it was made for (1001 pixels at 1.2 is 835 units,
+    // and 835 units hold 1002), and asking for it would grow the window a
+    // pixel at a time.
+    if (event->size() == logical_size()) return;
+    const QSize wanted = PixelMapping{devicePixelRatioF()}.guest_size(event->size());
     if (awaiting_.isValid()) {
         pending_ = wanted;
         return;
@@ -594,14 +661,21 @@ const MirrorWindow& MirrorWindow::root() const {
 // Photoshop hides a panel the moment it is picked up, and a release told
 // in the frame of a window that is gone reaches nothing. The toplevel
 // does neither.
+//
+// A point is dropped only when it is outside this window's own picture: on
+// its bars, or in the sliver under a logical unit that rounding leaves past
+// its last pixel. Measured against the toplevel's picture, a menu hanging
+// below its window took no clicks on the part that hung below.
 std::optional<QPoint> MirrorWindow::guest_position_of(QMouseEvent* event) const {
-    const MirrorWindow& top = root();
-    const QPointF here = event->position() + QPointF(pos() - top.pos())
-                         - QPointF(top.content_rect().topLeft());
-    const QPointF at = here / top.scale();
-    const QPoint guest(static_cast<int>(at.x()), static_cast<int>(at.y()));
-    if (!QRect(QPoint(0, 0), top.guest_size_).contains(guest)) return std::nullopt;
-    return guest;
+    const QPoint own = mapping().guest_point(event->position());
+    if (!QRect(QPoint(0, 0), picture_size()).contains(own)) return std::nullopt;
+    return guest_origin() + own;
+}
+
+QPoint MirrorWindow::guest_origin() const {
+    const auto* owner = qobject_cast<const MirrorWindow*>(parentWidget());
+    if (owner == nullptr) return QPoint(0, 0);
+    return owner->guest_origin() + guest_offset_;
 }
 
 // The host's own band, which the guest cannot report: a window's resize
@@ -617,7 +691,7 @@ void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
     const Qt::Edges edges = edges_at(event->position());
     if (edges != hovered_edges_) {
         hovered_edges_ = edges;
-        setCursor(edges == Qt::Edges{} ? guest_cursor_
+        setCursor(edges == Qt::Edges{} ? dressed(guest_cursor_)
                                        : QCursor(ResizeBorder::cursor_for(edges)));
     }
     // Forwarded even over the chrome and the border: that is how the guest

@@ -2,6 +2,10 @@
 #include "guest/session/tcp_client.hpp"
 #include "logging/logger.hpp"
 
+// clang-format off
+#include <windows.h>
+// clang-format on
+
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -24,6 +28,19 @@ std::string option(int argc, char** argv, const char* name, std::string fallback
 }  // namespace
 
 int main(int argc, char** argv) {
+    // Every number this sends is a physical pixel, and so is every number
+    // it is sent. The capture's frames are physical whatever the process
+    // declares; a process that declares nothing is shown everything else -
+    // window rectangles, the work area, the screen it moves the pointer
+    // over - scaled down to 96 DPI, and on a guest set to 120% the window
+    // list then says 833 where the frame is 1000. Declared before any of it
+    // is asked, because the awareness is fixed from the first window call.
+    // The error is kept here: the logger is not open yet, and opening it
+    // sets its own.
+    const DWORD unaware =
+        ::SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) != FALSE
+            ? ERROR_SUCCESS
+            : ::GetLastError();
     const std::string host = option(argc, argv, "--host", kDefaultHost);
     const auto port = static_cast<std::uint16_t>(
         std::strtoul(option(argc, argv, "--port", std::to_string(kDefaultPort)).c_str(),
@@ -35,6 +52,11 @@ int main(int argc, char** argv) {
 
     rwin::Logger::instance().opened("remotewin-guest");
     RWIN_INFO("boot", "host={} port={} fps={}", host, port, fps);
+    if (unaware != ERROR_SUCCESS) {
+        RWIN_WARN("boot", "cannot declare per-monitor DPI awareness (error {}); window "
+                  "sizes will not match frames on a scaled guest",
+                  static_cast<unsigned long>(unaware));
+    }
 
     rwin::guest::TcpClient link;
     if (!link.connect(host, port)) {
