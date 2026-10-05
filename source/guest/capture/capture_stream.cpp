@@ -53,8 +53,11 @@ namespace rwin::guest {
 namespace {
 
 constexpr std::size_t kBytesPerPixel = 4;
-// Two buffers: one being composed into while the other is read.
-constexpr int kPoolBuffers = 2;
+// Three buffers: DWM composes a capture frame only into a buffer the
+// guest's GPU has finished with, and on accel-virt it learns that a frame
+// later than real hardware would tell it - with two, about one composition
+// in six found none free and was not captured.
+constexpr int kPoolBuffers = 3;
 // DirectXPixelFormat::B8G8R8A8UIntNormalized. The only format the
 // compositor hands out, and the one that carries alpha.
 constexpr int kBgra8 = 87;
