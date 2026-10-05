@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/owned_window.hpp"
+
 #include <Qt>
 
 #include <cstdint>
@@ -58,6 +60,8 @@ public:
         std::uint32_t band = kBandDesktop;
         bool dwm_frame = false;
         bool owned = false;
+        // SPI_GETDROPSHADOW, "Show shadows under windows".
+        bool desktop_shadows = true;
 
         [[nodiscard]] constexpr bool operator==(const Words&) const noexcept = default;
     };
@@ -126,8 +130,11 @@ public:
     }
 
     // What Windows shades: a class with CS_DROPSHADOW ("Enables the drop
-    // shadow effect on a window"), and any frame DWM is drawing.
+    // shadow effect on a window"), and any frame DWM is drawing - unless
+    // the desktop's "Show shadows under windows" is off, which turns off
+    // both.
     [[nodiscard]] constexpr bool casts_shadow() const noexcept {
+        if (!words_.desktop_shadows) return false;
         return has_class(kCsDropShadow) || (words_.dwm_frame && has_frame());
     }
 
@@ -151,6 +158,12 @@ public:
     // Whether it has an owner. Windows keeps an owned window above its
     // owner, hides it with its owner, and destroys it with its owner.
     [[nodiscard]] constexpr bool owned() const noexcept { return words_.owned; }
+
+    // Owned, and mirrored as a window of its own attached to its owner's
+    // rather than as a popup of it (owned_window_stands_alone).
+    [[nodiscard]] constexpr bool stands_alone() const noexcept {
+        return words_.owned && owned_window_stands_alone(words_.style, words_.extended_style);
+    }
 
     // The taskbar's rule, as documented under "The Taskbar": a button for
     // every window that is not owned; WS_EX_APPWINDOW forces one,

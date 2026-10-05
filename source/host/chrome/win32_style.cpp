@@ -13,7 +13,8 @@ Win32Style::Win32Style(const GuestWindowInfo& window) noexcept
              .color_key = window.color_key,
              .band = window.band,
              .dwm_frame = window.dwm_frame,
-             .owned = window.owner != 0} {}
+             .owned = window.owner != 0,
+             .desktop_shadows = window.drop_shadows} {}
 
 Qt::WindowFlags Win32Style::hints() const noexcept {
     Qt::WindowFlags flags = Qt::FramelessWindowHint;

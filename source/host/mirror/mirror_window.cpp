@@ -1,19 +1,28 @@
 #include "host/mirror/mirror_window.hpp"
 
+#include "host/cursor/cursor_look.hpp"
+#include "host/input/guest_button.hpp"
+#include "host/export/shared_frame.hpp"
 #include "host/link/guest_link.hpp"
 #include "host/mirror/draw_picture.hpp"
+#include "host/mirror/gpu_picture.hpp"
 #include "host/mirror/pixel_mapping.hpp"
 #include "logging/logger.hpp"
 
+#include <QApplication>
 #include <QCloseEvent>
+#include <QCursor>
+#include <QEnterEvent>
 #include <QEvent>
 #include <QFocusEvent>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPixmap>
 #include <QRegion>
 #include <QResizeEvent>
+#include <QShowEvent>
 #include <QWindow>
 
 #include <cmath>
@@ -23,46 +32,26 @@ namespace rwin::host {
 
 namespace {
 
-// Only the keys a character cannot express; everything printable arrives
-// as text and is typed as a character on the other side.
-std::uint32_t virtual_key_for(int key) {
-    switch (key) {
-        case Qt::Key_Backspace: return 0x08;
-        case Qt::Key_Tab:       return 0x09;
-        case Qt::Key_Return:
-        case Qt::Key_Enter:     return 0x0D;
-        case Qt::Key_Escape:    return 0x1B;
-        case Qt::Key_Delete:    return 0x2E;
-        case Qt::Key_Home:      return 0x24;
-        case Qt::Key_End:       return 0x23;
-        case Qt::Key_Left:      return 0x25;
-        case Qt::Key_Up:        return 0x26;
-        case Qt::Key_Right:     return 0x27;
-        case Qt::Key_Down:      return 0x28;
-        case Qt::Key_PageUp:    return 0x21;
-        case Qt::Key_PageDown:  return 0x22;
-        default:                return 0;
-    }
-}
-
-std::uint8_t button_index(Qt::MouseButton button) {
-    if (button == Qt::MiddleButton) return 1;
-    if (button == Qt::RightButton) return 2;
-    return 0;
-}
+// How soon after a show or a minimise a focus-in is the compositor's own:
+// a round trip, with room.
+constexpr qint64 kMapFocusMs = 750;
 
 }  // namespace
 
 MirrorWindow::MirrorWindow(GuestLink& link, const GuestWindowInfo& window,
-                           MirrorWindow* owner)
+                           MirrorWindow* owner, QString title_tag, PixelCursor& pixel_cursor)
     : QWidget(owner),
       link_(link),
       handle_(window.handle),
+      title_tag_(std::move(title_tag)),
       style_(window),
-      guest_size_(static_cast<int>(window.width), static_cast<int>(window.height)) {
+      keys_(QGuiApplication::platformName()),
+      guest_size_(static_cast<int>(window.width), static_cast<int>(window.height)),
+      guest_foreground_(window.foreground),
+      worn_(pixel_cursor) {
     setWindowFlags(flags_for(style_));
-    setWindowTitle(window.title.isEmpty() ? QStringLiteral("Guest window")
-                                          : window.title);
+    setWindowTitle((window.title.isEmpty() ? QStringLiteral("Guest window") : window.title)
+                   + title_tag_);
     setAttribute(Qt::WA_DeleteOnClose);
     // The guest's pixels carry their own alpha. Without this the widget
     // paints an opaque background first and every transparent part of the
@@ -82,6 +71,8 @@ MirrorWindow::MirrorWindow(GuestLink& link, const GuestWindowInfo& window,
     // change of size.
     if (owner != nullptr) follow_root_scale();
     take_shape(window.region);
+    // Shown activating is asking to be the active window.
+    if (!testAttribute(Qt::WA_ShowWithoutActivating)) ++activation_requests_;
     RWIN_DEBUG("win32",
                "{:#x} {}x{} owned={} sizable={} activates={} taskbar={} topmost={} "
                "disabled={} shadow={} opacity={} keyed={} shaped={}",
@@ -129,10 +120,72 @@ void MirrorWindow::apply_shape() {
 // opened, a window an application raised — and the mirror asks to be the
 // active one here. The compositor decides, as it does for any window
 // asking; one whose user is elsewhere is refused.
+//
+// Asked once, when the guest's foreground becomes this window: a refusal is
+// the compositor's answer, and asking again with every window list is a
+// window nagging for attention.
 void MirrorWindow::follow_guest_foreground(bool foreground) {
-    if (!foreground || isActiveWindow() || !style_.activates()) return;
-    if (parentWidget() != nullptr) return;
+    const bool became = foreground && !guest_foreground_;
+    guest_foreground_ = foreground;
+    if (!became || isActiveWindow() || !style_.activates() || is_popup()) return;
+    setAttribute(Qt::WA_ShowWithoutActivating, false);
+    ++activation_requests_;
     activateWindow();
+}
+
+void MirrorWindow::reclaim_activation() {
+    if (isActiveWindow() || !style_.activates() || is_popup()) return;
+    ++activation_requests_;
+    activateWindow();
+}
+
+void MirrorWindow::come_forward() {
+    if (is_popup()) {
+        if (auto* owner = qobject_cast<MirrorWindow*>(parentWidget())) owner->come_forward();
+        return;
+    }
+    raise();
+    if (style_.activates() && !isActiveWindow()) {
+        ++activation_requests_;
+        activateWindow();
+    }
+    ++alerts_;
+    QApplication::alert(this);
+    RWIN_DEBUG("win32", "{:#x} brought forward for its disabled owner", handle_);
+}
+
+void MirrorWindow::attach_to(MirrorWindow* owner) {
+    if (!is_popup() && attached_to_ == owner) return;
+    RWIN_DEBUG("popup", "{:#x} now a window of its own, attached to {:#x}", handle_,
+               owner != nullptr ? owner->handle() : 0);
+    attached_to_ = owner;
+    remake_surface();
+}
+
+void MirrorWindow::remake_surface() {
+    const bool shown = isVisible();
+    destroy();
+    // Not flags_for: while it is still a child it would say popup, and a
+    // popup with no parent is one Qt closes.
+    setParent(nullptr, style_.toplevel_type() | style_.hints());
+    wear(style_);
+    // A popup was sized at its owner's fit; a toplevel is one to one.
+    applying_guest_size_ = true;
+    if (style_.sizable()) {
+        resize(logical_size());
+    } else {
+        setFixedSize(logical_size());
+    }
+    applying_guest_size_ = false;
+    refit();
+    apply_shape();
+    create();
+    if (QWindow* surface = windowHandle()) {
+        surface->setTransientParent(attached_to_.isNull() ? nullptr : attached_to_->windowHandle());
+    }
+    if (!shown) return;
+    show();
+    if (!testAttribute(Qt::WA_ShowWithoutActivating)) ++activation_requests_;
 }
 
 Qt::WindowFlags MirrorWindow::flags_for(const Win32Style& style) const noexcept {
@@ -154,8 +207,14 @@ void MirrorWindow::wear(const Win32Style& style) {
     // focus, and a window that asks this compositor for activation it was
     // given no token for is a window flashing for attention — once for
     // every menu opened.
+    //
+    // Nor does a window the guest did not make its foreground: one shown
+    // with SW_SHOWNOACTIVATE, a palette that opens beside the window in
+    // use. Activated here, it would be focused, and focusing a mirror
+    // moves the guest's foreground to it - the mirror would have changed
+    // the guest's activation rather than followed it.
     setAttribute(Qt::WA_ShowWithoutActivating,
-                 !style.activates() || parentWidget() != nullptr);
+                 !style.activates() || is_popup() || !guest_foreground_);
     // WS_DISABLED is not setEnabled(false). Qt hands a disabled widget's
     // state down to its children, and a mirror's children are the popups
     // of that window — so a main window disabled behind its own modal
@@ -208,7 +267,109 @@ void MirrorWindow::follow_guest_style(const GuestWindowInfo& window) {
                style.topmost(), style.disabled());
 }
 
+MirrorState MirrorWindow::state() const {
+    MirrorState state;
+    state.handle = handle_;
+    if (const auto* owner = qobject_cast<const MirrorWindow*>(parentWidget())) {
+        state.popup_of = owner->handle();
+    }
+    if (!attached_to_.isNull()) state.attached_to = attached_to_->handle();
+    const auto* owner = !attached_to_.isNull() ? attached_to_.data()
+                                               : qobject_cast<const MirrorWindow*>(parentWidget());
+    state.modal = owner != nullptr && owner->style_.disabled() && !style_.disabled();
+    state.activation_requests = activation_requests_;
+    state.alerts = alerts_;
+    state.flags = windowFlags();
+    state.shows_without_activating = testAttribute(Qt::WA_ShowWithoutActivating);
+    state.visible = isVisible();
+    state.minimized = minimized_ || isMinimized();
+    state.maximized = isMaximized();
+    state.active = isActiveWindow();
+    state.forwards_input = !style_.disabled();
+    state.resizable = minimumSize() != maximumSize();
+    state.title = windowTitle().chopped(title_tag_.size());
+    state.position = pos();
+    state.placed = parentWidget() != nullptr ? placed_ : pos();
+    state.logical_size = size();
+    state.device_pixel_ratio = devicePixelRatioF();
+    state.fit = root().fit_;
+    state.guest_size = guest_size_;
+    const QRectF picture = mapping().picture(picture_size());
+    const double ratio = devicePixelRatioF();
+    state.picture = QRectF(picture.topLeft() * ratio, picture.size() * ratio).toRect();
+    state.opacity = style_.opacity();
+    state.color_keyed = style_.color_keyed();
+    state.color_key = style_.color_key();
+    state.mask = mask();
+    describe_cursor(state);
+    state.frames_presented = frames_presented_;
+    return state;
+}
+
+void MirrorWindow::take_gpu_frames() {
+    if (gpu_ != nullptr) return;
+    gpu_ = new GpuPicture(this);
+    gpu_->setGeometry(rect());
+    gpu_->hide();
+    connect(gpu_, &GpuPicture::failed, this, &MirrorWindow::gpu_failed);
+}
+
+// A popup's window is made again here, the first time: one is placed
+// against its owner however often that is.
+void MirrorWindow::present_shared(const SharedFrame& frame) {
+    if (guest_closed_) return;
+    take_gpu_frames();
+    ++frames_presented_;
+    const bool was_shown = shows_gpu_frame();
+    const QSize before = picture_size();
+    frame_ = QImage();
+    gpu_->show_frame(frame);
+    gpu_->lay_out(gpu_layout());
+    if (gpu_->isHidden()) gpu_->show();
+    // This window's own pixels are painted again only when what they are
+    // changes - the pixel path's picture gone, or the bars round another
+    // size: painted every frame, the whole window would be sent to the GPU
+    // again with each.
+    if (!was_shown || before != picture_size()) update();
+}
+
+bool MirrorWindow::shows_gpu_frame() const {
+    return gpu_ != nullptr && frame_.isNull() && gpu_->has_frame();
+}
+
+// The picture's place, scale and look, worked out as paintEvent works them
+// out for QPainter. The shape is the mask's own rectangles in device pixels,
+// rounded outward as the mask is: what the pixel path's painting is clipped
+// to.
+PictureLayout MirrorWindow::gpu_layout() const {
+    const PixelMapping where = mapping();
+    PictureLayout layout;
+    layout.picture = where.device_picture(picture_size());
+    layout.smooth = !where.one_to_one();
+    layout.opacity = style_.opacity() / 255.0;
+    if (style_.color_keyed()) {
+        layout.color_key = qRgb(style_.color_key() & 0xFF, (style_.color_key() >> 8) & 0xFF,
+                                (style_.color_key() >> 16) & 0xFF);
+    }
+    if (!guest_region_.isEmpty()) {
+        const double ratio = devicePixelRatioF();
+        for (const QRect& unit : mask()) {
+            layout.shape += QRect(QPoint(static_cast<int>(std::floor(unit.left() * ratio)),
+                                         static_cast<int>(std::floor(unit.top() * ratio))),
+                                  QPoint(static_cast<int>(std::ceil((unit.right() + 1) * ratio)) - 1,
+                                         static_cast<int>(std::ceil((unit.bottom() + 1) * ratio)) - 1));
+        }
+    }
+    layout.bars = picture_rect() != rect();
+    return layout;
+}
+
 void MirrorWindow::present(const QImage& pixels) {
+    ++frames_presented_;
+    if (gpu_ != nullptr && !gpu_->isHidden()) {
+        gpu_->forget();
+        gpu_->hide();
+    }
     if (!style_.color_keyed()) {
         frame_ = pixels;
         update();
@@ -235,8 +396,8 @@ void MirrorWindow::present(const QImage& pixels) {
 }
 
 void MirrorWindow::retitle(const QString& title) {
-    if (!title.isEmpty() && title != windowTitle()) {
-        setWindowTitle(title);
+    if (!title.isEmpty() && title + title_tag_ != windowTitle()) {
+        setWindowTitle(title + title_tag_);
     }
 }
 
@@ -257,38 +418,44 @@ void MirrorWindow::close_when_released() {
     guest_closed_ = true;
     closing_when_released_ = true;
     frame_ = QImage();
+    if (gpu_ != nullptr) gpu_->forget();
     update();
     RWIN_DEBUG("input", "{:#x} gone in the guest but holding a press; staying until release",
                handle_);
 }
 
-void MirrorWindow::wear_guest_cursor(const QCursor& cursor) {
-    guest_cursor_ = cursor;
-    // Not while the pointer is in the resize band: there the shape has to
-    // say the edge can be dragged, and the guest has no idea that band
-    // exists.
-    if (hovered_edges_ == Qt::Edges{}) {
-        setCursor(dressed(guest_cursor_));
-    }
+void MirrorWindow::wear_guest_cursor(const CursorLook* look, std::size_t step) {
+    worn_.wear(look, step);
+    show_guest_cursor();
 }
 
-// The guest drew its cursor in its own pixels, which are this screen's
-// device pixels. Told nothing, Qt takes each for a logical unit and the
-// compositor scales the cursor up a second time.
-//
-// Qt's Wayland cursor takes only a whole buffer scale (6.11: the ratio
-// truncated, the hotspot scaled up to match). On a screen at 2 this is a
-// cursor drawn one to one; at 1.2 it is drawn at scale 1 and stretched by
-// the compositor, as it was before, with its hotspot still in place.
-QCursor MirrorWindow::dressed(const QCursor& cursor) const {
-    QPixmap pixels = cursor.pixmap();
-    if (pixels.isNull()) return cursor;
-    const double ratio = devicePixelRatioF();
-    pixels.setDevicePixelRatio(ratio);
-    const QPoint hotspot = cursor.hotSpot();
-    return QCursor(pixels, static_cast<int>(std::lround(hotspot.x() / ratio)),
-                   static_cast<int>(std::lround(hotspot.y() / ratio)));
+// Not while the pointer is in the resize band: there the shape has to say
+// the edge can be dragged, and the guest has no idea that band exists.
+void MirrorWindow::show_guest_cursor() {
+    if (hovered_edges_ != Qt::Edges{}) return;
+    worn_.put_on(*this);
 }
+
+void MirrorWindow::describe_cursor(MirrorState& state) const {
+    const QCursor worn = cursor();
+    state.cursor_shape = worn.shape();
+    state.hovered_edges = hovered_edges_;
+    const CursorLook* look = worn_.look();
+    state.cursor_id = look != nullptr ? look->id : 0;
+    if (worn.shape() == Qt::BitmapCursor) {
+        state.cursor_pixels = worn.pixmap().toImage();
+        state.cursor_pixmap_ratio = worn.pixmap().devicePixelRatio();
+        state.cursor_hotspot = worn.hotSpot();
+    }
+    if (look == nullptr) return;
+    state.cursor_inverts = look->inverts;
+    state.cursor_delays_ms.reserve(look->frames.size());
+    for (const CursorLook::Frame& frame : look->frames) state.cursor_delays_ms.push_back(frame.delay_ms);
+}
+
+QPointF MirrorWindow::logical_point_of(QPoint guest) const { return mapping().logical_point(guest); }
+
+QRect MirrorWindow::logical_rect_inside(QRect guest) const { return mapping().logical_rect_inside(guest); }
 
 void MirrorWindow::take_over_drag() {
     QWindow* surface = windowHandle();
@@ -301,12 +468,15 @@ void MirrorWindow::take_over_drag() {
 }
 
 void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
+    guest_maximized_ = maximized;
     // A popup has no state of its own: it shows and hides with its parent.
     if (parentWidget() != nullptr) return;
 
     if (minimized != minimized_) {
         minimized_ = minimized;
         applying_guest_state_ = true;
+        changed_for_guest_.start();
+        touched_ = false;
         if (minimized) {
             showMinimized();
         } else {
@@ -347,6 +517,7 @@ void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {
     // Rounded to a whole logical unit, which is all a popup is placed by:
     // within half a unit, a device pixel at the scales anyone runs.
     const QPoint at = owner.pos() + owner.mapping().logical_point(guest_offset).toPoint();
+    placed_ = at;
     if (parentWidget() != &owner) {
         // Re-parenting hides the widget, and gives it the parent surface
         // its popup is positioned against. The native window goes first:
@@ -430,7 +601,8 @@ PixelMapping MirrorWindow::mapping() const {
 // The frame when there is one: it is what is drawn, and between a resize
 // and the guest's answer it is not the size the guest last reported.
 QSize MirrorWindow::picture_size() const {
-    return frame_.isNull() ? guest_size_ : frame_.size();
+    if (!frame_.isNull()) return frame_.size();
+    return shows_gpu_frame() ? gpu_->picture_size() : guest_size_;
 }
 
 QRect MirrorWindow::picture_rect() const {
@@ -489,24 +661,39 @@ void MirrorWindow::paintEvent(QPaintEvent* /*event*/) {
     // transparency and all. Blending would composite the guest's
     // see-through pixels onto whatever the widget last held.
     painter.setCompositionMode(QPainter::CompositionMode_Source);
-    // A layered window's constant alpha: in Source mode the opacity
-    // scales what is written, so the whole window comes out that
-    // translucent, guest pixels' own alpha included.
-    painter.setOpacity(style_.opacity() / 255.0);
+    // Drawn by the GpuPicture over all of this, which Qt leaves a hole in
+    // the window's own pixels for.
+    if (shows_gpu_frame()) gpu_->lay_out(gpu_layout());
     if (frame_.isNull()) {
         painter.fillRect(rect(), Qt::transparent);
         return;
     }
     const PixelMapping where = mapping();
-    if (picture_rect() != rect()) {
-        // The bars beside a fitted picture: black, and opaque, because
-        // they are this mirror's own and not a part of the window that
-        // happens to be see-through. The picture is drawn over the middle
-        // of them, and its own transparent pixels replace the black
-        // rather than blending with it, Source mode being what is set.
-        painter.fillRect(rect(), Qt::black);
-    }
+    // The bars beside a fitted picture: black, and opaque, because they
+    // are this mirror's own and not a part of the window that happens to
+    // be see-through. Around the picture, never under it: Source with an
+    // opacity below one is a blend of the picture with what is beneath,
+    // and a layered window maximised over black bars came out darker
+    // everywhere.
+    if (picture_rect() != rect()) fill_bars(painter, where.picture(frame_.size()));
+    // A layered window's constant alpha, on a buffer the bars leave
+    // transparent under the picture: the whole window comes out that
+    // translucent, guest pixels' own alpha included.
+    painter.setOpacity(style_.opacity() / 255.0);
     draw_picture(painter, frame_, where);
+}
+
+// Above, below, left and right of the picture, each clamped: a picture
+// larger than the mirror while the guest catches up has no bar there.
+void MirrorWindow::fill_bars(QPainter& painter, const QRectF& picture) const {
+    const QRectF whole(rect());
+    const auto bar = [&](double left, double top, double width, double height) {
+        if (width > 0.0 && height > 0.0) painter.fillRect(QRectF(left, top, width, height), Qt::black);
+    };
+    bar(whole.left(), whole.top(), whole.width(), picture.top() - whole.top());
+    bar(whole.left(), picture.bottom(), whole.width(), whole.bottom() - picture.bottom());
+    bar(whole.left(), picture.top(), picture.left() - whole.left(), picture.height());
+    bar(picture.right(), picture.top(), whole.right() - picture.right(), picture.height());
 }
 
 bool MirrorWindow::event(QEvent* event) {
@@ -514,6 +701,7 @@ bool MirrorWindow::event(QEvent* event) {
     // Delivered to event() and not changeEvent(), and sometimes twice:
     // following it is idempotent.
     if (event->type() == QEvent::DevicePixelRatioChange) follow_device_pixel_ratio();
+    if (event->type() == QEvent::WinIdChange) ++surfaces_;
     return handled;
 }
 
@@ -531,7 +719,7 @@ bool MirrorWindow::event(QEvent* event) {
 void MirrorWindow::follow_device_pixel_ratio() {
     RWIN_DEBUG("mirror", "{:#x} device pixel ratio {:.3f}", handle_, devicePixelRatioF());
     apply_size_limits();
-    if (hovered_edges_ == Qt::Edges{}) setCursor(dressed(guest_cursor_));
+    show_guest_cursor();
     if (parentWidget() != nullptr) {
         follow_root_scale();
     } else {
@@ -563,12 +751,36 @@ void MirrorWindow::closeEvent(QCloseEvent* event) {
         event->ignore();
         return;
     }
+    RWIN_DEBUG("win32", "{:#x} closed here; asking the guest to close it", handle_);
     link_.send_close(handle_);
     event->accept();
 }
 
+// Put on again as the pointer comes in: a pixel cursor's surface is sized
+// for the ratio of the window it was last put on, and this one's may differ.
+void MirrorWindow::enterEvent(QEnterEvent* event) {
+    QWidget::enterEvent(event);
+    if (worn_.look() != nullptr) show_guest_cursor();
+}
+
+void MirrorWindow::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    changed_for_guest_.start();
+    touched_ = false;
+}
+
+// KWin activates a window as it maps it when its client is the active one,
+// whatever the window asked (WA_ShowWithoutActivating is no part of
+// xdg-shell). That focus is not the user's choice, and passing it on would
+// have the mirror move the guest's foreground rather than follow it.
 void MirrorWindow::focusInEvent(QFocusEvent* event) {
     QWidget::focusInEvent(event);
+    if (!guest_foreground_ && !touched_ && changed_for_guest_.isValid()
+        && !changed_for_guest_.hasExpired(kMapFocusMs)) {
+        RWIN_DEBUG("focus", "{:#x} focused by the compositor as it changed it; not the guest's", handle_);
+        Q_EMIT focused_unasked(handle_);
+        return;
+    }
     // Injected input goes to whatever the guest has in front. Focusing a
     // mirror here has to move it there, or the keystrokes land in
     // whichever guest window was last touched.
@@ -579,7 +791,9 @@ void MirrorWindow::limit_to(QSize guest_room) {
     if (!guest_room.isValid() || guest_room.isEmpty() || guest_room == guest_room_) return;
     guest_room_ = guest_room;
     apply_size_limits();
-    if (maximized_) ask_guest_for(guest_room_);
+    // Maximised here, the guest window is given the guest's whole room;
+    // maximised there, it has it already.
+    if (maximized_ && !maximized_by_guest_ && !guest_maximized_) ask_guest_for(guest_room_);
 }
 
 // Maximised here, and the guest window is given the whole of the guest's
@@ -619,16 +833,23 @@ void MirrorWindow::ask_guest_for(QSize size) {
 
 void MirrorWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
+    if (gpu_ != nullptr) gpu_->setGeometry(rect());
     if (parentWidget() != nullptr) return;
     // Whatever the mirror's size came from, the guest's window has to be
     // fitted into it again — and its shape put where the picture now is.
     refit();
     apply_shape();
     if (applying_guest_size_ || applying_guest_state_ || !isVisible()) return;
+    // Sized before it was ever on screen: the compositor's first answer to
+    // a window it has not placed yet, which no user asked for.
+    if (windowHandle() == nullptr || !windowHandle()->isExposed()) return;
     // A maximised mirror's size is the screen's, and says nothing about
     // how big the guest window should be; that was settled when it was
-    // maximised, and it is the guest's whole screen.
-    if (maximized_) return;
+    // maximised, and it is the guest's whole screen. A window maximised or
+    // minimised in the guest is not given a size either: Windows would
+    // have to restore it first, and the mirror would have undone what the
+    // guest did.
+    if (maximized_ || guest_maximized_ || minimized_) return;
     // Compared in logical units: the guest size a mirror holds is not
     // always the size it was made for (1001 pixels at 1.2 is 835 units,
     // and 835 units hold 1002), and asking for it would grow the window a
@@ -691,8 +912,11 @@ void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
     const Qt::Edges edges = edges_at(event->position());
     if (edges != hovered_edges_) {
         hovered_edges_ = edges;
-        setCursor(edges == Qt::Edges{} ? dressed(guest_cursor_)
-                                       : QCursor(ResizeBorder::cursor_for(edges)));
+        if (edges == Qt::Edges{}) {
+            show_guest_cursor();
+        } else {
+            setCursor(ResizeBorder::cursor_for(edges));
+        }
     }
     // Forwarded even over the chrome and the border: that is how the guest
     // updates its own hover highlighting and decides which cursor to show.
@@ -718,8 +942,12 @@ bool MirrorWindow::start_edge_resize(QMouseEvent* event) {
 }
 
 void MirrorWindow::mousePressEvent(QMouseEvent* event) {
+    touched_ = true;
     // WS_DISABLED: "A disabled window cannot receive input from the user."
-    if (style_.disabled()) return;
+    if (style_.disabled()) {
+        Q_EMIT pressed_while_disabled(handle_);
+        return;
+    }
     // A release still owed from a drag the compositor took over never
     // comes: the compositor kept it. A new press means that wait is over,
     // or this press's own release would be the one swallowed.
@@ -732,7 +960,7 @@ void MirrorWindow::mousePressEvent(QMouseEvent* event) {
     if (!at.has_value()) return;
     held_ |= event->button();
     link_.send_pointer_button(root().handle(), at->x(), at->y(),
-                              button_index(event->button()), true);
+                              guest_button(event->button()), true);
 }
 
 void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
@@ -745,22 +973,32 @@ void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
     const std::optional<QPoint> at = guest_position_of(event);
     if (at.has_value()) {
         link_.send_pointer_button(root().handle(), at->x(), at->y(),
-                                  button_index(event->button()), false);
+                                  guest_button(event->button()), false);
     }
     if (held_ == Qt::NoButton) Q_EMIT let_go();
 }
 
 void MirrorWindow::send_key(QKeyEvent* event, bool pressed) {
+    touched_ = true;
     if (style_.disabled()) return;
-    const std::uint32_t virtual_key = virtual_key_for(event->key());
-    const QString text = event->text();
-    const std::uint32_t character =
-        (virtual_key == 0 && !text.isEmpty() && text.at(0).unicode() >= 0x20)
-            ? text.at(0).unicode()
-            : 0;
-    if (virtual_key == 0 && character == 0) return;
-    link_.send_key(handle_, virtual_key, character, pressed);
+    // A held key repeats as a press and a release each time here; Windows
+    // repeats it as presses alone.
+    if (!pressed && event->isAutoRepeat()) return;
+    const std::optional<KeyStroke> stroke = keys_.stroke_for(*event, handle_, pressed);
+    if (!stroke.has_value()) return;
+    held_keys_.note(*stroke);
+    link_.send_key(*stroke);
 }
+
+void MirrorWindow::focusOutEvent(QFocusEvent* event) {
+    QWidget::focusOutEvent(event);
+    held_keys_.release_all(link_, handle_);
+}
+
+// Tab is the guest window's key. QWidget takes it to move the focus to
+// the next widget first, and a mirror is a widget alone, which the focus
+// "moves" to - and the key is gone.
+bool MirrorWindow::focusNextPrevChild(bool /*next*/) { return false; }
 
 void MirrorWindow::keyPressEvent(QKeyEvent* event) { send_key(event, true); }
 

@@ -6,17 +6,20 @@
 
 namespace rwin::guest {
 
-void* CursorWatcher::changed_cursor() {
+std::optional<GuestCursor> CursorWatcher::changed() {
     CURSORINFO info{};
     info.cbSize = sizeof(info);
-    if (::GetCursorInfo(&info) == FALSE) return nullptr;
+    if (::GetCursorInfo(&info) == FALSE) return std::nullopt;
 
-    // A hidden cursor reports no handle. That is a change worth passing
-    // on, but there is nothing to decode, so it is not reported here —
-    // the session sees the same handle and leaves the host's cursor be.
-    if (info.hCursor == nullptr || info.hCursor == last_) return nullptr;
-    last_ = info.hCursor;
-    return info.hCursor;
+    const bool shown = (info.flags & CURSOR_SHOWING) != 0 && (info.flags & CURSOR_SUPPRESSED) == 0
+                       && info.hCursor != nullptr;
+    // A hidden cursor's handle is whichever was last set, and says nothing
+    // the host shows.
+    const GuestCursor now{shown ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(info.hCursor)) : 0,
+                          shown};
+    if (last_ == now) return std::nullopt;
+    last_ = now;
+    return now;
 }
 
 }  // namespace rwin::guest

@@ -68,10 +68,17 @@ public:
     // The whole logical units a guest rectangle covers any part of. Rounded
     // outward, so a shape cut to it never cuts into the picture.
     [[nodiscard]] QRect logical_rect(QRect guest) const;
+    // The whole logical units that lie entirely within a guest rectangle.
+    // Rounded inward, so a pointer kept to it is never over a guest pixel
+    // outside the rectangle: ClipCursor's, as a confinement. Empty when
+    // the rectangle holds no whole unit.
+    [[nodiscard]] QRect logical_rect_inside(QRect guest) const;
     // Where a picture of ``guest`` is drawn, in logical units. At a fit of
     // 1 its device size is the guest size, which is what makes the draw a
     // copy.
     [[nodiscard]] QRectF picture(QSize guest) const;
+    // The same, in device pixels: where a picture drawn on the GPU goes.
+    [[nodiscard]] QRect device_picture(QSize guest) const;
 
 private:
     [[nodiscard]] QSize drawn_size(QSize guest) const;

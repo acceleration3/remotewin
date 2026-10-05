@@ -1,5 +1,6 @@
 #include "guest/session/tcp_client.hpp"
 
+#include "guest/capture/frame_signal.hpp"
 #include "logging/logger.hpp"
 
 // clang-format off
@@ -22,6 +23,7 @@ TcpClient::~TcpClient() {
     if (socket_ != INVALID_SOCKET) {
         ::closesocket(static_cast<SOCKET>(socket_));
     }
+    if (readable_ != nullptr) ::WSACloseEvent(static_cast<WSAEVENT>(readable_));
     ::WSACleanup();
 }
 
@@ -46,7 +48,7 @@ bool TcpClient::connect(const std::string& host, std::uint16_t port) {
     RWIN_DEBUG("link", "dialling {}:{}", host, port);
     if (::connect(s, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR) {
         fail("connect");
-        RWIN_ERROR("link", "cannot reach {}:{} — {}", host, port, last_error_);
+        RWIN_ERROR("link", "cannot reach {}:{}: {}", host, port, last_error_);
         ::closesocket(s);
         return false;
     }
@@ -55,7 +57,16 @@ bool TcpClient::connect(const std::string& host, std::uint16_t port) {
     const int one = 1;
     ::setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&one),
                  sizeof(one));
+    const WSAEVENT readable = ::WSACreateEvent();
+    if (readable == WSA_INVALID_EVENT || ::WSAEventSelect(s, readable, FD_READ | FD_CLOSE) == SOCKET_ERROR) {
+        fail("WSAEventSelect");
+        RWIN_ERROR("link", "cannot watch the socket to {}:{}: {}", host, port, last_error_);
+        if (readable != WSA_INVALID_EVENT) ::WSACloseEvent(readable);
+        ::closesocket(s);
+        return false;
+    }
     socket_ = s;
+    readable_ = readable;
     RWIN_INFO("link", "connected to {}:{}", host, port);
     return true;
 }
@@ -70,15 +81,34 @@ bool TcpClient::wait_readable(std::uint32_t timeout_ms) const {
     return ::select(0, &readable, nullptr, nullptr, &timeout) > 0;
 }
 
+bool TcpClient::wait(std::uint32_t timeout_ms, const FrameSignal& frames) {
+    // The socket first: with both set, the host is heard, and the frame's
+    // event stays set for the next wait.
+    const HANDLE waited[] = {static_cast<HANDLE>(readable_), static_cast<HANDLE>(frames.event())};
+    if (::WaitForMultipleObjects(2, waited, FALSE, timeout_ms) != WAIT_OBJECT_0) return false;
+    // Resets the event; Winsock sets it again while unread bytes remain.
+    WSANETWORKEVENTS happened{};
+    ::WSAEnumNetworkEvents(static_cast<SOCKET>(socket_), static_cast<WSAEVENT>(readable_), &happened);
+    return true;
+}
+
+bool TcpClient::wait_writable() const {
+    fd_set writable;
+    FD_ZERO(&writable);
+    FD_SET(static_cast<SOCKET>(socket_), &writable);
+    return ::select(0, nullptr, &writable, nullptr, nullptr) > 0;
+}
+
 bool TcpClient::send(const std::vector<std::uint8_t>& bytes) {
     std::size_t sent = 0;
     while (sent < bytes.size()) {
         const int n = ::send(static_cast<SOCKET>(socket_),
                              reinterpret_cast<const char*>(bytes.data() + sent),
                              static_cast<int>(bytes.size() - sent), 0);
+        if (n == SOCKET_ERROR && ::WSAGetLastError() == WSAEWOULDBLOCK && wait_writable()) continue;
         if (n <= 0) {
             fail("send");
-            RWIN_ERROR("link", "send of {} bytes failed — {}", bytes.size(), last_error_);
+            RWIN_ERROR("link", "send of {} bytes failed: {}", bytes.size(), last_error_);
             return false;
         }
         sent += static_cast<std::size_t>(n);
@@ -92,10 +122,14 @@ bool TcpClient::receive(std::vector<std::uint8_t>& into) {
     const int n = ::recv(static_cast<SOCKET>(socket_),
                          reinterpret_cast<char*>(into.data() + at),
                          static_cast<int>(kReadChunk), 0);
+    if (n == SOCKET_ERROR && ::WSAGetLastError() == WSAEWOULDBLOCK) {
+        into.resize(at);
+        return true;
+    }
     if (n <= 0) {
         into.resize(at);
         fail("recv");
-        RWIN_INFO("link", "host closed the connection — {}", last_error_);
+        RWIN_INFO("link", "host closed the connection: {}", last_error_);
         return false;
     }
     into.resize(at + static_cast<std::size_t>(n));

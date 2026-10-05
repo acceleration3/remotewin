@@ -6,6 +6,8 @@
 
 namespace rwin::guest {
 
+class FrameSignal;
+
 // The socket to the host, owned.
 //
 // The guest dials out rather than listening: QEMU's user-mode networking
@@ -25,9 +27,13 @@ public:
 
     [[nodiscard]] bool send(const std::vector<std::uint8_t>& bytes);
 
-    // True when a read would not block. The timeout is what paces the
-    // session: it waits for a command only until the next frame is due.
+    // True when a read would not block.
     [[nodiscard]] bool wait_readable(std::uint32_t timeout_ms) const;
+
+    // Until the host has said something, a capture has a frame, or
+    // ``timeout_ms`` passed; true for the first. What paces the session:
+    // frames go as the compositor composes them.
+    [[nodiscard]] bool wait(std::uint32_t timeout_ms, const FrameSignal& frames);
 
     // Bytes as they arrive, appended to ``into``. False once the peer is
     // gone, which is how the session learns to exit.
@@ -37,8 +43,14 @@ public:
 
 private:
     void fail(const char* what);
+    // Until a send would take something; false when the socket failed.
+    [[nodiscard]] bool wait_writable() const;
 
     std::uintptr_t socket_;
+    // Set by Winsock while the socket has something to read, or closed.
+    // Selecting it makes the socket non-blocking, so send waits out a full
+    // buffer itself.
+    void* readable_ = nullptr;
     std::string last_error_;
 };
 

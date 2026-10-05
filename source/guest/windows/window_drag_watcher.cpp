@@ -1,6 +1,7 @@
 #include "guest/windows/window_drag_watcher.hpp"
 
 #include "logging/logger.hpp"
+#include "proto/owned_window.hpp"
 
 // clang-format off
 #include <windows.h>
@@ -26,13 +27,19 @@ void CALLBACK on_move_size_start(HWINEVENTHOOK /*hook*/, DWORD event, HWND windo
     WindowDragWatcher* watcher = listening.load();
     if (watcher == nullptr) return;
 
-    // An owned window is mirrored as a popup of its owner, placed where
-    // the guest put it — the one surface the compositor lets the client
-    // position, and the one it will not drag. So Windows keeps this drag:
+    // An owned window mirrored as a popup of its owner is placed where the
+    // guest put it - the one surface the compositor lets the client
+    // position, and the one it will not drag. So Windows keeps that drag:
     // the guest window moves, and the mirror follows the positions the
-    // window list reports.
+    // window list reports. One mirrored as a window of its own is dragged
+    // by the compositor like any other.
     HWND owner = ::GetWindow(window, GW_OWNER);
-    if (owner != nullptr && ::IsWindowVisible(owner) != FALSE) return;
+    const auto style = static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_STYLE));
+    const auto extended = static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_EXSTYLE));
+    if (owner != nullptr && ::IsWindowVisible(owner) != FALSE
+        && !owned_window_stands_alone(style, extended)) {
+        return;
+    }
 
     // Break the move loop before it moves anything. WM_CANCELMODE is what
     // ends any modal tracking state, and the window's own procedure acts

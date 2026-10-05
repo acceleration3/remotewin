@@ -1,6 +1,8 @@
 #include "guest/cursor/cursor_image.hpp"
 
-#include "logging/logger.hpp"
+#include "guest/cursor/monochrome_picture.hpp"
+
+#include <utility>
 
 // clang-format off
 #include <windows.h>
@@ -100,32 +102,20 @@ bool CursorImage::read_monochrome(void* device_context, void* mask_bitmap) {
     if (width_ == 0 || height_ == 0) return false;
 
     const std::uint32_t both = height_ * 2;
-    std::vector<std::uint8_t> halves(
+    std::vector<std::uint8_t> planes(
         static_cast<std::size_t>(width_) * both * kBytesPerPixel, 0);
     BITMAPINFO info = top_down_32bpp(width_, both);
     if (::GetDIBits(static_cast<HDC>(device_context), static_cast<HBITMAP>(mask_bitmap), 0,
-                    both, halves.data(), &info, DIB_RGB_COLORS)
+                    both, planes.data(), &info, DIB_RGB_COLORS)
         == 0) {
         return false;
     }
-
-    const std::size_t half = static_cast<std::size_t>(width_) * height_ * kBytesPerPixel;
-    pixels_.assign(half, 0);
-    for (std::size_t at = 0; at < half; at += kBytesPerPixel) {
-        const bool keep_background = halves[at] != 0;          // AND half
-        const bool inverted = halves[half + at] != 0;          // XOR half
-        if (keep_background && !inverted) {
-            pixels_[at + 3] = 0;
-            continue;
-        }
-        // AND=1 with XOR=1 is the invert case; drawn black, see the header.
-        const std::uint8_t shade = (!keep_background && inverted) ? 0xFF : 0x00;
-        pixels_[at + 0] = shade;
-        pixels_[at + 1] = shade;
-        pixels_[at + 2] = shade;
-        pixels_[at + 3] = 0xFF;
-    }
-    return true;
+    MonochromePicture picture = monochrome_picture(planes, width_, height_);
+    pixels_ = std::move(picture.bgra);
+    inverts_ = picture.inverts;
+    return !pixels_.empty();
 }
+
+std::vector<std::uint8_t> CursorImage::take_pixels() noexcept { return std::move(pixels_); }
 
 }  // namespace rwin::guest

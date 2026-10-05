@@ -40,42 +40,84 @@ void send_button(DWORD flags) {
     ::SendInput(1, &input, sizeof(input));
 }
 
+DWORD button_flags(PointerInjector::Button button, bool pressed) {
+    switch (button) {
+        case PointerInjector::Button::Left:
+            return pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+        case PointerInjector::Button::Middle:
+            return pressed ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP;
+        case PointerInjector::Button::Right:
+            return pressed ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
+    }
+    return 0;
+}
+
 }  // namespace
 
-void PointerInjector::move_to(const WindowSurface& surface, std::int32_t frame_x,
-                              std::int32_t frame_y) const {
-    if (!surface.valid()) return;
-    move_cursor(surface.screen_x(frame_x), surface.screen_y(frame_y));
+std::optional<std::pair<std::int32_t, std::int32_t>> PointerInjector::move_to(
+    const WindowSurface& surface, std::int32_t frame_x, std::int32_t frame_y) const {
+    if (!surface.valid()) return std::nullopt;
+    const std::int32_t x = surface.screen_x(frame_x);
+    const std::int32_t y = surface.screen_y(frame_y);
+    move_cursor(x, y);
+    return std::pair{x, y};
+}
+
+// Only for a press. A move that stole the foreground would dismiss a
+// dropdown the pointer was merely passing over; and the release comes
+// after the press has activated whatever it landed on - an owned dialog of
+// this window - which taking the foreground back would undo.
+void PointerInjector::take_focus_for(const WindowSurface& surface, bool pressed) const {
+    if (!pressed) return;
+    focus_.give_to(static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(surface.handle())));
 }
 
 void PointerInjector::press(const WindowSurface& surface, std::int32_t frame_x,
                             std::int32_t frame_y, Button button, bool pressed) const {
     if (!surface.valid()) return;
-
-    // Only for buttons. A move that stole the foreground would dismiss a
-    // dropdown the pointer was merely passing over.
-    focus_.give_to(
-        static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(surface.handle())));
-
+    take_focus_for(surface, pressed);
     const std::int32_t x = surface.screen_x(frame_x);
     const std::int32_t y = surface.screen_y(frame_y);
     move_cursor(x, y);
-
-    DWORD flags = 0;
-    switch (button) {
-        case Button::Left:
-            flags = pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
-            break;
-        case Button::Middle:
-            flags = pressed ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP;
-            break;
-        case Button::Right:
-            flags = pressed ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
-            break;
-    }
-    send_button(flags);
+    send_button(button_flags(button, pressed));
     RWIN_DEBUG("input", "button {} {} at screen {},{}", static_cast<int>(button),
                pressed ? "down" : "up", x, y);
+}
+
+void PointerInjector::press_in_place(const WindowSurface& surface, Button button, bool pressed) const {
+    if (!surface.valid()) return;
+    take_focus_for(surface, pressed);
+    send_button(button_flags(button, pressed));
+    RWIN_DEBUG("input", "button {} {} where the cursor is held", static_cast<int>(button), pressed ? "down" : "up");
+}
+
+void PointerInjector::move_on_screen(std::int32_t screen_x, std::int32_t screen_y) {
+    move_cursor(screen_x, screen_y);
+}
+
+void PointerInjector::press_on_screen(std::int32_t screen_x, std::int32_t screen_y, Button button,
+                                      bool pressed) {
+    move_cursor(screen_x, screen_y);
+    send_button(button_flags(button, pressed));
+    RWIN_DEBUG("input", "button {} {} at screen {},{}", static_cast<int>(button),
+               pressed ? "down" : "up", screen_x, screen_y);
+}
+
+// Without MOUSEEVENTF_MOVE_NOCOALESCE, deliberately: raw input gets every
+// move apart either way, and coalescing only merges WM_MOUSEMOVEs still
+// queued. A game that puts its cursor back on each WM_MOUSEMOVE reads each
+// one against the point it put it at; a second message queued before that
+// carries a position taken before the put, and would count the first move
+// twice. Merged, the moves are counted once, as with a real mouse.
+void PointerInjector::nudge(std::int32_t dx, std::int32_t dy) {
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = MOUSEEVENTF_MOVE;
+    input.mi.dx = dx;
+    input.mi.dy = dy;
+    if (::SendInput(1, &input, sizeof(input)) != 1) {
+        RWIN_WARN("input", "relative move {},{} refused: error {}", dx, dy, ::GetLastError());
+    }
 }
 
 }  // namespace rwin::guest

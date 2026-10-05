@@ -36,6 +36,9 @@ struct GuestWindowInfo {
     std::uint32_t color_key = 0;
     // The z-order band; 1 is the desktop, where every ordinary window is.
     std::uint32_t band = 0;
+    // SPI_GETDROPSHADOW: the desktop's, and so every window's - whether
+    // Windows shades any window at all.
+    bool drop_shadows = false;
     // SetWindowRgn, in the window's own coordinates. Empty: the window is
     // its whole rectangle.
     QList<QRect> region;

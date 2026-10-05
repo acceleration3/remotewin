@@ -86,11 +86,25 @@ QRect PixelMapping::logical_rect(QRect guest) const {
     return QRect(left, top, ceil_of(to.x()) - left, ceil_of(to.y()) - top);
 }
 
+QRect PixelMapping::logical_rect_inside(QRect guest) const {
+    if (guest.isEmpty()) return {};
+    const QPointF from = logical_point(guest.topLeft());
+    const QPointF to = logical_point(guest.topLeft() + QPoint(guest.width(), guest.height()));
+    const int left = ceil_of(from.x());
+    const int top = ceil_of(from.y());
+    const int right = floor_of(to.x());
+    const int bottom = floor_of(to.y());
+    if (right <= left || bottom <= top) return {};
+    return QRect(left, top, right - left, bottom - top);
+}
+
 QRectF PixelMapping::picture(QSize guest) const {
     const QSize drawn = drawn_size(guest);
     return QRectF(origin_.x() / device_pixel_ratio_, origin_.y() / device_pixel_ratio_,
                   drawn.width() / device_pixel_ratio_, drawn.height() / device_pixel_ratio_);
 }
+
+QRect PixelMapping::device_picture(QSize guest) const { return QRect(origin_, drawn_size(guest)); }
 
 QSize PixelMapping::drawn_size(QSize guest) const {
     if (one_to_one()) return guest;

@@ -1,0 +1,32 @@
+#pragma once
+
+#include "host/export/exported_layout.hpp"
+#include "host/export/unique_fd.hpp"
+
+#include <cstdint>
+
+namespace rwin::host {
+
+// One shared surface's memory, as the GPU device exported it: a dma-buf,
+// and how the picture lies in it.
+//
+// The memory outlives the surface. Once the guest lets go of the surface
+// nothing writes the memory again, but what is drawn from it still reads
+// what was last there, so a frame on screen stays on screen until the next
+// replaces it.
+class SurfaceMemory {
+public:
+    SurfaceMemory(std::uint64_t surface, ExportedLayout layout, UniqueFd dma_buf) noexcept
+        : surface_(surface), layout_(layout), dma_buf_(std::move(dma_buf)) {}
+
+    [[nodiscard]] std::uint64_t surface() const noexcept { return surface_; }
+    [[nodiscard]] const ExportedLayout& layout() const noexcept { return layout_; }
+    [[nodiscard]] int dma_buf() const noexcept { return dma_buf_.get(); }
+
+private:
+    std::uint64_t surface_;
+    ExportedLayout layout_;
+    UniqueFd dma_buf_;
+};
+
+}  // namespace rwin::host

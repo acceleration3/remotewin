@@ -1,0 +1,1022 @@
+{
+  "backdrop": "#1E7860",
+  "scenarios": [
+    {
+      "name": "overlapped",
+      "about": "WS_OVERLAPPEDWINDOW: the ordinary application window, DWM frame, caption, sizing border",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "overlapped"}
+      ]
+    },
+    {
+      "name": "overlapped-dark",
+      "about": "WS_OVERLAPPEDWINDOW with DWMWA_USE_IMMERSIVE_DARK_MODE: a dark caption",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "dark", "dwm": {"dark": true}}
+      ]
+    },
+    {
+      "name": "caption-fixed",
+      "about": "WS_CAPTION | WS_SYSMENU without WS_THICKFRAME: a dialog frame that cannot be sized",
+      "windows": [
+        {"style": ["WS_CAPTION", "WS_SYSMENU"], "client": [360, 240], "at": [400, 300], "title": "fixed"}
+      ]
+    },
+    {
+      "name": "corners-square",
+      "about": "WS_OVERLAPPEDWINDOW with DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_DONOTROUND",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "square", "dwm": {"corners": "square"}}
+      ]
+    },
+    {
+      "name": "popup-borderless",
+      "about": "WS_POPUP: no frame, no caption, no shadow",
+      "windows": [
+        {"style": ["WS_POPUP"], "client": [320, 200], "at": [400, 300], "title": "popup"}
+      ]
+    },
+    {
+      "name": "popup-border",
+      "about": "WS_POPUP | WS_BORDER: a one-pixel frame and nothing else",
+      "windows": [
+        {"style": ["WS_POPUP", "WS_BORDER"], "client": [320, 200], "at": [400, 300], "title": "popup border"}
+      ]
+    },
+    {
+      "name": "popup-round-corners",
+      "about": "WS_POPUP with DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUND: a frameless window DWM rounds",
+      "windows": [
+        {"style": ["WS_POPUP"], "client": [320, 200], "at": [400, 300], "title": "popup round", "dwm": {"corners": "round"}}
+      ]
+    },
+    {
+      "name": "popup-dropshadow",
+      "about": "WS_POPUP of a CS_DROPSHADOW class: a menu-like window with the classic drop shadow",
+      "windows": [
+        {"class_style": ["CS_DROPSHADOW"], "style": ["WS_POPUP"], "client": [320, 200], "at": [400, 300], "title": "drop shadow"}
+      ]
+    },
+    {
+      "name": "tool-window",
+      "about": "WS_OVERLAPPEDWINDOW | WS_EX_TOOLWINDOW: a palette, not in the taskbar",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_TOOLWINDOW"], "client": [360, 240], "at": [400, 300], "title": "tool"}
+      ]
+    },
+    {
+      "name": "topmost",
+      "about": "WS_OVERLAPPEDWINDOW | WS_EX_TOPMOST: stays above every non-topmost window",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_TOPMOST"], "client": [360, 240], "at": [400, 300], "title": "topmost"}
+      ]
+    },
+    {
+      "name": "no-activate",
+      "about": "WS_OVERLAPPEDWINDOW | WS_EX_NOACTIVATE shown with SW_SHOWNOACTIVATE: never the foreground, not in the taskbar, and a click does not make it the foreground",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_NOACTIVATE"], "client": [360, 240], "at": [400, 300], "title": "no activate", "show": "noactivate"}
+      ],
+      "input": [
+        {"window": 0, "click": [90, 180]}
+      ]
+    },
+    {
+      "name": "layered-alpha",
+      "about": "WS_POPUP | WS_EX_LAYERED with LWA_ALPHA 128: half see-through",
+      "windows": [
+        {"style": ["WS_POPUP"], "ex_style": ["WS_EX_LAYERED"], "client": [320, 200], "at": [400, 300], "title": "alpha", "layered": {"alpha": 128}}
+      ]
+    },
+    {
+      "name": "layered-alpha-framed",
+      "about": "WS_OVERLAPPEDWINDOW | WS_EX_LAYERED with LWA_ALPHA 128: a framed window, frame and all half see-through",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_LAYERED"], "client": [360, 240], "at": [400, 300], "title": "alpha framed", "layered": {"alpha": 128}}
+      ]
+    },
+    {
+      "name": "layered-colorkey",
+      "about": "WS_POPUP | WS_EX_LAYERED with LWA_COLORKEY magenta: the magenta patch is a hole",
+      "windows": [
+        {"style": ["WS_POPUP"], "ex_style": ["WS_EX_LAYERED"], "client": [320, 200], "at": [400, 300], "title": "colour key", "layered": {"color_key": "#FF00FF"}}
+      ]
+    },
+    {
+      "name": "layered-alpha-colorkey",
+      "about": "WS_POPUP | WS_EX_LAYERED with LWA_ALPHA 160 and LWA_COLORKEY magenta",
+      "windows": [
+        {"style": ["WS_POPUP"], "ex_style": ["WS_EX_LAYERED"], "client": [320, 200], "at": [400, 300], "title": "alpha and key", "layered": {"alpha": 160, "color_key": "#FF00FF"}}
+      ]
+    },
+    {
+      "name": "click-through",
+      "about": "WS_POPUP | WS_EX_LAYERED | WS_EX_TRANSPARENT with LWA_ALPHA 200: seen, never clicked",
+      "windows": [
+        {"style": ["WS_POPUP"], "ex_style": ["WS_EX_LAYERED", "WS_EX_TRANSPARENT"], "client": [320, 200], "at": [400, 300], "title": "click through", "layered": {"alpha": 200}}
+      ]
+    },
+    {
+      "name": "region-ellipse",
+      "about": "WS_POPUP shaped by SetWindowRgn to an ellipse",
+      "windows": [
+        {"style": ["WS_POPUP"], "client": [320, 200], "at": [400, 300], "title": "ellipse", "shape": "ellipse"}
+      ]
+    },
+    {
+      "name": "region-rounded",
+      "about": "WS_POPUP shaped by SetWindowRgn to a rounded rectangle",
+      "windows": [
+        {"style": ["WS_POPUP"], "client": [320, 200], "at": [400, 300], "title": "rounded", "shape": "rounded"}
+      ]
+    },
+    {
+      "name": "region-hole",
+      "about": "WS_POPUP shaped by SetWindowRgn to a rectangle with a rectangular hole",
+      "windows": [
+        {"style": ["WS_POPUP"], "client": [320, 200], "at": [400, 300], "title": "hole", "shape": "frame"}
+      ]
+    },
+    {
+      "name": "owned-popup",
+      "about": "an overlapped owner and a bordered WS_POPUP it owns, overlapping it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "owner"},
+        {"style": ["WS_POPUP", "WS_BORDER"], "client": [200, 120], "at": [560, 420], "title": "owned", "owner": 0, "show": "noactivate"}
+      ]
+    },
+    {
+      "name": "owned-tool",
+      "about": "an overlapped owner and an owned WS_EX_TOOLWINDOW palette beside it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "owner"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_TOOLWINDOW"], "client": [180, 160], "at": [820, 300], "title": "palette", "owner": 0, "show": "noactivate"}
+      ]
+    },
+    {
+      "name": "disabled",
+      "about": "WS_OVERLAPPEDWINDOW | WS_DISABLED: shown, takes no input",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW", "WS_DISABLED"], "client": [360, 240], "at": [400, 300], "title": "disabled"}
+      ]
+    },
+    {
+      "name": "maximized",
+      "about": "WS_OVERLAPPEDWINDOW shown with SW_SHOWMAXIMIZED",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "maximized", "show": "maximized"}
+      ]
+    },
+    {
+      "name": "maximized-alpha",
+      "about": "WS_OVERLAPPEDWINDOW | WS_EX_LAYERED with LWA_ALPHA 160, shown maximised: a fitted picture, translucent, beside the mirror's own opaque bars",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_LAYERED"], "client": [360, 240], "at": [400, 300], "title": "maximized alpha", "show": "maximized", "layered": {"alpha": 160}}
+      ]
+    },
+    {
+      "name": "minimized",
+      "about": "WS_OVERLAPPEDWINDOW shown with SW_SHOWMINNOACTIVE",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "minimized", "show": "minimized"}
+      ]
+    },
+    {
+      "name": "hidden",
+      "about": "WS_OVERLAPPEDWINDOW never shown: nothing to mirror",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "hidden", "show": "hidden"}
+      ]
+    },
+    {
+      "name": "input-pointer",
+      "about": "a pointer move and a left click put into the mirror reach the window at the same client pixel",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "pointer"}
+      ],
+      "input": [
+        {"window": 0, "move": [30, 50]}, {"window": 0, "click": [271, 183]}
+      ]
+    },
+    {
+      "name": "input-keys",
+      "about": "letters and digits pressed in the mirror arrive as the keyboard's keys: their virtual key, their scan code, and the character the guest's layout makes",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "keys"}
+      ],
+      "input": [
+        {"window": 0, "click": [100, 100]}, {"window": 0, "key": "A"}, {"window": 0, "key": "Z"},
+        {"window": 0, "key": "Q"}, {"window": 0, "key": "M"}, {"window": 0, "key": "1"},
+        {"window": 0, "key": "0"}, {"window": 0, "key": "Shift+A"}, {"window": 0, "key": "Shift+1"},
+        {"window": 0, "key": "Shift+0"}
+      ]
+    },
+    {
+      "name": "input-keys-punctuation",
+      "about": "the punctuation keys, plain and shifted: the guest's layout, not the host's text, makes the character",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "keys"}
+      ],
+      "input": [
+        {"window": 0, "click": [100, 100]}, {"window": 0, "key": "Minus"}, {"window": 0, "key": "Equal"},
+        {"window": 0, "key": "LeftBracket"}, {"window": 0, "key": "RightBracket"},
+        {"window": 0, "key": "Semicolon"}, {"window": 0, "key": "Apostrophe"},
+        {"window": 0, "key": "Grave"}, {"window": 0, "key": "Backslash"}, {"window": 0, "key": "Comma"},
+        {"window": 0, "key": "Period"}, {"window": 0, "key": "Slash"}, {"window": 0, "key": "Space"},
+        {"window": 0, "key": "Shift+Minus"}, {"window": 0, "key": "Shift+Equal"},
+        {"window": 0, "key": "Shift+Semicolon"}, {"window": 0, "key": "Shift+Apostrophe"},
+        {"window": 0, "key": "Shift+Slash"}, {"window": 0, "key": "RShift+Comma"}
+      ]
+    },
+    {
+      "name": "input-keys-editing",
+      "about": "the editing and navigation keys: E0 keys carry the extended bit",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "keys"}
+      ],
+      "input": [
+        {"window": 0, "click": [100, 100]}, {"window": 0, "key": "Return"}, {"window": 0, "key": "Tab"},
+        {"window": 0, "key": "Backspace"}, {"window": 0, "key": "Escape"}, {"window": 0, "key": "Left"},
+        {"window": 0, "key": "Up"}, {"window": 0, "key": "Right"}, {"window": 0, "key": "Down"},
+        {"window": 0, "key": "Home"}, {"window": 0, "key": "End"}, {"window": 0, "key": "PageUp"},
+        {"window": 0, "key": "PageDown"}, {"window": 0, "key": "Insert"}, {"window": 0, "key": "Delete"},
+        {"window": 0, "key": "F1"}, {"window": 0, "key": "F5"}, {"window": 0, "key": "F12"}
+      ]
+    },
+    {
+      "name": "input-keys-modifiers",
+      "about": "modifiers alone and held: left and right are told apart by scan code and extended bit, and Ctrl makes a control character",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "keys"}
+      ],
+      "input": [
+        {"window": 0, "click": [100, 100]}, {"window": 0, "key": "Shift"},
+        {"window": 0, "key": "RShift"}, {"window": 0, "key": "Ctrl"}, {"window": 0, "key": "RCtrl"},
+        {"window": 0, "key": "Ctrl+C"}, {"window": 0, "key": "RCtrl+Z"},
+        {"window": 0, "key": "Ctrl+Shift+A"}, {"window": 0, "key": "Shift+Tab"}
+      ]
+    },
+    {
+      "name": "input-keys-keypad",
+      "about": "the keypad keys Num Lock does not change: Enter and / are E0, the rest are not",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "keys"}
+      ],
+      "input": [
+        {"window": 0, "click": [100, 100]}, {"window": 0, "key": "KpEnter"},
+        {"window": 0, "key": "KpDivide"}, {"window": 0, "key": "KpMultiply"},
+        {"window": 0, "key": "KpMinus"}, {"window": 0, "key": "KpPlus"}
+      ]
+    },
+    {
+      "name": "input-keys-f10",
+      "about": "F10 is a system key: WM_SYSKEYDOWN, as Windows sends it for the menu bar",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "keys"}
+      ],
+      "input": [
+        {"window": 0, "click": [100, 100]}, {"window": 0, "key": "F10"}, {"window": 0, "key": "Escape"}
+      ]
+    },
+    {
+      "name": "input-resize",
+      "about": "the mirror dragged larger by its edge: the guest window's visible frame becomes that size, its invisible border around it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "resize"}
+      ],
+      "input": [
+        {"window": 0, "resize": [480, 360]}, {"window": 0, "click": [30, 50]}
+      ]
+    },
+    {
+      "name": "input-popup",
+      "about": "a click on an owned popup's mirror reaches the popup at the same client pixel",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "owner"},
+        {"style": ["WS_POPUP", "WS_BORDER"], "client": [200, 120], "at": [560, 420], "title": "owned", "owner": 0, "show": "noactivate"}
+      ],
+      "input": [
+        {"window": 1, "click": [150, 90]}
+      ]
+    },
+    {
+      "name": "input-disabled",
+      "about": "a click on a WS_DISABLED window's mirror reaches nothing",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW", "WS_DISABLED"], "client": [360, 240], "at": [400, 300], "title": "disabled input"}
+      ],
+      "input": [
+        {"window": 0, "click": [100, 100]}
+      ]
+    },
+    {
+      "name": "rel-modal",
+      "about": "DialogBox: the owner is disabled while its modal dialog is up; a click on the owner brings the dialog forward and reaches nothing; keys go to the dialog; when it ends the owner is enabled and active again",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [400, 300], "title": "owner"}
+      ],
+      "steps": [
+        {"do": "modal", "owner": 0, "client": [260, 140], "at": [520, 400], "title": "modal"},
+        {"do": "guest_click", "window": 0, "at": [40, 40]},
+        {"window": 0, "click": [40, 40]},
+        {"window": 1, "key": "A"},
+        {"window": 1, "click": [30, 30]},
+        {"do": "end_dialog", "window": 1}
+      ]
+    },
+    {
+      "name": "rel-modal-centred",
+      "about": "a DS_CENTER modal dialog: Windows centres it, and its mirror is where Windows put it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [300, 250], "title": "owner"}
+      ],
+      "steps": [
+        {"do": "modal", "owner": 0, "client": [300, 160], "centred": true, "title": "centred"},
+        {"do": "end_dialog", "window": 1}
+      ]
+    },
+    {
+      "name": "rel-modal-maximized-owner",
+      "about": "a modal dialog over a maximised owner: the owner stays maximised and disabled, the dialog above it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [400, 300], "title": "owner", "show": "maximized"}
+      ],
+      "steps": [
+        {"do": "modal", "owner": 0, "client": [280, 150], "at": [900, 500], "title": "over maximized"},
+        {"window": 0, "click": [60, 300]},
+        {"do": "end_dialog", "window": 1}
+      ]
+    },
+    {
+      "name": "rel-modal-chain",
+      "about": "a modal dialog opens a modal dialog of its own: the owner and the first dialog are disabled, and a click on either brings the second forward",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [400, 300], "title": "owner"}
+      ],
+      "steps": [
+        {"do": "modal", "owner": 0, "client": [300, 180], "at": [460, 360], "title": "first"},
+        {"do": "modal", "owner": 1, "client": [200, 100], "at": [700, 500], "title": "second"},
+        {"do": "guest_click", "window": 0, "at": [40, 40]},
+        {"window": 0, "click": [40, 40]},
+        {"window": 1, "click": [20, 20]},
+        {"do": "end_dialog", "window": 2},
+        {"do": "end_dialog", "window": 1}
+      ]
+    },
+    {
+      "name": "rel-modal-of-owned",
+      "about": "a modal dialog owned by an owned palette: the palette is disabled, its owner is not, and a click on the palette brings the dialog forward",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [400, 260], "at": [300, 300], "title": "main"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_TOOLWINDOW"], "client": [220, 200], "at": [800, 300], "title": "palette", "owner": 0, "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "modal", "owner": 1, "client": [220, 110], "at": [820, 560], "title": "palette modal"},
+        {"window": 1, "click": [30, 30]},
+        {"window": 0, "click": [30, 30]},
+        {"do": "end_dialog", "window": 2}
+      ]
+    },
+    {
+      "name": "rel-modal-minimize-owner",
+      "about": "the owner minimised while its modal dialog is up: the dialog is hidden with it and comes back with it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [400, 300], "title": "owner"}
+      ],
+      "steps": [
+        {"do": "modal", "owner": 0, "client": [260, 140], "at": [520, 400], "title": "modal"},
+        {"do": "show", "window": 0, "show": "SW_MINIMIZE"},
+        {"do": "show", "window": 0, "show": "SW_RESTORE"},
+        {"do": "end_dialog", "window": 1}
+      ]
+    },
+    {
+      "name": "rel-modeless",
+      "about": "CreateDialog: a modeless dialog leaves its owner enabled and usable, and stays above it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [400, 300], "title": "owner"}
+      ],
+      "steps": [
+        {"do": "modeless", "owner": 0, "client": [240, 120], "at": [700, 420], "title": "modeless"},
+        {"window": 0, "click": [40, 40]},
+        {"window": 1, "click": [30, 30]},
+        {"do": "end_dialog", "window": 1}
+      ]
+    },
+    {
+      "name": "rel-message-box-owned",
+      "about": "MessageBox(MB_APPLMODAL) owned by a window: the owner is disabled while it is up, and a click on the owner brings it forward",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [400, 300], "title": "owner"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [1000, 300], "title": "other", "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "message_box", "owner": 0, "flags": ["MB_APPLMODAL"], "title": "application modal"},
+        {"window": 0, "click": [40, 40]},
+        {"window": 1, "click": [40, 40]},
+        {"do": "close_box", "window": 2}
+      ]
+    },
+    {
+      "name": "rel-message-box-task",
+      "about": "MessageBox(MB_TASKMODAL) with no owner: every window of the thread is disabled while it is up",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [400, 300], "title": "one"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [1000, 300], "title": "two", "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "message_box", "flags": ["MB_TASKMODAL"], "title": "task modal"},
+        {"window": 1, "click": [40, 40]},
+        {"do": "close_box", "window": 2}
+      ]
+    },
+    {
+      "name": "rel-message-box-system",
+      "about": "MessageBox(MB_SYSTEMMODAL) with no owner: WS_EX_TOPMOST, above every other window, and nothing disabled",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [480, 320], "at": [400, 300], "title": "one"}
+      ],
+      "steps": [
+        {"do": "message_box", "flags": ["MB_SYSTEMMODAL"], "title": "system modal"},
+        {"do": "close_box", "window": 1}
+      ]
+    },
+    {
+      "name": "rel-enable",
+      "about": "EnableWindow on a live window: disabled it takes no input, enabled again it does - the mirror follows without being remade",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "enable"}
+      ],
+      "steps": [
+        {"do": "enable", "window": 0, "on": false},
+        {"window": 0, "click": [60, 60]},
+        {"window": 0, "key": "B"},
+        {"do": "enable", "window": 0, "on": true},
+        {"window": 0, "click": [60, 60]},
+        {"window": 0, "key": "B"}
+      ]
+    },
+    {
+      "name": "rel-owner-states",
+      "about": "an owner with an owned palette and an owned popup: minimised, both are hidden; restored, back; hidden, both stay; destroyed, both go with it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [400, 260], "at": [400, 300], "title": "owner"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_TOOLWINDOW"], "client": [180, 160], "at": [900, 300], "title": "palette", "owner": 0, "show": "noactivate"},
+        {"style": ["WS_POPUP", "WS_BORDER"], "client": [160, 100], "at": [500, 420], "title": "popup", "owner": 0, "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "show", "window": 0, "show": "SW_MINIMIZE"},
+        {"do": "show", "window": 0, "show": "SW_RESTORE"},
+        {"do": "show", "window": 0, "show": "SW_HIDE"},
+        {"do": "show", "window": 0, "show": "SW_SHOW"},
+        {"do": "destroy", "window": 0}
+      ]
+    },
+    {
+      "name": "rel-owner-change",
+      "about": "SetWindowLongPtr(GWLP_HWNDPARENT): an owned popup handed to another owner, then to none",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [300, 300], "title": "first"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [900, 300], "title": "second", "show": "noactivate"},
+        {"style": ["WS_POPUP", "WS_BORDER"], "client": [160, 100], "at": [400, 400], "title": "owned", "owner": 0, "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "owner", "window": 2, "owner": 1},
+        {"do": "owner", "window": 2}
+      ]
+    },
+    {
+      "name": "rel-attached-owner-change",
+      "about": "SetWindowLongPtr(GWLP_HWNDPARENT) on an owned captioned window: attached to another owner's mirror, then standing alone",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [300, 300], "title": "first"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [900, 300], "title": "second", "show": "noactivate"},
+        {"style": ["WS_CAPTION", "WS_SYSMENU"], "client": [200, 100], "at": [500, 600], "title": "dialog", "owner": 0, "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "owner", "window": 2, "owner": 1},
+        {"do": "owner", "window": 2}
+      ]
+    },
+    {
+      "name": "rel-foreground",
+      "about": "SetForegroundWindow from one window to another and back: the mirror of the foreground window asks to be the active one",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [400, 300], "title": "one"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [900, 300], "title": "two", "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "foreground", "window": 1},
+        {"do": "foreground", "window": 0}
+      ]
+    },
+    {
+      "name": "rel-foreground-noactivate",
+      "about": "SetForegroundWindow on a WS_EX_NOACTIVATE window: Windows makes it the foreground; its mirror never asks to be active",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [400, 300], "title": "one"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "ex_style": ["WS_EX_NOACTIVATE"], "client": [300, 200], "at": [900, 300], "title": "no activate", "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "foreground", "window": 1},
+        {"do": "foreground", "window": 0}
+      ]
+    },
+    {
+      "name": "rel-topmost",
+      "about": "SetWindowPos(HWND_TOPMOST) then HWND_NOTOPMOST on a live window: stays on top, then not",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [400, 300], "title": "one"},
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [300, 200], "at": [600, 400], "title": "two", "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "position", "window": 0, "z": "topmost", "flags": ["SWP_NOMOVE", "SWP_NOSIZE", "SWP_NOACTIVATE"]},
+        {"do": "position", "window": 0, "z": "notopmost", "flags": ["SWP_NOMOVE", "SWP_NOSIZE", "SWP_NOACTIVATE"]}
+      ]
+    },
+    {
+      "name": "place-default",
+      "about": "CW_USEDEFAULT: Windows chooses where the window goes, and its mirror is there",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": "default", "title": "default place"}
+      ]
+    },
+    {
+      "name": "place-moved-by-guest",
+      "about": "SetWindowPos and MoveWindow move a window, and its mirror follows; a popup it owns follows with it",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "moved"},
+        {"style": ["WS_POPUP", "WS_BORDER"], "client": [160, 100], "at": [500, 420], "title": "popup", "owner": 0, "show": "noactivate"}
+      ],
+      "steps": [
+        {"do": "position", "window": 0, "at": [900, 500], "flags": ["SWP_NOSIZE", "SWP_NOZORDER", "SWP_NOACTIVATE"]},
+        {"do": "move", "window": 0, "at": [200, 150], "size": [500, 360]},
+        {"do": "position", "window": 1, "at": [260, 260], "flags": ["SWP_NOSIZE", "SWP_NOZORDER", "SWP_NOACTIVATE"]}
+      ]
+    },
+    {
+      "name": "place-moved-on-host",
+      "about": "a mirror put somewhere else on this desktop - as a drag leaves it - moves its guest window under it; and a dialog's mirror the same",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "moved here"}
+      ],
+      "steps": [
+        {"host": "move", "window": 0, "to": [700, 450]},
+        {"do": "modeless", "owner": 0, "client": [220, 110], "at": [800, 500], "title": "dialog"},
+        {"host": "move", "window": 1, "to": [1200, 300]},
+        {"window": 1, "click": [30, 30]},
+        {"do": "end_dialog", "window": 1}
+      ]
+    },
+    {
+      "name": "place-screen-edge",
+      "about": "a window by the right edge of the guest's screen, moved near its bottom right corner and back to the top left",
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [2000, 300], "title": "edge"}
+      ],
+      "steps": [
+        {"do": "position", "window": 0, "at": [2150, 900], "flags": ["SWP_NOSIZE", "SWP_NOZORDER", "SWP_NOACTIVATE"]},
+        {"do": "position", "window": 0, "at": [100, 100], "flags": ["SWP_NOSIZE", "SWP_NOZORDER", "SWP_NOACTIVATE"]}
+      ]
+
+    },
+    {
+      "name": "cursor-class",
+      "about": "SetClassLongPtr(GCLP_HCURSOR): the class cursor shows when the pointer next moves over the window; a system cursor is worn as this desktop's own of the same meaning",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "class"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "class_cursor", "window": 0, "cursor": "IDC_IBEAM"},
+        {"window": 0, "move": [120, 100]},
+        {"do": "class_cursor", "window": 0, "cursor": "IDC_HAND"},
+        {"window": 0, "move": [140, 100]}
+      ]
+    },
+    {
+      "name": "cursor-system-pointers",
+      "about": "WM_SETCURSOR answered with the system arrows, text and hand cursors: each is this desktop's cursor of the same meaning (cursor-shape-v1 names), sharp at any scale",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "pointers"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_ARROW"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_IBEAM"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_CROSS"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_UPARROW"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_HAND"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_HELP"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_NO"}
+      ]
+    },
+    {
+      "name": "cursor-system-sizes",
+      "about": "WM_SETCURSOR answered with the system size cursors",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "sizes"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_SIZEWE"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_SIZENS"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_SIZENWSE"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_SIZENESW"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_SIZEALL"}
+      ]
+    },
+    {
+      "name": "cursor-system-busy",
+      "about": "IDC_WAIT and IDC_APPSTARTING, animated on Windows: this desktop's wait and progress cursors, which the compositor animates",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "busy"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_WAIT"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_APPSTARTING"}
+      ]
+    },
+    {
+      "name": "cursor-system-unmapped",
+      "about": "IDC_PIN and IDC_PERSON mean nothing this desktop has a cursor for: shown as the guest's pixels, one to one",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "unmapped"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_PIN"},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_PERSON"}
+      ]
+    },
+    {
+      "name": "cursor-colour",
+      "about": "an application's 32-bit cursor with alpha (CreateIconIndirect): its pixels, its hotspot, one guest pixel to one screen pixel at the host's fractional scale",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "colour"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "colour"}
+      ]
+    },
+    {
+      "name": "cursor-monochrome",
+      "about": "a monochrome cursor (CreateCursor) with black, white, transparent and inverting pixels: right over white; over black the inverting ones cannot invert",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "monochrome"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "monochrome"}
+      ]
+    },
+    {
+      "name": "cursor-animated",
+      "about": "an animated cursor loaded from an .ani file, four steps of 100/200/100/500 ms: the mirror steps through them with their times",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "animated"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "animated"}
+      ]
+    },
+    {
+      "name": "cursor-large",
+      "about": "a 96x96 cursor, larger than the system's: one to one, not scaled to the system size",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "large"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "large"}
+      ]
+    },
+    {
+      "name": "cursor-null",
+      "about": "SetCursor(NULL) in WM_SETCURSOR: no cursor over the window, and the mirror wears none; a cursor again brings it back",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "null"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "none"},
+        {"window": 0, "move": [150, 110]},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_ARROW"},
+        {"window": 0, "move": [160, 110]}
+      ]
+    },
+    {
+      "name": "cursor-showcursor-count",
+      "about": "ShowCursor's counter: hidden below 0, so two FALSE need two TRUE before the cursor shows again",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "count"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "show_cursor", "on": false},
+        {"do": "show_cursor", "on": false},
+        {"do": "show_cursor", "on": true},
+        {"do": "show_cursor", "on": true}
+      ]
+    },
+    {
+      "name": "cursor-capture",
+      "about": "SetCapture, then the pointer leaves the window: Windows keeps the capturing window's cursor outside it",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "capture"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "answer_cursor", "window": 0, "cursor": "IDC_HAND"},
+        {"do": "capture", "window": 0, "on": true},
+        {"do": "guest_move", "window": 0, "at": [-80, 120]},
+        {"do": "capture", "window": 0, "on": false},
+        {"do": "guest_move", "window": 0, "at": [180, 120]}
+      ]
+    },
+    {
+      "name": "cursor-sizing-border",
+      "about": "on the sizing border outside the visible frame Windows shows the size cursors; the mirror's resize band, which stands for it, shows the same",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "border"}
+      ],
+      "steps": [
+        {"window": 0, "move": [180, 120]},
+        {"do": "guest_move", "window": 0, "at": [364, 120]},
+        {"do": "guest_move", "window": 0, "at": [364, 244]},
+        {"window": 0, "move": [358, 120]},
+        {"window": 0, "move": [358, 238]},
+        {"window": 0, "move": [180, 120]}
+      ]
+    },
+    {
+      "name": "clip-window",
+      "about": "ClipCursor to the client area with the cursor shown (a strategy game): the mirror confines the pointer to the same part of itself; ClipCursor(NULL) lets it go",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "clip"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "clip_cursor", "window": 0, "at": [0, 0], "size": [360, 240]},
+        {"do": "clip_cursor", "window": 0}
+      ]
+    },
+    {
+      "name": "clip-part",
+      "about": "ClipCursor to part of the client area: confined to that part",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "clip part"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "clip_cursor", "window": 0, "at": [40, 40], "size": [200, 120]},
+        {"do": "clip_cursor", "window": 0}
+      ]
+    },
+    {
+      "name": "clip-foreground-lost",
+      "about": "ClipCursor, then another application's window takes the foreground: what Windows does with the clip, and the mirror lets go",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "clip lost"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "clip_cursor", "window": 0, "at": [0, 0], "size": [360, 240]},
+        {"do": "activate_shell"},
+        {"window": 0, "click": [180, 120]},
+        {"do": "clip_cursor", "window": 0}
+      ]
+    },
+    {
+      "name": "clip-tiny",
+      "about": "ClipCursor to one pixel with the cursor shown: no absolute move can move it, so the pointer is locked and only its motion passed on",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "clip tiny"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "clip_cursor", "window": 0, "at": [180, 120], "size": [1, 1]},
+        {"window": 0, "relative": [12, -5]},
+        {"do": "clip_cursor", "window": 0}
+      ]
+    },
+    {
+      "name": "lock-fps-clip",
+      "about": "the classic mouse look: the cursor hidden, clipped to the window and put back at its middle on every WM_MOUSEMOVE; the pointer is locked, its motion moves the guest's cursor, and it is let go when the game shows its cursor again",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "fps"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "show_cursor", "on": false},
+        {"do": "recentre", "window": 0, "on": true},
+        {"do": "clip_cursor", "window": 0, "at": [0, 0], "size": [360, 240]},
+        {"window": 0, "relative": [40, -24]},
+        {"window": 0, "relative": [-15, 9]},
+        {"do": "recentre", "window": 0, "on": false},
+        {"do": "show_cursor", "on": true},
+        {"do": "clip_cursor", "window": 0}
+      ]
+    },
+    {
+      "name": "lock-fps-warp",
+      "about": "mouse look with no clip: the cursor hidden and put back at the middle on every move of a sweep is seen being put back, and the pointer is locked; it is let go when the cursor shows again",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "warp"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "show_cursor", "on": false},
+        {"do": "recentre", "window": 0, "on": true},
+        {"window": 0, "move": [100, 90], "then": [[140, 70], [60, 150], [220, 200], [250, 160]]},
+        {"window": 0, "relative": [30, 10]},
+        {"do": "show_cursor", "on": true},
+        {"do": "recentre", "window": 0, "on": false}
+      ]
+    },
+    {
+      "name": "lock-raw-input",
+      "about": "raw input (RegisterRawInputDevices, RIDEV_INPUTSINK) with the cursor hidden and clipped to one pixel: WM_INPUT carries the very counts the pointer moved by",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "raw"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "raw_input", "window": 0, "flags": ["RIDEV_INPUTSINK"], "on": true},
+        {"do": "show_cursor", "on": false},
+        {"do": "clip_cursor", "window": 0, "at": [180, 120], "size": [1, 1]},
+        {"window": 0, "relative": [25, -10]},
+        {"window": 0, "relative": [-7, 3]},
+        {"do": "clip_cursor", "window": 0},
+        {"do": "show_cursor", "on": true},
+        {"do": "raw_input", "window": 0, "flags": [], "on": false}
+      ]
+    },
+    {
+      "name": "lock-raw-nolegacy",
+      "about": "raw input with RIDEV_NOLEGACY and a hidden cursor, neither clipped nor put back: mouse look no other process can tell from a video player's hidden cursor",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "nolegacy"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "raw_input", "window": 0, "flags": ["RIDEV_NOLEGACY"], "on": true},
+        {"do": "show_cursor", "on": false},
+        {"do": "show_cursor", "on": true},
+        {"do": "raw_input", "window": 0, "flags": [], "on": false}
+      ]
+    },
+    {
+      "name": "lock-video-hidden",
+      "about": "a cursor that is only hidden (a video player): nothing is held",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "video"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "show_cursor", "on": false},
+        {"window": 0, "move": [200, 130]},
+        {"do": "show_cursor", "on": true}
+      ]
+    },
+    {
+      "name": "lock-precision",
+      "about": "mouse look with Windows' \"Enhance pointer precision\" on: raw input carries the very counts, the legacy cursor moves by what Windows' acceleration makes of them",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "precision"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "pointer_precision", "on": true},
+        {"do": "raw_input", "window": 0, "flags": ["RIDEV_INPUTSINK"], "on": true},
+        {"do": "show_cursor", "on": false},
+        {"do": "recentre", "window": 0, "on": true},
+        {"do": "clip_cursor", "window": 0, "at": [0, 0], "size": [360, 240]},
+        {"window": 0, "relative": [8, 4]},
+        {"window": 0, "relative": [80, -40]},
+        {"do": "pointer_precision", "on": false},
+        {"window": 0, "relative": [80, -40]},
+        {"do": "recentre", "window": 0, "on": false},
+        {"do": "show_cursor", "on": true},
+        {"do": "clip_cursor", "window": 0},
+        {"do": "raw_input", "window": 0, "flags": [], "on": false}
+      ]
+    },
+    {
+      "name": "lock-focus-escape",
+      "about": "a held pointer is let go when the mirror loses the focus and held again when it gets it back; Ctrl+Alt+G lets it go until the mirror is clicked",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "escape"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "show_cursor", "on": false},
+        {"do": "clip_cursor", "window": 0, "at": [0, 0], "size": [360, 240]},
+        {"host": "focus", "window": 0},
+        {"host": "unfocus", "window": 0},
+        {"host": "focus", "window": 0},
+        {"host": "escape", "window": 0},
+        {"host": "regrab", "window": 0},
+        {"window": 0, "relative": [20, 20]},
+        {"do": "clip_cursor", "window": 0},
+        {"do": "show_cursor", "on": true}
+      ]
+    },
+    {
+      "name": "lock-foreground-lost",
+      "about": "mouse look, then another application's window takes the foreground: what Windows does with the clip and the hidden cursor, and the mirror lets go",
+      "pointer": true,
+      "windows": [
+        {"style": ["WS_OVERLAPPEDWINDOW"], "client": [360, 240], "at": [400, 300], "title": "lost"}
+      ],
+      "steps": [
+        {"window": 0, "click": [180, 120]},
+        {"do": "show_cursor", "on": false},
+        {"do": "clip_cursor", "window": 0, "at": [0, 0], "size": [360, 240]},
+        {"do": "activate_shell"},
+        {"window": 0, "click": [180, 120]},
+        {"do": "clip_cursor", "window": 0},
+        {"do": "show_cursor", "on": true}
+      ]
+    }
+  ],
+  "matrix": {
+    "prefix": "mx",
+    "window": {"style": [], "ex_style": [], "class_style": [], "client": [360, 240], "at": [400, 300], "title": "subject"},
+    "owner": {"style": ["WS_OVERLAPPEDWINDOW"], "client": [640, 440], "at": [260, 180], "title": "owner"},
+    "excluded": [{"composited": "composited", "noredirection": "noredirection"}],
+    "groups": [
+      {"name": "frame", "factors": [
+          {"name": "kind", "values": [{"label": "overlapped", "style": ["WS_OVERLAPPED"]}, {"label": "popup", "style": ["WS_POPUP"]}]},
+          {"name": "edge", "values": [{"label": "caption", "style": ["WS_CAPTION"]}, {"label": "noedge"}, {"label": "border", "style": ["WS_BORDER"]}, {"label": "dlgframe", "style": ["WS_DLGFRAME"]}]},
+          {"name": "sizing", "values": [{"label": "thickframe", "style": ["WS_THICKFRAME"]}, {"label": "fixed"}]},
+          {"name": "sysmenu", "values": [{"label": "sysmenu", "style": ["WS_SYSMENU"]}, {"label": "nosysmenu"}]},
+          {"name": "boxes", "values": [{"label": "minmax", "style": ["WS_MINIMIZEBOX", "WS_MAXIMIZEBOX"]}, {"label": "noboxes"}, {"label": "minbox", "style": ["WS_MINIMIZEBOX"]}, {"label": "maxbox", "style": ["WS_MAXIMIZEBOX"]}]}
+      ]},
+      {"name": "state", "factors": [
+          {"name": "show", "values": [{"label": "normal"}, {"label": "noactivate", "show": "noactivate"}, {"label": "maximized", "show": "maximized"}, {"label": "minimized", "show": "minimized"}, {"label": "hidden", "show": "hidden"}]},
+          {"name": "enabled", "values": [{"label": "no-disabled"}, {"label": "disabled", "style": ["WS_DISABLED"]}]}
+      ]},
+      {"name": "shell", "factors": [
+          {"name": "toolwindow", "values": [{"label": "no-toolwindow"}, {"label": "toolwindow", "ex_style": ["WS_EX_TOOLWINDOW"]}]},
+          {"name": "appwindow", "values": [{"label": "no-appwindow"}, {"label": "appwindow", "ex_style": ["WS_EX_APPWINDOW"]}]},
+          {"name": "topmost", "values": [{"label": "no-topmost"}, {"label": "topmost", "ex_style": ["WS_EX_TOPMOST"]}]},
+          {"name": "noactivate", "values": [{"label": "no-noactivate"}, {"label": "noactivate", "ex_style": ["WS_EX_NOACTIVATE"]}]}
+      ]},
+      {"name": "layering", "factors": [
+          {"name": "layered", "values": [{"label": "opaque"}, {"label": "alpha", "ex_style": ["WS_EX_LAYERED"], "layered": {"alpha": 160}}, {"label": "colorkey", "ex_style": ["WS_EX_LAYERED"], "layered": {"color_key": "#FF00FF"}}, {"label": "alphakey", "ex_style": ["WS_EX_LAYERED"], "layered": {"alpha": 160, "color_key": "#FF00FF"}}]},
+          {"name": "transparent", "values": [{"label": "no-transparent"}, {"label": "transparent", "ex_style": ["WS_EX_TRANSPARENT"]}]}
+      ]},
+      {"name": "edges", "factors": [
+          {"name": "dlgmodalframe", "values": [{"label": "no-dlgmodalframe"}, {"label": "dlgmodalframe", "ex_style": ["WS_EX_DLGMODALFRAME"]}]},
+          {"name": "clientedge", "values": [{"label": "no-clientedge"}, {"label": "clientedge", "ex_style": ["WS_EX_CLIENTEDGE"]}]},
+          {"name": "windowedge", "values": [{"label": "no-windowedge"}, {"label": "windowedge", "ex_style": ["WS_EX_WINDOWEDGE"]}]},
+          {"name": "staticedge", "values": [{"label": "no-staticedge"}, {"label": "staticedge", "ex_style": ["WS_EX_STATICEDGE"]}]}
+      ]},
+      {"name": "render", "factors": [
+          {"name": "composited", "values": [{"label": "no-composited"}, {"label": "composited", "ex_style": ["WS_EX_COMPOSITED"]}]},
+          {"name": "noredirection", "values": [{"label": "no-noredirection"}, {"label": "noredirection", "ex_style": ["WS_EX_NOREDIRECTIONBITMAP"]}]},
+          {"name": "layoutrtl", "values": [{"label": "no-layoutrtl"}, {"label": "layoutrtl", "ex_style": ["WS_EX_LAYOUTRTL"]}]}
+      ]},
+      {"name": "class", "factors": [
+          {"name": "dropshadow", "values": [{"label": "no-dropshadow"}, {"label": "dropshadow", "class_style": ["CS_DROPSHADOW"]}]},
+          {"name": "noclose", "values": [{"label": "no-noclose"}, {"label": "noclose", "class_style": ["CS_NOCLOSE"]}]}
+      ]},
+      {"name": "owner", "factors": [
+          {"name": "owned", "values": [{"label": "no-owned"}, {"label": "owned", "owned": true}]},
+          {"name": "shape", "values": [{"label": "unshaped"}, {"label": "ellipse", "shape": "ellipse"}]}
+      ]},
+      {"name": "dwm", "factors": [
+          {"name": "corners", "values": [{"label": "corners-default"}, {"label": "square", "dwm": {"corners": "square"}}, {"label": "round", "dwm": {"corners": "round"}}, {"label": "small", "dwm": {"corners": "small"}}]},
+          {"name": "dark", "values": [{"label": "no-dark"}, {"label": "dark", "dwm": {"dark": true}}]}
+      ]}
+    ]
+  }
+}

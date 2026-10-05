@@ -2,6 +2,7 @@
 
 #include "guest/windows/window_focus.hpp"
 #include "logging/logger.hpp"
+#include "proto/key_stroke.hpp"
 
 // clang-format off
 #include <windows.h>
@@ -42,9 +43,18 @@ UINT send(WORD virtual_key, WORD scan, DWORD flags) {
 
 }  // namespace
 
-void KeyboardInjector::type(std::uint64_t window_handle, std::uint32_t character) const {
-    focus_.give_to(window_handle);
+void KeyboardInjector::put(const KeyStroke& stroke) const {
+    focus_.give_to(stroke.window);
+    if (stroke.scan_code != 0) {
+        press_scan_code(stroke.scan_code, stroke.pressed);
+    } else if (stroke.character != 0) {
+        if (stroke.pressed) type(stroke.character);
+    } else if (stroke.virtual_key != 0) {
+        press_virtual_key(stroke.virtual_key, stroke.pressed);
+    }
+}
 
+void KeyboardInjector::type(std::uint32_t character) const {
     // Anything outside the basic plane arrives as a surrogate pair, and
     // each half goes in as its own keystroke for the receiver to
     // reassemble.
@@ -63,11 +73,19 @@ void KeyboardInjector::type(std::uint64_t window_handle, std::uint32_t character
     RWIN_DEBUG("input", "typed {:#x}: {} of 2 events accepted", character, accepted);
 }
 
-void KeyboardInjector::press(std::uint64_t window_handle, std::uint32_t virtual_key,
-                             bool pressed) const {
-    if (virtual_key == 0) return;
-    focus_.give_to(window_handle);
+// wVk is left 0: with KEYEVENTF_SCANCODE Windows ignores it and asks the
+// layout, as it does for a key a keyboard sent.
+void KeyboardInjector::press_scan_code(std::uint16_t scan_code, bool pressed) const {
+    DWORD flags = KEYEVENTF_SCANCODE | (pressed ? 0 : KEYEVENTF_KEYUP);
+    if ((scan_code & KeyStroke::kExtended) == KeyStroke::kExtended) {
+        flags |= KEYEVENTF_EXTENDEDKEY;
+    }
+    const UINT accepted = send(0, static_cast<WORD>(scan_code & 0xFF), flags);
+    RWIN_DEBUG("input", "scan code {:#06x} {}: {} accepted", scan_code,
+               pressed ? "down" : "up", accepted);
+}
 
+void KeyboardInjector::press_virtual_key(std::uint32_t virtual_key, bool pressed) const {
     const ScanCode scan = scan_code_of(virtual_key);
     DWORD flags = pressed ? 0 : KEYEVENTF_KEYUP;
     if (scan.extended) flags |= KEYEVENTF_EXTENDEDKEY;

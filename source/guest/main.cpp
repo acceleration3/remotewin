@@ -13,7 +13,10 @@
 namespace {
 
 constexpr std::uint16_t kDefaultPort = 5140;
-constexpr std::uint32_t kDefaultFramesPerSecond = 30;
+// The host's refresh, not a budget: a frame is sent only when the
+// compositor composed a new one, so a still picture costs nothing at any
+// rate, and a moving one is as smooth as the host's glass.
+constexpr std::uint32_t kDefaultFramesPerSecond = 60;
 // QEMU's user-mode networking puts the host here, with no forwarding rule
 // to declare and nothing to arrange before the guest boots.
 constexpr const char* kDefaultHost = "10.0.2.2";
@@ -50,6 +53,11 @@ int main(int argc, char** argv) {
                             std::to_string(kDefaultFramesPerSecond)).c_str(),
                      nullptr, 10));
 
+    // Started by the agent with no console: the agent names the file in
+    // RWIN_LOG_FILE, and stderr is all a logger has.
+    if (const char* log = std::getenv("RWIN_LOG_FILE"); log != nullptr && *log != '\0') {
+        if (std::freopen(log, "w", stderr) == nullptr) return EXIT_FAILURE;
+    }
     rwin::Logger::instance().opened("remotewin-guest");
     RWIN_INFO("boot", "host={} port={} fps={}", host, port, fps);
     if (unaware != ERROR_SUCCESS) {
@@ -58,11 +66,15 @@ int main(int argc, char** argv) {
                   static_cast<unsigned long>(unaware));
     }
 
+    // The session - its Direct3D device above all - is made before the
+    // host is dialled: on a virtual GPU making the device has taken 46 s,
+    // and a host told the guest was there would have asked it for windows
+    // all that while and heard nothing.
     rwin::guest::TcpClient link;
+    rwin::guest::GuestSession session{link, fps};
     if (!link.connect(host, port)) {
         return EXIT_FAILURE;
     }
-    rwin::guest::GuestSession session{link, fps};
     session.run();
     RWIN_INFO("boot", "session ended");
     return EXIT_SUCCESS;

@@ -119,6 +119,41 @@ void a_guest_rectangle_is_covered_and_barely_more() {
     }
 }
 
+// A confinement: every unit of it is over guest pixels of the clip, and a
+// unit more on any side would not be.
+void a_clip_is_confined_to_the_units_wholly_inside_it() {
+    for (const double ratio : kRatios) {
+        for (const double fit : {1.0, 0.75, 1.3}) {
+            const PixelMapping mapping{ratio, fit, QPoint(3, 5)};
+            for (int at = 0; at < 300; at += 7) {
+                const QRect clip(at, at / 2, 17 + at, 9 + at / 3);
+                const QRect inside = mapping.logical_rect_inside(clip);
+                const QPointF from = mapping.logical_point(clip.topLeft());
+                const QPointF to = mapping.logical_point(clip.topLeft() + QPoint(clip.width(), clip.height()));
+                check(!inside.isEmpty(), "a clip many units large confines to something", ratio, at);
+                check(inside.left() >= from.x() - 1e-9 && inside.top() >= from.y() - 1e-9,
+                      "the confinement starts at or after the clip", ratio, at);
+                check(inside.left() + inside.width() <= to.x() + 1e-9
+                          && inside.top() + inside.height() <= to.y() + 1e-9,
+                      "and ends at or before it", ratio, at);
+                check(inside.left() - from.x() < 1 && to.x() - (inside.left() + inside.width()) < 1
+                          && inside.top() - from.y() < 1 && to.y() - (inside.top() + inside.height()) < 1,
+                      "and is less than a unit smaller on each side", ratio, at);
+                const QPoint first = mapping.guest_point(QPointF(inside.left() + 0.01, inside.top() + 0.01));
+                const QPoint last = mapping.guest_point(
+                    QPointF(inside.left() + inside.width() - 0.01, inside.top() + inside.height() - 0.01));
+                check(clip.contains(first) && clip.contains(last), "its corners are over pixels of the clip", ratio,
+                      at);
+            }
+        }
+    }
+    const PixelMapping six_fifths{1.2};
+    check(six_fifths.logical_rect_inside(QRect(100, 60, 600, 360)) == QRect(84, 50, 499, 300),
+          "a clip at 100,60 600x360 at 1.2 is units 84,50 499x300 (83.3 and 583.3 rounded in)", 1.2, 0);
+    check(six_fifths.logical_rect_inside(QRect(10, 10, 1, 1)).isEmpty(),
+          "a one-pixel clip holds no whole unit at 1.2", 1.2, 0);
+}
+
 void a_mirror_its_own_size_is_one_to_one_at_the_top_left() {
     for (const double ratio : kRatios) {
         const PixelMapping mapping{ratio};
@@ -201,14 +236,41 @@ void a_frame_is_copied_not_resampled() {
     }
 }
 
+// A picture drawn on the GPU goes where QPainter puts one on the pixel
+// path: the same device pixels, to the pixel, one to one or fitted.
+void the_gpu_picture_lands_where_the_painted_one_does() {
+    for (const double ratio : kRatios) {
+        for (const QPoint origin : {QPoint(0, 0), QPoint(1, 0), QPoint(3, 5)}) {
+            const PixelMapping where{ratio, 1.0, origin};
+            const QSize size(1001, 613);
+            check(where.device_picture(size) == QRect(origin, size),
+                  "one to one, the GPU's picture is the frame's own size at the origin", ratio, origin.x());
+            const QRectF painted = where.picture(size);
+            const QRect device(static_cast<int>(std::lround(painted.x() * ratio)),
+                               static_cast<int>(std::lround(painted.y() * ratio)),
+                               static_cast<int>(std::lround(painted.width() * ratio)),
+                               static_cast<int>(std::lround(painted.height() * ratio)));
+            check(device == where.device_picture(size), "and the painter's rectangle is the same pixels", ratio,
+                  origin.y());
+        }
+        const PixelMapping fitted = PixelMapping{ratio, 0.6}.centring(QSize(1920, 1080), QSize(1000, 700));
+        const QRectF painted = fitted.picture(QSize(1920, 1080));
+        const QRect gpu = fitted.device_picture(QSize(1920, 1080));
+        check(std::abs(painted.x() * ratio - gpu.x()) < 1e-6 && std::abs(painted.width() * ratio - gpu.width()) < 1e-6,
+              "fitted, the GPU's picture is the painter's too", ratio, gpu.width());
+    }
+}
+
 }  // namespace
 
 int main() {
+    the_gpu_picture_lands_where_the_painted_one_does();
     a_guest_size_is_shown_whole_and_no_larger_than_it_must_be();
     a_size_asked_for_comes_back_as_the_same_size();
     the_whole_numbers_a_ratio_lands_on_stay_whole();
     every_device_pixel_is_one_guest_pixel();
     a_guest_rectangle_is_covered_and_barely_more();
+    a_clip_is_confined_to_the_units_wholly_inside_it();
     a_mirror_its_own_size_is_one_to_one_at_the_top_left();
     a_maximised_mirror_fits_the_guest_screen();
     a_frame_is_copied_not_resampled();

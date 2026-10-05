@@ -6,7 +6,7 @@
 
 namespace rwin::guest {
 
-// A rectangle in a window's own coordinates.
+// A rectangle in a window's picture's coordinates (WindowSurface).
 struct WindowRect {
     std::int32_t left = 0;
     std::int32_t top = 0;
@@ -30,6 +30,8 @@ struct GuestWindow {
     // window above its owner and takes it down with it.
     std::uint64_t owner = 0;
     std::uint32_t process_id = 0;
+    // The picture's place and size on the screen (WindowSurface), not the
+    // window rectangle's.
     std::int32_t x = 0;
     std::int32_t y = 0;
     std::uint32_t width = 0;
@@ -55,8 +57,9 @@ struct GuestWindow {
     // not.
     std::uint32_t band = 0;
     bool foreground = false;
-    // SetWindowRgn, as the rectangles of the region. Empty when the window
-    // has none and is its whole rectangle.
+    // SetWindowRgn, as the rectangles of the region, in the picture's
+    // coordinates. Empty when the window has none and is its whole
+    // rectangle.
     std::vector<WindowRect> region;
 };
 

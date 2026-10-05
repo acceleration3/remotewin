@@ -1,30 +1,31 @@
 #pragma once
 
-#include <QCursor>
-#include <QHash>
+#include "host/cursor/cursor_look.hpp"
 
 #include <cstdint>
+#include <unordered_map>
+
+namespace rwin {
+struct CursorPicture;
+}
 
 namespace rwin::host {
 
-// The guest's cursor, wearing this desktop's clothes.
+// The guest's cursors, as they have been sent: once each, then named.
 //
-// The guest sends a shape once and then names it; this keeps the shapes
-// so a pointer moving between a text field and a button does not resend
-// two bitmaps thirty times a second.
+// A pointer moving between a text field and a button does not resend two
+// bitmaps thirty times a second. Kept for the session's life, at a stable
+// place each (a look handed out stays valid).
 class EmulatedCursor {
 public:
-    // Straight BGRA, top-down, ``width * 4`` per row.
-    void remember(std::uint64_t id, std::uint32_t width, std::uint32_t height,
-                  std::uint32_t hotspot_x, std::uint32_t hotspot_y,
-                  const std::uint8_t* pixels);
+    void remember(const CursorPicture& picture);
 
-    // Null when the shape has not arrived yet, which happens only if the
+    // Null when the cursor has not arrived yet, which happens only if the
     // guest names one before sending it.
-    [[nodiscard]] const QCursor* find(std::uint64_t id) const;
+    [[nodiscard]] const CursorLook* find(std::uint64_t id) const;
 
 private:
-    QHash<quint64, QCursor> shapes_;
+    std::unordered_map<std::uint64_t, CursorLook> looks_;
 };
 
 }  // namespace rwin::host

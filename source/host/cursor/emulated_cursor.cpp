@@ -1,28 +1,39 @@
 #include "host/cursor/emulated_cursor.hpp"
 
 #include "logging/logger.hpp"
+#include "proto/cursor_picture.hpp"
 
-#include <QImage>
-#include <QPixmap>
+#include <utility>
 
 namespace rwin::host {
 
-void EmulatedCursor::remember(std::uint64_t id, std::uint32_t width, std::uint32_t height,
-                              std::uint32_t hotspot_x, std::uint32_t hotspot_y,
-                              const std::uint8_t* pixels) {
-    if (width == 0 || height == 0 || pixels == nullptr) return;
-    const QImage image(pixels, static_cast<int>(width), static_cast<int>(height),
-                       static_cast<int>(width * 4), QImage::Format_ARGB32);
-    // Copied: the bytes belong to the decoder and the next read reuses them.
-    shapes_.insert(id, QCursor(QPixmap::fromImage(image.copy()),
-                               static_cast<int>(hotspot_x),
-                               static_cast<int>(hotspot_y)));
-    RWIN_DEBUG("cursor", "remembered shape {:#x} ({}x{})", id, width, height);
+void EmulatedCursor::remember(const CursorPicture& picture) {
+    CursorLook look;
+    look.id = picture.id;
+    look.system = picture.system;
+    look.inverts = picture.inverts;
+    look.frames.reserve(picture.frames.size());
+    for (const CursorPicture::Frame& frame : picture.frames) {
+        if (frame.width == 0 || frame.height == 0) continue;
+        // Copied: the bytes belong to the message.
+        const QImage image(frame.bgra.data(), static_cast<int>(frame.width), static_cast<int>(frame.height),
+                           static_cast<int>(frame.width * 4), QImage::Format_ARGB32);
+        look.frames.push_back(CursorLook::Frame{image.copy(),
+                                                QPoint(static_cast<int>(frame.hotspot_x), static_cast<int>(frame.hotspot_y)),
+                                                static_cast<int>(frame.delay_ms)});
+    }
+    if (look.frames.empty()) {
+        RWIN_WARN("cursor", "cursor {:#x} arrived with no picture", picture.id);
+        return;
+    }
+    RWIN_DEBUG("cursor", "remembered {:#x} {} ({} picture(s), {}x{})", picture.id, name_of(picture.system),
+               look.frames.size(), look.frames.front().image.width(), look.frames.front().image.height());
+    looks_.insert_or_assign(picture.id, std::move(look));
 }
 
-const QCursor* EmulatedCursor::find(std::uint64_t id) const {
-    const auto found = shapes_.constFind(id);
-    return found == shapes_.constEnd() ? nullptr : &found.value();
+const CursorLook* EmulatedCursor::find(std::uint64_t id) const {
+    const auto found = looks_.find(id);
+    return found == looks_.end() ? nullptr : &found->second;
 }
 
 }  // namespace rwin::host

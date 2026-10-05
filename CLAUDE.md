@@ -9,6 +9,8 @@ Two ends, one wire.
     log/     the logger both ends use
     guest/   remotewin-guest.exe — enumeration, capture, input, cursors
     host/    remotewin — the Qt windows, and what the guest's chrome means
+    probe/   remotewin-probe.exe — makes windows to a spec, reports the truth
+    conform/ remotewin-conform — mirrors the probe, compares (docs/conformance.md)
 
 `proto/` is the contract between the two ends and is tested host-native: both
 must agree byte for byte, and when they stop agreeing nothing fails loudly.

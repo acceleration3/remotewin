@@ -152,7 +152,9 @@ void read_layering(HWND window, GuestWindow& into) {
     into.color_key = key;
 }
 
-void read_region(HWND window, std::vector<WindowRect>& into) {
+// GetWindowRgn answers in the window rectangle's coordinates, and the
+// rectangles are moved to the picture's.
+void read_region(HWND window, const WindowSurface& surface, std::vector<WindowRect>& into) {
     // More rectangles than this and it is a mask no shape needs — an
     // antialiased edge scanned into rows. Sent whole, such a region is a
     // window list several times the size of every frame; the window is
@@ -177,8 +179,10 @@ void read_region(HWND window, std::vector<WindowRect>& into) {
         const auto* rects = reinterpret_cast<const RECT*>(data->Buffer);
         into.reserve(data->rdh.nCount);
         for (DWORD i = 0; i < data->rdh.nCount; ++i) {
-            into.push_back(WindowRect{rects[i].left, rects[i].top, rects[i].right,
-                                      rects[i].bottom});
+            into.push_back(WindowRect{rects[i].left - surface.inset_x(),
+                                      rects[i].top - surface.inset_y(),
+                                      rects[i].right - surface.inset_x(),
+                                      rects[i].bottom - surface.inset_y()});
         }
     }
     ::DeleteObject(region);
@@ -221,7 +225,7 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
     if ((found.extended_style & WS_EX_LAYERED) != 0) read_layering(window, found);
     found.band = band_of(window);
     found.foreground = window == collector->foreground;
-    read_region(window, found.region);
+    read_region(window, surface, found.region);
     collector->into->push_back(std::move(found));
     return TRUE;
 }

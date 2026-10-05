@@ -5,16 +5,12 @@
 
 namespace rwin::guest {
 
-// A Windows cursor decoded into pixels the host can show.
+// One picture of a Windows cursor decoded into pixels the host can show.
 //
-// Two shapes exist and only one of them is an image. A colour cursor is a
-// bitmap with an alpha channel. A monochrome one is a single bitmap of
-// twice the height: the top half says which pixels are transparent, the
-// bottom half says whether the visible ones are black or white — and the
-// combination the old API calls XOR means "invert whatever is behind me",
-// which no host compositor can be asked to do. Those pixels come out
-// opaque black, which is what they look like over the light backgrounds
-// they were designed against.
+// Two kinds exist. A colour cursor is a bitmap with an alpha channel, or an
+// older one whose transparency is in its mask. A monochrome one is two
+// planes, some of whose pixels invert what is behind them
+// (MonochromePicture).
 class CursorImage {
 public:
     explicit CursorImage(void* cursor_handle);
@@ -24,10 +20,11 @@ public:
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
     [[nodiscard]] std::uint32_t hotspot_x() const noexcept { return hotspot_x_; }
     [[nodiscard]] std::uint32_t hotspot_y() const noexcept { return hotspot_y_; }
-    // Straight BGRA, top-down, width * 4 per row.
-    [[nodiscard]] const std::vector<std::uint8_t>& pixels() const noexcept {
-        return pixels_;
-    }
+    // Some pixel inverts what is under it, and was drawn as MonochromePicture
+    // draws one.
+    [[nodiscard]] bool inverts() const noexcept { return inverts_; }
+    // Straight BGRA, top-down, width * 4 per row; moved out.
+    [[nodiscard]] std::vector<std::uint8_t> take_pixels() noexcept;
 
 private:
     bool read_colour(void* device_context, void* colour_bitmap);
@@ -40,6 +37,7 @@ private:
     std::uint32_t hotspot_x_ = 0;
     std::uint32_t hotspot_y_ = 0;
     bool valid_ = false;
+    bool inverts_ = false;
 };
 
 }  // namespace rwin::guest

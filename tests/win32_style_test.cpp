@@ -107,6 +107,18 @@ void dwm_frame() {
           "a frame DWM is not drawing has no shadow");
 }
 
+// SPI_GETDROPSHADOW off turns off both kinds of shadow, as measured on a
+// guest with "Show shadows under windows" unticked.
+void the_desktop_can_turn_shadows_off() {
+    const Win32Style framed{Words{.style = Win32Style::kWsCaption, .dwm_frame = true,
+                                  .desktop_shadows = false}};
+    check(!framed.casts_shadow(), "no desktop shadows: a DWM frame is unshaded");
+    check((framed.hints() & Qt::NoDropShadowWindowHint) != 0, "and asks for no shadow");
+    check(!Win32Style{Words{.class_style = Win32Style::kCsDropShadow, .desktop_shadows = false}}
+               .casts_shadow(),
+          "no desktop shadows: CS_DROPSHADOW is unshaded");
+}
+
 void layering() {
     const Win32Style faded{Words{.extended_style = Win32Style::kWsExLayered,
                                  .layered_flags = Win32Style::kLwaAlpha,
@@ -128,6 +140,15 @@ void bands() {
           "a band above the desktop's is above all of it");
 }
 
+void an_owned_dialog_stands_alone() {
+    check(Win32Style{Words{.style = Win32Style::kWsCaption, .owned = true}}.stands_alone(),
+          "owned, with a caption: attached to its owner, not a popup of it");
+    check(!Win32Style{Words{.style = Win32Style::kWsCaption}}.stands_alone(),
+          "not owned: nothing to stand apart from");
+    check(!Win32Style{Words{.style = Win32Style::kWsBorder, .owned = true}}.stands_alone(),
+          "owned, with no caption: a popup");
+}
+
 void equality_is_over_every_word() {
     check(Win32Style{Words{}} == Win32Style{Words{}}, "equal words, equal style");
     check(!(Win32Style{Words{}} == Win32Style{Words{.dwm_frame = true}}),
@@ -143,8 +164,10 @@ int main() {
     the_taskbar_rule();
     class_style_bits();
     dwm_frame();
+    the_desktop_can_turn_shadows_off();
     layering();
     bands();
+    an_owned_dialog_stands_alone();
     equality_is_over_every_word();
 
     if (failures != 0) {
