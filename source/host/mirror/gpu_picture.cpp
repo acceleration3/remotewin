@@ -108,7 +108,15 @@ GpuPicture::GpuPicture(QWidget* parent) : QOpenGLWidget(parent), egl_(std::make_
     setUpdateBehavior(QOpenGLWidget::NoPartialUpdate);
 }
 
-GpuPicture::~GpuPicture() { release_gl(); }
+// Let go of here, then cut off from the context: QOpenGLWidget's destructor
+// destroys it after this one has run, and its aboutToBeDestroyed would call
+// release_gl on what is by then no GpuPicture - which aborted the mirror
+// whenever a window closed, and with it every window the application went on
+// to open.
+GpuPicture::~GpuPicture() {
+    release_gl();
+    if (QOpenGLContext* gl = context(); gl != nullptr) disconnect(gl, nullptr, this, nullptr);
+}
 
 QSize GpuPicture::picture_size() const { return current_.has_value() ? current_->size() : QSize(); }
 

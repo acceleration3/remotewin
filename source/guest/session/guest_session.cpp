@@ -95,8 +95,15 @@ void GuestSession::handle(MessageReader& message) {
             const std::uint32_t process_id = message.u32();
             const std::string job = message.string();
             if (!message.ok()) break;
-            RWIN_INFO("scope", "asked to watch pid {} job '{}'", process_id, job);
-            watcher_ = std::make_unique<WindowListWatcher>(job, process_id);
+            // The host says it again every second; the same scope is the
+            // watcher already running, which remembers which processes
+            // joined the application since (LaunchScope).
+            if (watcher_ == nullptr || process_id != watched_process_ || job != watched_job_) {
+                RWIN_INFO("scope", "asked to watch pid {} job '{}'", process_id, job);
+                watcher_ = std::make_unique<WindowListWatcher>(job, process_id);
+                watched_process_ = process_id;
+                watched_job_ = job;
+            }
             if (drags_ == nullptr) drags_ = std::make_unique<WindowDragWatcher>();
             push_window_changes();
             break;

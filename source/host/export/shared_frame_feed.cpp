@@ -13,6 +13,7 @@
 #include <QSocketNotifier>
 #include <QTimer>
 
+#include <algorithm>
 #include <iterator>
 #include <utility>
 
@@ -87,6 +88,7 @@ void SharedFrameFeed::give_up(const std::string& why) {
     asked_.clear();
     syncing_.clear();
     rings_.clear();
+    export_asks_.clear();
 }
 
 void SharedFrameFeed::take_ring(const SlotRing& ring) {
@@ -188,6 +190,28 @@ void SharedFrameFeed::take_answer(ExportSocket::Received received) {
 }
 
 void SharedFrameFeed::exported(const ExportAnswer& answer, UniqueFd dma_buf) {
+    // The guest names a ring as soon as it has made its textures, and they
+    // reach the GPU device only once the guest's batch making them has run
+    // there: an export asked first finds nothing yet. Asked again a moment
+    // later, while the surface is still one of a ring's - one replaced
+    // meanwhile is nothing to wait for - rather than giving up the GPU for
+    // the whole session, which left Steam's window crossing as pixels.
+    if (answer.status == ExportAnswer::Status::NotFound) {
+        const bool held = std::any_of(rings_.begin(), rings_.end(), [&](const auto& entry) {
+            return entry.second.slot_of(answer.surface).has_value();
+        });
+        if (!held) {
+            export_asks_.erase(answer.surface);
+            return;
+        }
+        if (++export_asks_[answer.surface] < kMostExportAsks) {
+            QTimer::singleShot(kExportRetryMs, this, [this, surface = answer.surface] {
+                static_cast<void>(ask(ExportRequest::Operation::Export, surface));
+            });
+            return;
+        }
+    }
+    export_asks_.erase(answer.surface);
     if (!answer.ok()) {
         give_up("the GPU device did not export surface " + std::to_string(answer.surface) + ": "
                 + to_string(answer.status));

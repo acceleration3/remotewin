@@ -29,6 +29,7 @@
 #include <utility>
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace rwin {
@@ -112,6 +113,9 @@ private:
     // Created when the host says what to watch; until then there is no
     // application to have windows.
     std::unique_ptr<WindowListWatcher> watcher_;
+    // What watcher_ was made for.
+    std::uint32_t watched_process_ = 0;
+    std::string watched_job_;
     // Created when the host asks for the whole monitor (WatchMonitor).
     std::unique_ptr<MonitorCapture> monitor_;
     // What of the monitor's picture the host has, so only what changed is sent.

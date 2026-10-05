@@ -24,6 +24,10 @@ constexpr int kExitWireMismatch = 3;
 
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
+    // The session says when it is done: an application's last window closing
+    // is not it while the application runs on to open another - Steam's
+    // updater giving way to its sign-in, a dialog between two windows.
+    app.setQuitOnLastWindowClosed(false);
     QCoreApplication::setApplicationName(QStringLiteral("remotewin"));
     QCoreApplication::setApplicationVersion(
         QStringLiteral("wire %1").arg(rwin::WireHello::kVersion));

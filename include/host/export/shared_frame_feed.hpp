@@ -103,6 +103,12 @@ private:
     std::map<std::uint64_t, PendingFrame> syncing_;
     std::map<quint64, WindowRing> rings_;
     std::uint64_t next_tag_ = 0;
+    // How often a surface's export has found nothing yet, by surface.
+    std::map<std::uint64_t, int> export_asks_;
+    // An export asked again this often, this far apart, before the GPU is
+    // given up: a second for the guest's batch making the surface to run.
+    static constexpr int kMostExportAsks = 500;
+    static constexpr int kExportRetryMs = 2;
 };
 
 }  // namespace rwin::host
