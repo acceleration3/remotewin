@@ -72,6 +72,7 @@ add_library(rwin_host STATIC
     input/pointer_grabber.cpp
     input/scan_code.cpp
     link/guest_link.cpp
+    link/parent_control.cpp
     mirror/draw_picture.cpp
     mirror/gpu_picture.cpp
     mirror/mirror_session.cpp
@@ -94,6 +95,7 @@ add_library(rwin_host STATIC
     "${RWIN_INCLUDE_DIR}/host/input/pointer_grabber.hpp"
     "${RWIN_INCLUDE_DIR}/host/wayland/relative_pointer.hpp"
     "${RWIN_INCLUDE_DIR}/host/link/guest_link.hpp"
+    "${RWIN_INCLUDE_DIR}/host/link/parent_control.hpp"
     "${RWIN_INCLUDE_DIR}/host/mirror/gpu_picture.hpp"
     "${RWIN_INCLUDE_DIR}/host/mirror/mirror_session.hpp"
     "${RWIN_INCLUDE_DIR}/host/mirror/mirror_window.hpp"

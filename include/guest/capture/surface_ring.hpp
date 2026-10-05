@@ -60,7 +60,8 @@ public:
     // the picture's size first when that changed. Nothing when the shared
     // textures cannot be made or their ids read: this guest cannot share
     // frames, and they go as pixels.
-    [[nodiscard]] std::optional<Delivery> copy(const CaptureStream::Frame& frame);
+    // Consumes the frame only after a successful copy submission.
+    [[nodiscard]] std::optional<Delivery> copy(CaptureStream::Frame& frame);
 
     void free(const SlotFree& freed) noexcept;
 
@@ -73,6 +74,7 @@ private:
     std::uint64_t window_;
     std::uint32_t& rings_made_;
     std::array<ID3D11Texture2D*, SlotRing::kSlots> textures_{};
+    std::array<std::optional<CaptureStream::Frame>, SlotRing::kSlots> sources_{};
     SlotRing announced_;
     SlotLedger ledger_{0};
 };

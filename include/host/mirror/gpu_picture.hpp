@@ -2,6 +2,7 @@
 
 #include "host/export/shared_frame.hpp"
 #include "host/mirror/picture_layout.hpp"
+#include "logging/frame_timing.hpp"
 
 #include <QOpenGLWidget>
 #include <QSize>
@@ -101,6 +102,9 @@ private:
     std::vector<Retiring> waiting_;
     PictureLayout layout_;
     bool failed_ = false;
+    FrameTiming timing_{"gpu"};
+    std::uint64_t drawn_order_ = 0;
+    bool sample_pixels_ = false;
 };
 
 }  // namespace rwin::host

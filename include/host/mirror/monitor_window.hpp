@@ -39,7 +39,8 @@ struct SharedFrame;
 class MonitorWindow : public QWidget {
     Q_OBJECT
 public:
-    MonitorWindow(GuestLink& link, const QString& title, PixelCursor& pixel_cursor);
+    MonitorWindow(GuestLink& link, const QString& title, PixelCursor& pixel_cursor,
+                  QWidget* parent = nullptr);
 
     void present(const QImage& pixels);
     // Frames that stay on the GPU are drawn here from now on, as well as
@@ -54,6 +55,7 @@ public:
     // The guest half dialled in; until then there is nothing to wait for
     // but it.
     void note_guest_connected();
+    void set_interactive(bool interactive);
 
 Q_SIGNALS:
     void closed();
@@ -69,6 +71,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
@@ -100,6 +103,7 @@ private:
     // The picture when the guest's frames stay on the GPU; null otherwise.
     GpuPicture* gpu_ = nullptr;
     bool guest_connected_ = false;
+    bool interactive_ = true;
 };
 
 }  // namespace rwin::host

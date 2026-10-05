@@ -45,6 +45,8 @@ enum class MessageId : std::uint8_t {
     // The host has finished reading a slot of a window's ring (SlotFree):
     // the guest may copy into it again.
     SlotFree = 15,
+    // A wheel turned over a mirror (PointerWheel).
+    PointerWheel = 16,
 
     WindowList = 64,
     Frame = 65,

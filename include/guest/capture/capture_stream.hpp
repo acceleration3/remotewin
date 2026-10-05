@@ -1,5 +1,7 @@
 #pragma once
 
+#include "logging/frame_timing.hpp"
+
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -48,6 +50,7 @@ public:
 
         [[nodiscard]] ID3D11Texture2D* texture() const noexcept { return texture_; }
         [[nodiscard]] Extent content() const noexcept { return content_; }
+        [[nodiscard]] std::int64_t source_time() const noexcept { return source_time_; }
 
     private:
         friend class CaptureStream;
@@ -57,6 +60,7 @@ public:
         void* frame_;
         ID3D11Texture2D* texture_;
         Extent content_;
+        std::int64_t source_time_ = 0;
     };
 
     // ``arrivals`` is raised each time the compositor has a frame here.
@@ -100,6 +104,7 @@ private:
     // while the old is still capturing the same thing.
     void close_session();
     void close_pool();
+    void sample_frame(const Frame& frame);
 
     // Opaque: the capture interfaces are WinRT, and a header that named
     // them would drag the whole projection into everything that captures.
@@ -112,6 +117,10 @@ private:
     // The pool's FrameArrived registration, while it has one.
     std::optional<std::int64_t> arrival_token_;
     Extent size_;
+    FrameTiming timing_{"capture"};
+    std::uint64_t captured_ = 0;
+    void* sample_ = nullptr;
+    bool sample_pixels_ = false;
 };
 
 }  // namespace rwin::guest

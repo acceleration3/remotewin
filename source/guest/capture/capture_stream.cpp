@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <cstdlib>
 #include <utility>
 
 namespace capture_abi = ABI::Windows::Graphics::Capture;
@@ -48,6 +49,12 @@ IDirect3DDxgiInterfaceAccess : public IUnknown {
 __CRT_UUID_DECL(IDirect3DDxgiInterfaceAccess, 0xA9B3D012, 0x3DF2, 0x4EE3, 0xB8, 0xD1,
                 0x86, 0x95, 0xF4, 0x57, 0xD3, 0xC1)
 
+// IGraphicsCaptureSession5 is absent from the MinGW headers.
+struct CaptureInterval : IInspectable {
+    virtual HRESULT STDMETHODCALLTYPE get_MinUpdateInterval(INT64* hundred_ns) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_MinUpdateInterval(INT64 hundred_ns) = 0;
+};
+
 namespace rwin::guest {
 
 namespace {
@@ -61,6 +68,23 @@ constexpr int kPoolBuffers = 3;
 // DirectXPixelFormat::B8G8R8A8UIntNormalized. The only format the
 // compositor hands out, and the one that carries alpha.
 constexpr int kBgra8 = 87;
+
+void allow_every_composition(IGraphicsCaptureSession* session) {
+    constexpr IID kSession5{0x67c0ea62, 0x1f85, 0x5061,
+                           {0x92, 0x5a, 0x23, 0x9b, 0xe0, 0xac, 0x09, 0xcb}};
+    CaptureInterval* interval = nullptr;
+    if (FAILED(session->QueryInterface(kSession5, reinterpret_cast<void**>(&interval)))) {
+        RWIN_WARN("capture", "this Windows build retains WGC's default capture throttle");
+        return;
+    }
+    // DWM's default 16 ms gate skips a 60 Hz composition after >0.67 ms
+    // of phase jitter. Zero permits each composition, not busy-loop captures.
+    const HRESULT changed = interval->put_MinUpdateInterval(0);
+    interval->Release();
+    if (FAILED(changed))
+        RWIN_WARN("capture", "cannot remove WGC's capture throttle: {:#010x}",
+                  static_cast<unsigned>(changed));
+}
 
 template <typename T>
 HRESULT activation_factory(const wchar_t* runtime_class, T** out) {
@@ -142,7 +166,9 @@ IGraphicsCaptureItemInterop* item_factory() {
 }  // namespace
 
 CaptureStream::CaptureStream(const GraphicsDevice& device, const FrameSignal& arrivals)
-    : device_(device), arrivals_(arrivals) {}
+    : device_(device), arrivals_(arrivals) {
+    sample_pixels_ = std::getenv("RWIN_TIMING_PIXELS") != nullptr;
+}
 
 CaptureStream::~CaptureStream() { close(); }
 
@@ -168,6 +194,7 @@ void CaptureStream::close() {
     close_pool();
     release(&item_);
     release(&staging_);
+    release(&sample_);
     size_ = {};
 }
 
@@ -286,6 +313,7 @@ bool CaptureStream::resize(Extent size) {
         borders->Release();
     }
 
+    allow_every_composition(static_cast<IGraphicsCaptureSession*>(session_));
     if (FAILED(static_cast<IGraphicsCaptureSession*>(session_)->StartCapture())) {
         RWIN_ERROR("capture", "the session would not start");
         return false;
@@ -301,7 +329,8 @@ CaptureStream::Frame::~Frame() { let_go(); }
 CaptureStream::Frame::Frame(Frame&& other) noexcept
     : frame_(std::exchange(other.frame_, nullptr)),
       texture_(std::exchange(other.texture_, nullptr)),
-      content_(other.content_) {}
+      content_(other.content_),
+      source_time_(other.source_time_) {}
 
 CaptureStream::Frame& CaptureStream::Frame::operator=(Frame&& other) noexcept {
     if (this == &other) return *this;
@@ -309,6 +338,7 @@ CaptureStream::Frame& CaptureStream::Frame::operator=(Frame&& other) noexcept {
     frame_ = std::exchange(other.frame_, nullptr);
     texture_ = std::exchange(other.texture_, nullptr);
     content_ = other.content_;
+    source_time_ = other.source_time_;
     return *this;
 }
 
@@ -384,11 +414,13 @@ std::optional<CaptureStream::Frame> CaptureStream::next_frame() {
     }
     // Held from here, so every way out lets go of it.
     Frame held{frame, nullptr, {}};
+    std::uint64_t drained = 0;
     for (IDirect3D11CaptureFrame* newer = nullptr;
          SUCCEEDED(static_cast<IDirect3D11CaptureFramePool*>(pool_)->TryGetNextFrame(&newer)) && newer != nullptr;
          newer = nullptr) {
         held = Frame{newer, nullptr, {}};
         frame = newer;
+        ++drained;
     }
 
     ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface* surface_of_frame = nullptr;
@@ -415,8 +447,41 @@ std::optional<CaptureStream::Frame> CaptureStream::next_frame() {
                          std::min(static_cast<std::uint32_t>(std::max(content.Height, 0)), described.Height)};
     held.texture_ = texture;
     held.content_ = picture;
+    ABI::Windows::Foundation::TimeSpan composed{};
+    if (SUCCEEDED(frame->get_SystemRelativeTime(&composed)))
+        held.source_time_ = composed.Duration;
     if (picture.width == 0 || picture.height == 0) return std::nullopt;
+    timing_.note("capture", ++captured_, held.source_time_, drained);
+    if (sample_pixels_) sample_frame(held);
     return held;
+}
+
+void CaptureStream::sample_frame(const Frame& frame) {
+    if (sample_ == nullptr) {
+        D3D11_TEXTURE2D_DESC described{};
+        described.Width = 1;
+        described.Height = 1;
+        described.MipLevels = 1;
+        described.ArraySize = 1;
+        described.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        described.SampleDesc.Count = 1;
+        described.Usage = D3D11_USAGE_STAGING;
+        described.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if (FAILED(device_.device()->CreateTexture2D(&described, nullptr,
+                                                     reinterpret_cast<ID3D11Texture2D**>(&sample_))))
+            return;
+    }
+    const auto size = frame.content();
+    const UINT x = size.width / 2;
+    const UINT y = size.height / 2;
+    const D3D11_BOX centre{x, y, 0, x + 1, y + 1, 1};
+    auto* texture = static_cast<ID3D11Texture2D*>(sample_);
+    device_.context()->CopySubresourceRegion(texture, 0, 0, 0, 0, frame.texture(), 0, &centre);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(device_.context()->Map(texture, 0, D3D11_MAP_READ, 0, &mapped))) return;
+    timing_.note("pixel", captured_, frame.source_time(),
+                 static_cast<const unsigned char*>(mapped.pData)[2]);
+    device_.context()->Unmap(texture, 0);
 }
 
 }  // namespace rwin::guest

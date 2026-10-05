@@ -122,7 +122,9 @@ void SharedFrameFeed::take_frame(const FrameInSlot& frame) {
     auto lease = std::make_shared<const SlotLease>(link_, SlotFree{frame.window, frame.ring, frame.slot});
     WindowRing* ring = ring_of(frame.window, frame.ring);
     if (ring == nullptr) return;
-    ask_sync(PendingFrame{frame.window, frame.ring, frame.slot, ring->named(), CopyWait{frame.copies},
+    const auto order = ring->named();
+    timing_.note("received", order, 0, frame.window);
+    ask_sync(PendingFrame{frame.window, frame.ring, frame.slot, order, CopyWait{frame.copies},
                           std::move(lease)});
 }
 
@@ -243,8 +245,10 @@ void SharedFrameFeed::synced(const ExportAnswer& answer, UniqueFd fence, Pending
         case CopyWait::Verdict::Ready: {
             const std::shared_ptr<const SurfaceMemory>& memory = ring->memory(frame.slot);
             if (memory == nullptr || !fence.valid() || !ring->show(frame.order)) return;
+            timing_.note("ready", frame.order, 0, frame.window);
             Q_EMIT frame_ready(frame.window, SharedFrame{memory, std::move(frame.lease),
-                                                         std::make_shared<UniqueFd>(std::move(fence)), frame.ring});
+                                                         std::make_shared<UniqueFd>(std::move(fence)), frame.ring,
+                                                         frame.order});
             return;
         }
         case CopyWait::Verdict::AskAgain:

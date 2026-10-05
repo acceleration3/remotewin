@@ -1,5 +1,7 @@
 #pragma once
 
+#include "logging/frame_timing.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -52,6 +54,8 @@ private:
     // buffer itself.
     void* readable_ = nullptr;
     std::string last_error_;
+    FrameTiming timing_{"socket"};
+    std::uint64_t sends_ = 0;
 };
 
 }  // namespace rwin::guest

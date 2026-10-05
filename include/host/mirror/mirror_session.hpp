@@ -12,9 +12,8 @@
 #include <QByteArray>
 #include <QHash>
 #include <QObject>
-#include <QString>
 #include <QPointer>
-
+#include <QString>
 #include <cstdint>
 #include <optional>
 
@@ -38,37 +37,43 @@ class MirrorSession : public QObject {
 public:
     // ``frames`` hands on the frames that stay on the GPU, when it was
     // opened: the mirrors draw those as well as frames of pixels.
-    MirrorSession(GuestLink& link, SharedFrameFeed& frames, std::uint32_t process_id, QString job_name,
-                  QObject* parent = nullptr);
+    MirrorSession(GuestLink& link, SharedFrameFeed& frames, std::uint32_t process_id,
+                  QString job_name, QObject* parent = nullptr);
+    ~MirrorSession() override;
 
     // The mirror of a guest window, or null while there is none. For a
     // harness that inspects mirrors and puts input into them the way the
     // desktop would.
     [[nodiscard]] MirrorWindow* find(std::uint64_t window) const;
+    void raise();
 
     // What the mirror of ``window`` decided, and where it was put on the
     // desktop; nothing while there is no mirror.
     [[nodiscard]] std::optional<MirrorState> state_of(std::uint64_t window) const;
 
     // Where the guest's screen is on this desktop, where that is known.
-    [[nodiscard]] std::optional<ScreenMapping> guest_screen() const { return placement_.guest_screen(); }
+    [[nodiscard]] std::optional<ScreenMapping> guest_screen() const {
+        return placement_.guest_screen();
+    }
 
     // Where the held pointer's motion goes: the relative pointer protocol
     // feeds it, and a harness can in its place.
     [[nodiscard]] PointerGrabber& pointer_grabber() noexcept { return grabber_; }
 
     // What the compositor was found to offer below Qt, for a report.
-    [[nodiscard]] const QString& pointer_protocols() const noexcept { return pointer_globals_.found(); }
+    [[nodiscard]] const QString& pointer_protocols() const noexcept {
+        return pointer_globals_.found();
+    }
 
 Q_SIGNALS:
     // No windows left and no process to make more. The application is done.
     void finished();
+    void ready();
 
 private:
     using Listed = QHash<quint64, const GuestWindowInfo*>;
 
-    void refresh(const QList<GuestWindowInfo>& windows, bool application_alive,
-                 QSize guest_room);
+    void refresh(const QList<GuestWindowInfo>& windows, bool application_alive, QSize guest_room);
     void finish_if_done();
     void open_mirrors(QList<const GuestWindowInfo*> arrivals, const Listed& listed);
     void open(const GuestWindowInfo& window, MirrorWindow* owner);
@@ -107,6 +112,7 @@ private:
     PointerGrab grab_;
     PlacementSync placement_;
     bool application_alive_ = true;
+    bool ready_ = false;
 };
 
 }  // namespace rwin::host

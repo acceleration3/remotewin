@@ -1,17 +1,18 @@
 #include "host/export/shared_frame_feed.hpp"
 #include "host/link/guest_link.hpp"
+#include "host/link/parent_control.hpp"
 #include "host/mirror/mirror_session.hpp"
 #include "host/mirror/monitor_session.hpp"
-
 #include "logging/logger.hpp"
 #include "proto/wire_hello.hpp"
 
 #include <QApplication>
-#include <QGuiApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
-
+#include <QGuiApplication>
 #include <cstdio>
+#include <memory>
+#include <unistd.h>
 
 namespace {
 
@@ -45,8 +46,8 @@ int main(int argc, char** argv) {
                                          QStringLiteral("port"), QStringLiteral("5140")};
     const QCommandLineOption pid_option{
         QStringList{QStringLiteral("pid")},
-        QStringLiteral("Guest process to mirror; 0 mirrors every window."),
-        QStringLiteral("pid"), QStringLiteral("0")};
+        QStringLiteral("Guest process to mirror; 0 mirrors every window."), QStringLiteral("pid"),
+        QStringLiteral("0")};
     const QCommandLineOption job_option{
         QStringList{QStringLiteral("job")},
         QStringLiteral("Job Object naming the launch to mirror. Survives a "
@@ -54,21 +55,20 @@ int main(int argc, char** argv) {
         QStringLiteral("name")};
     const QCommandLineOption app_id_option{
         QStringList{QStringLiteral("app-id")},
-        QStringLiteral("Desktop identity these windows present as."),
-        QStringLiteral("app-id")};
+        QStringLiteral("Desktop identity these windows present as."), QStringLiteral("app-id")};
     const QCommandLineOption desktop_option{
         QStringList{QStringLiteral("desktop")},
         QStringLiteral("Mirror the guest's whole primary monitor as one window, rather than "
                        "an application's windows. --pid and --job do not apply.")};
-    const QCommandLineOption title_option{
-        QStringList{QStringLiteral("title")},
-        QStringLiteral("The title of the --desktop window."), QStringLiteral("title"),
-        QStringLiteral("Guest desktop")};
+    const QCommandLineOption title_option{QStringList{QStringLiteral("title")},
+                                          QStringLiteral("The title of the --desktop window."),
+                                          QStringLiteral("title"), QStringLiteral("Guest desktop")};
     const QCommandLineOption export_option{
         QStringList{QStringLiteral("export-socket")},
-        QStringLiteral("The GPU device's export socket (virtio-gpu-av-pci's export-socket=). With it, "
-                       "and on the GPU the guest's surfaces are on, frames stay on the GPU; without "
-                       "it they come as pixels. Defaults to $RWIN_EXPORT_SOCKET."),
+        QStringLiteral(
+            "The GPU device's export socket (virtio-gpu-av-pci's export-socket=). With it, "
+            "and on the GPU the guest's surfaces are on, frames stay on the GPU; without "
+            "it they come as pixels. Defaults to $RWIN_EXPORT_SOCKET."),
         QStringLiteral("path")};
     parser.addOption(port_option);
     parser.addOption(export_option);
@@ -77,7 +77,21 @@ int main(int argc, char** argv) {
     parser.addOption(app_id_option);
     parser.addOption(desktop_option);
     parser.addOption(title_option);
+    const QCommandLineOption managed_option{
+        QStringLiteral("managed"),
+        QStringLiteral("Report LISTENING <port> and READY on stdout; accept RAISE on stdin. "
+                       "Exit when the parent closes stdin.")};
+    parser.addOption(managed_option);
     parser.process(app);
+    const bool managed = parser.isSet(managed_option);
+    bool valid_port = false;
+    const auto port = parser.value(port_option).toUShort(&valid_port);
+    bool valid_pid = false;
+    const auto process_id = parser.value(pid_option).toUInt(&valid_pid);
+    if (!valid_port || !valid_pid) {
+        std::fprintf(stderr, "Invalid --port or --pid\n");
+        return EXIT_FAILURE;
+    }
 
     // Set before any window is created: the compositor reads it once, when
     // the first surface maps, and it is what groups this application's
@@ -100,9 +114,19 @@ int main(int argc, char** argv) {
     } else {
         RWIN_INFO("boot", "no export socket: frames come as pixels");
     }
-    const auto port = static_cast<std::uint16_t>(parser.value(port_option).toUShort());
-    if (!link.listen(port)) {
+    if (!link.listen(port, managed ? QHostAddress::LocalHost : QHostAddress::AnyIPv4)) {
         return EXIT_FAILURE;
+    }
+    std::unique_ptr<rwin::host::ParentControl> control;
+    if (managed) {
+        control = std::make_unique<rwin::host::ParentControl>(STDIN_FILENO, STDOUT_FILENO);
+        // QApplication::quit asks every window to close, which forwards WM_CLOSE
+        // to Windows. Losing the parent must only detach the mirror.
+        QObject::connect(control.get(), &rwin::host::ParentControl::closed, &app,
+                         [] { QCoreApplication::exit(EXIT_SUCCESS); });
+        QObject::connect(control.get(), &rwin::host::ParentControl::failed, &app,
+                         [] { QCoreApplication::exit(EXIT_FAILURE); });
+        control->report_listening(link.port());
     }
 
     // A guest of another build is disconnected as it is refused; the
@@ -113,24 +137,35 @@ int main(int argc, char** argv) {
         QCoreApplication::exit(kExitWireMismatch);
     });
     QObject::connect(&link, &rwin::host::GuestLink::disconnected, &app, [&] {
-        if (!mismatched) QCoreApplication::quit();
+        if (!mismatched)
+            QCoreApplication::exit(4);
     });
 
     if (parser.isSet(desktop_option)) {
         RWIN_INFO("boot", "mirroring the guest's monitor as '{}'",
                   parser.value(title_option).toStdString());
         rwin::host::MonitorSession session{link, frames, parser.value(title_option)};
+        if (control) {
+            QObject::connect(&session, &rwin::host::MonitorSession::ready, control.get(),
+                             &rwin::host::ParentControl::report_ready);
+            QObject::connect(control.get(), &rwin::host::ParentControl::raise_requested, &session,
+                             &rwin::host::MonitorSession::raise);
+        }
         QObject::connect(&session, &rwin::host::MonitorSession::finished, &app,
                          &QCoreApplication::quit);
         return app.exec();
     }
 
-    const auto process_id = static_cast<std::uint32_t>(parser.value(pid_option).toUInt());
     const QString job = parser.value(job_option);
     RWIN_INFO("boot", "mirroring pid {} job '{}'{}", process_id, job.toStdString(),
               (process_id == 0 && job.isEmpty()) ? " (the whole desktop)" : "");
     rwin::host::MirrorSession session{link, frames, process_id, job};
-    QObject::connect(&session, &rwin::host::MirrorSession::finished, &app,
-                     &QCoreApplication::quit);
+    if (control) {
+        QObject::connect(&session, &rwin::host::MirrorSession::ready, control.get(),
+                         &rwin::host::ParentControl::report_ready);
+        QObject::connect(control.get(), &rwin::host::ParentControl::raise_requested, &session,
+                         &rwin::host::MirrorSession::raise);
+    }
+    QObject::connect(&session, &rwin::host::MirrorSession::finished, &app, &QCoreApplication::quit);
     return app.exec();
 }

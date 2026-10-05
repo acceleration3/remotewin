@@ -10,8 +10,9 @@
 
 namespace rwin::host {
 
-MonitorSession::MonitorSession(GuestLink& link, SharedFrameFeed& frames, const QString& title, QObject* parent)
-    : QObject(parent), link_(link), window_(link, title, pixel_cursor_) {
+MonitorSession::MonitorSession(GuestLink& link, SharedFrameFeed& frames, const QString& title,
+                               QObject* parent, QWidget* view_parent)
+    : QObject(parent), link_(link), window_(link, title, pixel_cursor_, view_parent) {
     if (frames.offered()) {
         window_.take_gpu_frames();
         connect(&frames, &SharedFrameFeed::frame_ready, this, &MonitorSession::show_shared_frame);
@@ -35,19 +36,40 @@ MonitorSession::MonitorSession(GuestLink& link, SharedFrameFeed& frames, const Q
 }
 
 void MonitorSession::show_frame(quint64 window, const QImage& pixels) {
-    if (window == kMonitorWindow) window_.present(pixels);
+    if (window != kMonitorWindow)
+        return;
+    window_.present(pixels);
+    if (!ready_) {
+        ready_ = true;
+        Q_EMIT ready();
+    }
+}
+
+void MonitorSession::raise() {
+    if (window_.isMinimized())
+        window_.showNormal();
+    window_.raise();
+    window_.activateWindow();
 }
 
 void MonitorSession::show_patch(quint64 window, QSize picture, QPoint at, const QImage& pixels) {
-    if (window == kMonitorWindow) window_.patch(picture, at, pixels);
+    if (window == kMonitorWindow)
+        window_.patch(picture, at, pixels);
 }
 
 void MonitorSession::show_shared_frame(quint64 window, const SharedFrame& frame) {
-    if (window == kMonitorWindow) window_.present_shared(frame);
+    if (window != kMonitorWindow)
+        return;
+    window_.present_shared(frame);
+    if (!ready_) {
+        ready_ = true;
+        Q_EMIT ready();
+    }
 }
 
 void MonitorSession::forget(quint64 window) {
-    if (window != kMonitorWindow) return;
+    if (window != kMonitorWindow)
+        return;
     RWIN_ERROR("monitor", "the guest can no longer capture its monitor");
     Q_EMIT finished();
 }

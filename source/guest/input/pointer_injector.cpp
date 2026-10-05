@@ -91,6 +91,41 @@ void PointerInjector::press_in_place(const WindowSurface& surface, Button button
     RWIN_DEBUG("input", "button {} {} where the cursor is held", static_cast<int>(button), pressed ? "down" : "up");
 }
 
+void PointerInjector::turn(const WindowSurface& surface, std::int32_t frame_x, std::int32_t frame_y,
+                           std::int32_t dx, std::int32_t dy) const {
+    if (!surface.valid()) return;
+    turn_on_screen(surface.screen_x(frame_x), surface.screen_y(frame_y), dx, dy);
+}
+
+void PointerInjector::turn_on_screen(std::int32_t screen_x, std::int32_t screen_y, std::int32_t dx,
+                                     std::int32_t dy) {
+    move_cursor(screen_x, screen_y);
+    turn_in_place(dx, dy);
+}
+
+void PointerInjector::turn_in_place(std::int32_t dx, std::int32_t dy) {
+    INPUT inputs[2] = {};
+    UINT count = 0;
+    if (dy != 0) {
+        inputs[count].type = INPUT_MOUSE;
+        inputs[count].mi.dwFlags = MOUSEEVENTF_WHEEL;
+        inputs[count].mi.mouseData = static_cast<DWORD>(dy);
+        ++count;
+    }
+    if (dx != 0) {
+        inputs[count].type = INPUT_MOUSE;
+        inputs[count].mi.dwFlags = MOUSEEVENTF_HWHEEL;
+        inputs[count].mi.mouseData = static_cast<DWORD>(dx);
+        ++count;
+    }
+    if (count == 0) return;
+    if (::SendInput(count, inputs, sizeof(INPUT)) != count) {
+        RWIN_WARN("input", "wheel {},{} was not injected (error {})", dx, dy, ::GetLastError());
+        return;
+    }
+    RWIN_TRACE("input", "wheel {},{}", dx, dy);
+}
+
 void PointerInjector::move_on_screen(std::int32_t screen_x, std::int32_t screen_y) {
     move_cursor(screen_x, screen_y);
 }

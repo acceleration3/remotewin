@@ -2,6 +2,10 @@ add_executable(rwin_proto_test proto_test.cpp)
 target_link_libraries(rwin_proto_test PRIVATE rwin::proto)
 add_test(NAME rwin_proto_test COMMAND rwin_proto_test)
 
+add_executable(rwin_frame_timing_test frame_timing_test.cpp)
+target_link_libraries(rwin_frame_timing_test PRIVATE rwin::logging)
+add_test(NAME rwin_frame_timing_test COMMAND rwin_frame_timing_test)
+
 find_package(Qt6 REQUIRED COMPONENTS Core Gui)
 
 add_executable(rwin_win32_style_test
@@ -91,6 +95,13 @@ add_test(NAME rwin_probe_wire_test COMMAND rwin_probe_wire_test)
 # A picture drawn on the GPU from a dma-buf, against the host library: needs
 # a display and the GPU Qt draws on, and judges nothing without them.
 if(TARGET rwin_host)
+    add_executable(rwin_mirror_lifecycle_test mirror_lifecycle_test.cpp)
+    target_link_libraries(rwin_mirror_lifecycle_test PRIVATE rwin_host)
+    add_test(NAME rwin_mirror_lifecycle_test COMMAND rwin_mirror_lifecycle_test)
+    set_tests_properties(rwin_mirror_lifecycle_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    add_executable(rwin_link_lifecycle_test link_lifecycle_test.cpp)
+    target_link_libraries(rwin_link_lifecycle_test PRIVATE rwin_host)
+    add_test(NAME rwin_link_lifecycle_test COMMAND rwin_link_lifecycle_test)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GBM IMPORTED_TARGET gbm)
     if(GBM_FOUND)

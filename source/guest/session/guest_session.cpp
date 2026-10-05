@@ -4,6 +4,7 @@
 #include <string>
 #include "guest/windows/window_surface.hpp"
 #include "logging/logger.hpp"
+#include "proto/pointer_wheel.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/frame_in_slot.hpp"
 #include "proto/frame_route.hpp"
@@ -171,6 +172,15 @@ void GuestSession::handle(MessageReader& message) {
         case MessageId::PointerButton:
             press_pointer(message);
             break;
+        case MessageId::PointerWheel: {
+            const std::optional<PointerWheel> wheel = PointerWheel::read(message);
+            if (!wheel.has_value()) {
+                RWIN_WARN("input", "malformed wheel");
+                break;
+            }
+            turn_wheel(*wheel);
+            break;
+        }
         case MessageId::Key: {
             const std::optional<KeyStroke> stroke = KeyStroke::read(message);
             if (!stroke.has_value()) {
@@ -254,6 +264,22 @@ void GuestSession::press_pointer(MessageReader& message) {
     }
     const auto [into_x, into_y] = picture_offset(window);
     pointer_.press(WindowSurface{window}, x + into_x, y + into_y, button, pressed);
+}
+
+void GuestSession::turn_wheel(const PointerWheel& wheel) {
+    if (wheel.window == kMonitorWindow) {
+        if (monitor_ != nullptr) {
+            PointerInjector::turn_on_screen(monitor_->screen_x(wheel.x), monitor_->screen_y(wheel.y), wheel.dx,
+                                            wheel.dy);
+        }
+        return;
+    }
+    if (grabs_.current().kind == PointerGrab::Kind::Lock) {
+        PointerInjector::turn_in_place(wheel.dx, wheel.dy);
+        return;
+    }
+    const auto [into_x, into_y] = picture_offset(wheel.window);
+    pointer_.turn(WindowSurface{wheel.window}, wheel.x + into_x, wheel.y + into_y, wheel.dx, wheel.dy);
 }
 
 void GuestSession::report_drags() {
@@ -477,7 +503,10 @@ CaptureResult GuestSession::send_pixel_frame(std::uint64_t handle, WindowCapture
 CaptureResult GuestSession::send_shared_frame(std::uint64_t handle, WindowCapture& capture,
                                               const WindowSurface& surface) {
     SurfaceRing& ring = ring_for(handle);
-    if (!ring.has_free_slot()) return CaptureResult::Unchanged;
+    if (!ring.has_free_slot()) {
+        timing_.note("no_slot", handle);
+        return CaptureResult::Unchanged;
+    }
     std::optional<CaptureStream::Frame> frame;
     const CaptureResult grabbed = capture.grab(surface, frame);
     if (grabbed != CaptureResult::Fresh) return grabbed;
@@ -489,9 +518,13 @@ CaptureResult GuestSession::send_shared_frame(std::uint64_t handle, WindowCaptur
         return grabbed;
     }
     const CaptureStream::Extent content = frame->content();
+    const auto source_time = frame->source_time();
+    timing_.note("copy_begin", handle, source_time);
     if (const std::optional<SurfaceRing::Delivery> delivery = ring.copy(*frame)) {
+        timing_.note("copy_end", handle, source_time);
         note_drawn(handle, DrawnArea{0, 0, content.width, content.height});
         send_delivery(*delivery);
+        timing_.note("send_end", handle, source_time);
         return grabbed;
     }
     RWIN_WARN("shared", "frames cannot stay on the GPU here; they go as pixels from here on");

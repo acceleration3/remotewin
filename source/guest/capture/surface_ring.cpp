@@ -12,6 +12,7 @@
 // clang-format on
 
 #include <cassert>
+#include <utility>
 
 namespace rwin::guest {
 
@@ -26,6 +27,7 @@ SurfaceRing::~SurfaceRing() { release_textures(); }
 // the host still draws from them it keeps: what it imported names memory,
 // not the textures.
 void SurfaceRing::release_textures() noexcept {
+    for (auto& source : sources_) source.reset();
     for (ID3D11Texture2D*& texture : textures_) {
         if (texture != nullptr) texture->Release();
         texture = nullptr;
@@ -36,7 +38,7 @@ bool SurfaceRing::has_free_slot() const noexcept {
     return textures_[0] == nullptr || ledger_.free_slot().has_value();
 }
 
-std::optional<SurfaceRing::Delivery> SurfaceRing::copy(const CaptureStream::Frame& frame) {
+std::optional<SurfaceRing::Delivery> SurfaceRing::copy(CaptureStream::Frame& frame) {
     const CaptureStream::Extent size = frame.content();
     Delivery delivery;
     if (textures_[0] == nullptr || size != CaptureStream::Extent{announced_.width, announced_.height}) {
@@ -54,6 +56,9 @@ std::optional<SurfaceRing::Delivery> SurfaceRing::copy(const CaptureStream::Fram
     // Sent now rather than at the device's leisure: the host is about to
     // be told this copy is coming, and asks the GPU device until it ran.
     device_.context()->Flush();
+    // Flush submits the copy; it does not complete it. Keep WGC's pool buffer
+    // out of reuse until the host's fenced release proves the copy finished.
+    sources_[*slot] = std::move(frame);
     delivery.frame = FrameInSlot{window_, ledger_.ring(), *slot, ledger_.filled(*slot)};
     return delivery;
 }
@@ -63,7 +68,9 @@ void SurfaceRing::free(const SlotFree& freed) noexcept {
     if (!ledger_.freed(freed.ring, freed.slot)) {
         RWIN_DEBUG("shared", "{:#x}: slot {} of ring {} was not the host's (ring {} now)", window_, freed.slot,
                    freed.ring, ledger_.ring());
+        return;
     }
+    sources_[freed.slot].reset();
 }
 
 bool SurfaceRing::remake(CaptureStream::Extent size) {

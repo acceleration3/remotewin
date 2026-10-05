@@ -38,6 +38,14 @@ public:
     static void move_on_screen(std::int32_t screen_x, std::int32_t screen_y);
     static void press_on_screen(std::int32_t screen_x, std::int32_t screen_y, Button button,
                                 bool pressed);
+    // A wheel turned by `dx`, `dy` in WHEEL_DELTA units: over a window's
+    // point, at a point of the screen, or where a locked pointer holds the
+    // cursor. Windows sends the wheel to the window under the cursor, so
+    // the cursor is put there first, as for a press.
+    void turn(const WindowSurface& surface, std::int32_t frame_x, std::int32_t frame_y, std::int32_t dx,
+              std::int32_t dy) const;
+    static void turn_on_screen(std::int32_t screen_x, std::int32_t screen_y, std::int32_t dx, std::int32_t dy);
+    static void turn_in_place(std::int32_t dx, std::int32_t dy);
     // Moved by an amount, as a mouse moves it (relative SendInput): the
     // amount reaches raw input as it is, and the cursor moves by it as
     // Windows' pointer speed and acceleration have it.

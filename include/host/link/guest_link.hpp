@@ -8,21 +8,22 @@
 #include "proto/pointer_grab.hpp"
 #include "proto/slot_ring.hpp"
 
+#include <QHostAddress>
 #include <QImage>
 #include <QList>
 #include <QObject>
 #include <QPoint>
 #include <QSize>
-
 #include <cstdint>
 
 // Signal arguments are complete types: Qt's meta-type registration of a
 // signal's arguments looks inside them.
 namespace rwin {
+struct PointerWheel;
 struct KeyStroke;
 class MessageReader;
 struct SlotFree;
-}
+}  // namespace rwin
 
 class QTcpServer;
 class QTcpSocket;
@@ -44,7 +45,9 @@ class GuestLink : public QObject {
 public:
     explicit GuestLink(QObject* parent = nullptr);
 
-    [[nodiscard]] bool listen(std::uint16_t port);
+    [[nodiscard]] bool listen(std::uint16_t port,
+                              const QHostAddress& address = QHostAddress::AnyIPv4);
+    [[nodiscard]] std::uint16_t port() const;
 
     void watch_scope(std::uint32_t process_id, const QString& job_name);
     // The guest's whole primary monitor, instead of an application.
@@ -56,6 +59,7 @@ public:
                              std::uint8_t button, bool pressed);
     // The held pointer's own motion, in counts.
     void send_pointer_delta(std::uint64_t window, std::int32_t dx, std::int32_t dy);
+    void send_pointer_wheel(const PointerWheel& wheel);
     void send_key(const KeyStroke& stroke);
     void send_close(std::uint64_t window);
     void send_focus(std::uint64_t window);
@@ -76,8 +80,8 @@ Q_SIGNALS:
     // ``application_alive`` is whether the guest application still has a
     // process. An empty list from a live application is a program between
     // windows, not one that is done.
-    void windows_listed(const QList<rwin::host::GuestWindowInfo>& windows,
-                        bool application_alive, QSize guest_room);
+    void windows_listed(const QList<rwin::host::GuestWindowInfo>& windows, bool application_alive,
+                        QSize guest_room);
     void frame_arrived(quint64 window, const QImage& pixels);
     // A part of ``window``'s picture, which is ``picture`` large, changed:
     // ``pixels`` now go at ``at``.

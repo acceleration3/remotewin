@@ -29,11 +29,16 @@ class MonitorSession : public QObject {
 public:
     // ``frames`` hands on the frames that stay on the GPU, when it was
     // opened: the window draws those as well as frames of pixels.
-    MonitorSession(GuestLink& link, SharedFrameFeed& frames, const QString& title, QObject* parent = nullptr);
+    MonitorSession(GuestLink& link, SharedFrameFeed& frames, const QString& title,
+                   QObject* parent = nullptr, QWidget* view_parent = nullptr);
+    // A child view for an embedded preview; otherwise an ordinary desktop window.
+    [[nodiscard]] MonitorWindow& view() noexcept { return window_; }
+    void raise();
 
 Q_SIGNALS:
     // The window was closed, or the guest can no longer capture its monitor.
     void finished();
+    void ready();
 
 private:
     void show_frame(quint64 window, const QImage& pixels);
@@ -47,6 +52,7 @@ private:
     PixelCursor pixel_cursor_{pointer_globals_};
     CursorPlayer cursor_;
     MonitorWindow window_;
+    bool ready_ = false;
 };
 
 }  // namespace rwin::host

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "logging/frame_timing.hpp"
+
 #include "guest/capture/changed_tiles.hpp"
 #include "guest/capture/frame_signal.hpp"
 #include "guest/capture/graphics_device.hpp"
@@ -34,6 +36,10 @@
 
 namespace rwin {
 class MessageReader;
+}
+
+namespace rwin {
+struct PointerWheel;
 }
 
 namespace rwin::guest {
@@ -84,6 +90,7 @@ private:
     void recapture();
     [[nodiscard]] SurfaceRing& ring_for(std::uint64_t window);
     void send_window_gone(std::uint64_t window_handle);
+    void turn_wheel(const PointerWheel& wheel);
     void report_drags();
     void report_cursor();
     void report_grab();
@@ -166,6 +173,7 @@ private:
     std::uint32_t frame_interval_ms_;
     bool running_ = true;
     bool greeted_ = false;
+    FrameTiming timing_{"guest"};
 };
 
 }  // namespace rwin::guest

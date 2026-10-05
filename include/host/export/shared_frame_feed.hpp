@@ -5,6 +5,7 @@
 #include "host/export/export_socket.hpp"
 #include "host/export/shared_frame.hpp"
 #include "host/export/window_ring.hpp"
+#include "logging/frame_timing.hpp"
 
 #include <QObject>
 
@@ -109,6 +110,7 @@ private:
     // given up: a second for the guest's batch making the surface to run.
     static constexpr int kMostExportAsks = 500;
     static constexpr int kExportRetryMs = 2;
+    FrameTiming timing_{"feed"};
 };
 
 }  // namespace rwin::host

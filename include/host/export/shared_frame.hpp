@@ -21,6 +21,7 @@ struct SharedFrame {
     // The sync_file; whoever first draws the frame waits on it and takes it.
     std::shared_ptr<UniqueFd> fence;
     std::uint32_t ring = 0;
+    std::uint64_t order = 0;
 
     [[nodiscard]] QSize size() const {
         return QSize(static_cast<int>(memory->layout().width), static_cast<int>(memory->layout().height));

@@ -8,6 +8,7 @@
 #include <QOpenGLShaderProgram>
 #include <QOpenGLVertexArrayObject>
 #include <QSocketNotifier>
+#include <QWindow>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -102,10 +103,14 @@ QByteArray versioned(const char* source, bool gles, bool fragment) {
 }  // namespace
 
 GpuPicture::GpuPicture(QWidget* parent) : QOpenGLWidget(parent), egl_(std::make_unique<EglCalls>()) {
+    sample_pixels_ = qEnvironmentVariableIsSet("RWIN_TIMING_PIXELS");
     setAttribute(Qt::WA_TransparentForMouseEvents);
     setFocusPolicy(Qt::NoFocus);
     // Drawn whole each time: a picture is never partly updated.
     setUpdateBehavior(QOpenGLWidget::NoPartialUpdate);
+    connect(this, &QOpenGLWidget::frameSwapped, this, [this] {
+        timing_.note("swap", drawn_order_);
+    });
 }
 
 // Let go of here, then cut off from the context: QOpenGLWidget's destructor
@@ -129,6 +134,11 @@ void GpuPicture::lay_out(const PictureLayout& layout) {
 // A frame replaced before it was drawn was never read here: its slot goes
 // back at once. One that was drawn waits for the GPU to finish with it.
 void GpuPicture::show_frame(SharedFrame frame) {
+    const QWindow* surface = window()->windowHandle();
+    const std::uint64_t visibility = (isVisible() ? 1u : 0u)
+        | (surface != nullptr && surface->isExposed() ? 2u : 0u)
+        | (window()->isMinimized() ? 4u : 0u);
+    timing_.note("receive", frame.order, 0, visibility);
     if (current_.has_value() && current_drawn_) retiring_.push_back(std::move(*current_));
     current_ = std::move(frame);
     current_drawn_ = false;
@@ -214,6 +224,14 @@ void GpuPicture::paintGL() {
     }
     wait_for_copy(*current_);
     draw(*texture);
+    drawn_order_ = current_->order;
+    timing_.note("draw", drawn_order_);
+    if (sample_pixels_) {
+        unsigned char pixel[4]{};
+        gl->glReadPixels(device_size().width() / 2, device_size().height() / 2,
+                         1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+        timing_.note("pixel", drawn_order_, 0, pixel[0]);
+    }
     current_drawn_ = true;
     retire_after_draw();
 }

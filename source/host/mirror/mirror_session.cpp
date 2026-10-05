@@ -5,7 +5,6 @@
 #include "host/export/shared_frame_feed.hpp"
 #include "host/link/guest_link.hpp"
 #include "host/mirror/mirror_window.hpp"
-
 #include "logging/logger.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/guest_cursor.hpp"
@@ -13,11 +12,9 @@
 #include <QImage>
 #include <QPoint>
 #include <QTimer>
-
 #include <algorithm>
-#include <vector>
-
 #include <utility>
+#include <vector>
 
 namespace rwin::host {
 
@@ -30,13 +27,8 @@ constexpr int kPollIntervalMs = 1000;
 
 MirrorSession::MirrorSession(GuestLink& link, SharedFrameFeed& frames, std::uint32_t process_id,
                              QString job_name, QObject* parent)
-    : QObject(parent),
-      link_(link),
-      frames_(frames),
-      process_id_(process_id),
-      job_name_(std::move(job_name)),
-      poll_(new QTimer(this)),
-      grabber_(link, pointer_globals_),
+    : QObject(parent), link_(link), frames_(frames), process_id_(process_id),
+      job_name_(std::move(job_name)), poll_(new QTimer(this)), grabber_(link, pointer_globals_),
       placement_(link) {
     connect(&link_, &GuestLink::windows_listed, this, &MirrorSession::refresh);
     connect(&link_, &GuestLink::frame_arrived, this, &MirrorSession::show_frame);
@@ -49,10 +41,37 @@ MirrorSession::MirrorSession(GuestLink& link, SharedFrameFeed& frames, std::uint
     connect(&cursor_, &CursorPlayer::worn, this, &MirrorSession::wear_cursor);
 
     poll_->setInterval(kPollIntervalMs);
-    connect(poll_, &QTimer::timeout, this,
-            [this] { link_.watch_scope(process_id_, job_name_); });
+    connect(poll_, &QTimer::timeout, this, [this] { link_.watch_scope(process_id_, job_name_); });
     poll_->start();
+    connect(&link_, &GuestLink::connected, this,
+            [this] { link_.watch_scope(process_id_, job_name_); });
     link_.watch_scope(process_id_, job_name_);
+}
+
+MirrorSession::~MirrorSession() {
+    // Destroy locally, not close(): a parent ending is not a user's WM_CLOSE.
+    for (const auto& mirror : mirrors_) {
+        if (mirror)
+            delete mirror.data();
+    }
+    for (const auto& mirror : waiting_release_) {
+        if (mirror)
+            delete mirror.data();
+    }
+}
+
+void MirrorSession::raise() {
+    for (const GuestWindowInfo& window : listed_) {
+        if (Win32Style{window}.disabled() || !Win32Style{window}.activates())
+            continue;
+        if (auto mirror = mirrors_.value(window.handle); !mirror.isNull()) {
+            if (mirror->isMinimized())
+                mirror->showNormal();
+            link_.send_focus(window.handle);
+            mirror->come_forward();
+            return;
+        }
+    }
 }
 
 MirrorWindow* MirrorSession::find(std::uint64_t window) const {
@@ -61,17 +80,20 @@ MirrorWindow* MirrorSession::find(std::uint64_t window) const {
 
 std::optional<MirrorState> MirrorSession::state_of(std::uint64_t window) const {
     const MirrorWindow* mirror = find(window);
-    if (mirror == nullptr) return std::nullopt;
+    if (mirror == nullptr)
+        return std::nullopt;
     MirrorState state = mirror->state();
     placement_.describe(window, state);
     grabber_.describe(window, state);
-    if (state.cursor_shape == Qt::BitmapCursor) state.cursor_surface_size = pixel_cursor_.surface_size();
-    if (cursor_.shown().shown && state.cursor_id == cursor_.shown().id) state.cursor_steps_taken = cursor_.steps_taken();
+    if (state.cursor_shape == Qt::BitmapCursor)
+        state.cursor_surface_size = pixel_cursor_.surface_size();
+    if (cursor_.shown().shown && state.cursor_id == cursor_.shown().id)
+        state.cursor_steps_taken = cursor_.steps_taken();
     return state;
 }
 
-void MirrorSession::refresh(const QList<GuestWindowInfo>& windows,
-                            bool application_alive, QSize guest_room) {
+void MirrorSession::refresh(const QList<GuestWindowInfo>& windows, bool application_alive,
+                            QSize guest_room) {
     application_alive_ = application_alive;
     listed_ = windows;
     Listed listed;
@@ -102,7 +124,8 @@ void MirrorSession::refresh(const QList<GuestWindowInfo>& windows,
 // a launcher stub's dialog closing before the program it started has a
 // window is neither.
 void MirrorSession::finish_if_done() {
-    if (application_alive_ || !mirrors_.isEmpty()) return;
+    if (application_alive_ || !mirrors_.isEmpty())
+        return;
     RWIN_INFO("mirror", "no windows and no process; session is done");
     Q_EMIT finished();
 }
@@ -112,8 +135,7 @@ void MirrorSession::finish_if_done() {
 // start. One whose owner is not on the list opens on its own, as a
 // toplevel; so does one whose owner chain loops back on itself, which
 // Windows does not produce but a wire can.
-void MirrorSession::open_mirrors(QList<const GuestWindowInfo*> arrivals,
-                                 const Listed& listed) {
+void MirrorSession::open_mirrors(QList<const GuestWindowInfo*> arrivals, const Listed& listed) {
     QList<const GuestWindowInfo*> opened;
     opened.reserve(arrivals.size());
     while (!arrivals.isEmpty()) {
@@ -138,7 +160,8 @@ void MirrorSession::open_mirrors(QList<const GuestWindowInfo*> arrivals,
 
     for (const GuestWindowInfo* window : opened) {
         auto mirror = mirrors_.value(window->handle);
-        if (mirror.isNull()) continue;
+        if (mirror.isNull())
+            continue;
         place(*mirror, *window, listed);
         // In the guest's state from the start: shown normal first, a
         // maximised window's mirror was sized as a normal one and asked the
@@ -150,25 +173,26 @@ void MirrorSession::open_mirrors(QList<const GuestWindowInfo*> arrivals,
 }
 
 void MirrorSession::open(const GuestWindowInfo& window, MirrorWindow* owner) {
-    RWIN_INFO("mirror", "new window {:#x} owner={:#x}{} '{}' {}x{} class='{}'",
-              window.handle, window.owner, owner == nullptr ? "" : " (mirrored)",
-              window.title.toStdString(), window.width, window.height,
-              window.class_name.toStdString());
+    RWIN_INFO("mirror", "new window {:#x} owner={:#x}{} '{}' {}x{} class='{}'", window.handle,
+              window.owner, owner == nullptr ? "" : " (mirrored)", window.title.toStdString(),
+              window.width, window.height, window.class_name.toStdString());
     // A window that stands alone is made a toplevel from the start, and
     // attached to its owner when it is placed.
     const bool popup = owner != nullptr && !Win32Style{window}.stands_alone();
-    auto* mirror = new MirrorWindow(link_, window, popup ? owner : nullptr, placement_.tag_for(window.handle),
-                                    pixel_cursor_);
+    auto* mirror = new MirrorWindow(link_, window, popup ? owner : nullptr,
+                                    placement_.tag_for(window.handle), pixel_cursor_);
     // A toplevel is made ready for frames on the GPU before it is first
     // shown; a popup - a menu, mostly, whose frames come as pixels - only
     // once one arrives, rather than an OpenGL window for every menu opened.
     if (frames_.offered()) {
-        if (!popup) mirror->take_gpu_frames();
+        if (!popup)
+            mirror->take_gpu_frames();
         connect(mirror, &MirrorWindow::gpu_failed, this,
                 [this](const QString& why) { frames_.give_up(why.toStdString()); });
     }
     // Whatever the guest shows now, not the arrow until it next changes.
-    if (cursor_.shown().id != 0 || !cursor_.shown().shown) mirror->wear_guest_cursor(cursor_.look(), cursor_.step());
+    if (cursor_.shown().id != 0 || !cursor_.shown().shown)
+        mirror->wear_guest_cursor(cursor_.look(), cursor_.step());
     connect(mirror, &MirrorWindow::pressed_while_disabled, this, &MirrorSession::bring_forward_for);
     connect(mirror, &MirrorWindow::focused_unasked, this, &MirrorSession::restore_guest_activation);
     mirrors_.insert(window.handle, mirror);
@@ -190,7 +214,8 @@ void MirrorSession::place(MirrorWindow& mirror, const GuestWindowInfo& window,
                           const Listed& listed) {
     auto owner = window.owner == 0 ? QPointer<MirrorWindow>() : mirrors_.value(window.owner);
     const GuestWindowInfo* owner_window = listed.value(window.owner);
-    const bool popup = !owner.isNull() && owner_window != nullptr && !Win32Style{window}.stands_alone();
+    const bool popup =
+        !owner.isNull() && owner_window != nullptr && !Win32Style{window}.stands_alone();
     if (popup) {
         mirror.place_under(*owner, QPoint(window.x - owner_window->x, window.y - owner_window->y));
     } else {
@@ -198,15 +223,18 @@ void MirrorSession::place(MirrorWindow& mirror, const GuestWindowInfo& window,
     }
     // A toplevel goes where the guest put it; a popup is placed against its
     // owner already, and a minimised or maximised one by its state.
-    placement_.follow_guest(mirror,
-                            QRect(window.x, window.y, static_cast<int>(window.width), static_cast<int>(window.height)),
-                            !popup && !window.minimized && !window.maximized);
-    if (!popup && window.maximized) placement_.keep_on_guest_screen(mirror);
+    placement_.follow_guest(
+        mirror,
+        QRect(window.x, window.y, static_cast<int>(window.width), static_cast<int>(window.height)),
+        !popup && !window.minimized && !window.maximized);
+    if (!popup && window.maximized)
+        placement_.keep_on_guest_screen(mirror);
 }
 
 void MirrorSession::rehome_popups_of(MirrorWindow& owner, const Listed& listed) {
     for (MirrorWindow* popup : owner.findChildren<MirrorWindow*>(Qt::FindDirectChildrenOnly)) {
-        if (listed.contains(popup->handle())) popup->attach_to(nullptr);
+        if (listed.contains(popup->handle()))
+            popup->attach_to(nullptr);
     }
 }
 
@@ -216,7 +244,8 @@ void MirrorSession::rehome_popups_of(MirrorWindow& owner, const Listed& listed) 
 // is one. The list is in the guest's z-order, topmost first.
 void MirrorSession::bring_forward_for(std::uint64_t window) {
     for (const GuestWindowInfo& candidate : listed_) {
-        if (Win32Style{candidate}.disabled() || !owned_by(candidate, window)) continue;
+        if (Win32Style{candidate}.disabled() || !owned_by(candidate, window))
+            continue;
         if (auto mirror = mirrors_.value(candidate.handle); !mirror.isNull()) {
             mirror->come_forward();
             return;
@@ -226,20 +255,26 @@ void MirrorSession::bring_forward_for(std::uint64_t window) {
 }
 
 void MirrorSession::restore_guest_activation() {
-    const auto foreground = std::find_if(listed_.begin(), listed_.end(),
-                                         [](const GuestWindowInfo& window) { return window.foreground; });
-    if (foreground == listed_.end()) return;
-    if (auto mirror = mirrors_.value(foreground->handle); !mirror.isNull()) mirror->reclaim_activation();
+    const auto foreground =
+        std::find_if(listed_.begin(), listed_.end(),
+                     [](const GuestWindowInfo& window) { return window.foreground; });
+    if (foreground == listed_.end())
+        return;
+    if (auto mirror = mirrors_.value(foreground->handle); !mirror.isNull())
+        mirror->reclaim_activation();
 }
 
 bool MirrorSession::owned_by(const GuestWindowInfo& window, std::uint64_t owner) const {
     std::uint64_t up = window.owner;
     // A chain no longer than the list: one that loops is no chain at all.
     for (qsizetype steps = 0; up != 0 && steps < listed_.size(); ++steps) {
-        if (up == owner) return true;
-        const auto next = std::find_if(listed_.begin(), listed_.end(),
-                                       [up](const GuestWindowInfo& listed) { return listed.handle == up; });
-        if (next == listed_.end()) return false;
+        if (up == owner)
+            return true;
+        const auto next =
+            std::find_if(listed_.begin(), listed_.end(),
+                         [up](const GuestWindowInfo& listed) { return listed.handle == up; });
+        if (next == listed_.end())
+            return false;
         up = next->owner;
     }
     return false;
@@ -296,15 +331,18 @@ void MirrorSession::hand_over_drag(quint64 window) {
 
 void MirrorSession::wear_cursor(const CursorLook* look, std::size_t step) {
     for (auto& mirror : mirrors_) {
-        if (!mirror.isNull()) mirror->wear_guest_cursor(look, step);
+        if (!mirror.isNull())
+            mirror->wear_guest_cursor(look, step);
     }
 }
 
 void MirrorSession::follow_grab(const PointerGrab& grab) {
     grab_ = grab;
-    MirrorWindow* mirror = grab.kind == PointerGrab::Kind::None ? nullptr : mirrors_.value(grab.window).data();
-    const auto listed = std::find_if(listed_.begin(), listed_.end(),
-                                     [&](const GuestWindowInfo& window) { return window.handle == grab.window; });
+    MirrorWindow* mirror =
+        grab.kind == PointerGrab::Kind::None ? nullptr : mirrors_.value(grab.window).data();
+    const auto listed =
+        std::find_if(listed_.begin(), listed_.end(),
+                     [&](const GuestWindowInfo& window) { return window.handle == grab.window; });
     const QPoint origin = listed == listed_.end() ? QPoint() : QPoint(listed->x, listed->y);
     grabber_.follow(grab, mirror, origin);
 }
@@ -312,19 +350,29 @@ void MirrorSession::follow_grab(const PointerGrab& grab) {
 void MirrorSession::show_frame(quint64 window, const QImage& pixels) {
     if (auto it = mirrors_.find(window); it != mirrors_.end() && !it.value().isNull()) {
         it.value()->present(pixels);
+        if (!ready_) {
+            ready_ = true;
+            Q_EMIT ready();
+        }
     }
 }
 
 void MirrorSession::show_shared_frame(quint64 window, const SharedFrame& frame) {
     if (auto it = mirrors_.find(window); it != mirrors_.end() && !it.value().isNull()) {
         it.value()->present_shared(frame);
+        if (!ready_) {
+            ready_ = true;
+            Q_EMIT ready();
+        }
     }
 }
 
 void MirrorSession::forget(quint64 window) {
     auto it = mirrors_.find(window);
-    if (it == mirrors_.end()) return;
-    if (!it.value().isNull()) it.value()->guest_closed();
+    if (it == mirrors_.end())
+        return;
+    if (!it.value().isNull())
+        it.value()->guest_closed();
     mirrors_.erase(it);
     placement_.forget(window);
     finish_if_done();

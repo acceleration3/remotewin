@@ -8,6 +8,7 @@
 #include "host/mirror/gpu_picture.hpp"
 #include "host/mirror/pixel_mapping.hpp"
 #include "logging/logger.hpp"
+#include "proto/pointer_wheel.hpp"
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -18,6 +19,7 @@
 #include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QPainter>
 #include <QPixmap>
 #include <QRegion>
@@ -464,7 +466,12 @@ void MirrorWindow::take_over_drag() {
     if (!surface->startSystemMove()) {
         RWIN_WARN("chrome", "{:#x} compositor refused the drag", handle_);
         swallow_release_ = false;
+        return;
     }
+    // The compositor owns the release now; it need not reach this widget.
+    // Keeping the press here leaves a blank mirror alive after the guest hides it.
+    held_ = Qt::NoButton;
+    Q_EMIT let_go();
 }
 
 void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
@@ -964,8 +971,9 @@ void MirrorWindow::mousePressEvent(QMouseEvent* event) {
 }
 
 void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
-    if (style_.disabled()) return;
     held_ &= ~event->button();
+    if (held_ == Qt::NoButton) Q_EMIT let_go();
+    if (style_.disabled()) return;
     if (swallow_release_) {
         swallow_release_ = false;
         return;
@@ -975,7 +983,20 @@ void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
         link_.send_pointer_button(root().handle(), at->x(), at->y(),
                                   guest_button(event->button()), false);
     }
-    if (held_ == Qt::NoButton) Q_EMIT let_go();
+}
+
+// Qt's angle delta is eighths of a degree, 120 a notch, which is Windows'
+// own WHEEL_DELTA; a horizontal one is positive to the left, Windows'
+// to the right.
+void MirrorWindow::wheelEvent(QWheelEvent* event) {
+    touched_ = true;
+    if (style_.disabled()) return;
+    const QPoint own = mapping().guest_point(event->position());
+    if (!QRect(QPoint(0, 0), picture_size()).contains(own)) return;
+    const QPoint at = guest_origin() + own;
+    link_.send_pointer_wheel(PointerWheel{root().handle(), at.x(), at.y(), -event->angleDelta().x(),
+                                          event->angleDelta().y()});
+    event->accept();
 }
 
 void MirrorWindow::send_key(QKeyEvent* event, bool pressed) {

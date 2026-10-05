@@ -10,6 +10,7 @@ add_library(rwin_proto STATIC
     message_writer.cpp
     picture_rect.cpp
     pointer_delta.cpp
+    pointer_wheel.cpp
     pointer_grab.cpp
     pointer_grab_rule.cpp
     slot_free.cpp

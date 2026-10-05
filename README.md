@@ -2,44 +2,52 @@
 
 Mirror a guest Windows application's windows on a Linux host.
 
-One process per guest application: `remotewin-app` opens a real host
+One process per guest application: `remotewin` opens a real host
 window for every window that application has, forwards input back, and
 exits when the application does. The windows are the host's own — they
 group, alt-tab, minimize and get an icon like anything else on the
 desktop, because to the compositor they *are* an application's windows.
 
-This is the window half of running Windows software on Linux. The
-graphics half — Vulkan, OpenGL and OpenCL across the same boundary — is
-[render-server](https://github.com/acceleration3/render-server), and the
-two know nothing about each other.
+This is the window half of running Windows software on Linux. LSW starts
+the two ends and supplies accel-virt's export socket when GPU-backed
+frames are available; RemoteWin itself does not manage virtual machines.
 
 ## Shape
 
-    remotewin-guest.exe   in the VM: capture, enumeration, input, icons, UIA
-    remotewin-host        one per VM: owns the transport and the MCP surface,
-                          spawns and reaps the per-application processes
-    remotewin-app         one per launched guest application: its windows,
-                          its popups, its taskbar identity
+    remotewin-guest.exe   in Windows: capture, enumeration, input and cursors
+    remotewin            on Linux: one application's windows, popups and
+                         desktop identity, or the whole guest monitor
 
-`remotewin-app` is one process per *application*, not per window. That is
+`remotewin` is one process per *application*, not per window. That is
 not an optimisation — a popup menu must be an `xdg_popup` on its owner's
 surface, and xdg-shell has no cross-process form, so a window and the
 menus it opens have to live in the same process to be positioned at all.
 
 ## Transports
 
-The wire is the same either way; only the carrier differs.
+Control and fallback pixels travel over TCP. With accel-virt, window
+frames can instead stay on the GPU through shared surfaces exported as
+dma-bufs (below). Changed-tile patches reduce traffic on the pixel path.
 
-  * **shared memory** — an ivshmem region: a frame ring the guest writes
-    pixels into directly, plus duplex message rings. No copy between the
-    guest's captured frame and the host's window.
-  * **TCP** — a socket. Control works today; pixels over TCP need
-    encoding that shared memory does not, and that is not written yet.
+## Launcher integration
 
-## Status
+`remotewin --managed --port 0` binds an OS-selected IPv4 loopback port and
+reports `LISTENING <port>\n` on stdout after it is listening. Only then
+should the launcher start `remotewin-guest.exe --host <host> --port <port>`.
+`READY\n` reports the first application/monitor frame; process creation
+alone is not successful mirroring. Diagnostics stay on stderr.
 
-Early. The protocol layer is here; the guest and host halves are being
-moved in from the project this was extracted out of.
+The launcher can write `RAISE\n` to stdin to restore and focus an existing
+mirror, including its guest window. Closing stdin detaches the mirror
+without closing the Windows application. Clicking a mirrored window's
+close button still asks the application to close normally. LSW shares its
+running-app registry between its grid and desktop launchers, coalesces
+pending opens, and reports startup failures/timeouts in the UI.
+
+Without `--managed`, the listener remains on all IPv4 interfaces for
+standalone use. The transport is not authenticated: use only on trusted
+networks, or protect it with a tunnel/firewall. Exit status 3 means a wire
+version mismatch; 4 means the guest connection was lost.
 
 ## The whole desktop
 

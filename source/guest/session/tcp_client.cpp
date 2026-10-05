@@ -100,19 +100,31 @@ bool TcpClient::wait_writable() const {
 }
 
 bool TcpClient::send(const std::vector<std::uint8_t>& bytes) {
+    const auto sequence = ++sends_;
+    timing_.note("send_begin", sequence, 0, bytes.size());
     std::size_t sent = 0;
     while (sent < bytes.size()) {
+        timing_.note("syscall_begin", sequence);
         const int n = ::send(static_cast<SOCKET>(socket_),
                              reinterpret_cast<const char*>(bytes.data() + sent),
                              static_cast<int>(bytes.size() - sent), 0);
-        if (n == SOCKET_ERROR && ::WSAGetLastError() == WSAEWOULDBLOCK && wait_writable()) continue;
+        const int error = n == SOCKET_ERROR ? ::WSAGetLastError() : 0;
+        timing_.note("syscall_end", sequence, 0, error);
+        if (n == SOCKET_ERROR && error == WSAEWOULDBLOCK) {
+            timing_.note("writable_begin", sequence);
+            const bool writable = wait_writable();
+            timing_.note("writable_end", sequence);
+            if (writable) continue;
+        }
         if (n <= 0) {
+            if (n == SOCKET_ERROR && error != WSAEWOULDBLOCK) ::WSASetLastError(error);
             fail("send");
             RWIN_ERROR("link", "send of {} bytes failed: {}", bytes.size(), last_error_);
             return false;
         }
         sent += static_cast<std::size_t>(n);
     }
+    timing_.note("send_end", sequence, 0, bytes.size());
     return true;
 }
 
