@@ -4,6 +4,7 @@
 #include <string>
 #include "guest/windows/window_surface.hpp"
 #include "logging/logger.hpp"
+#include "proto/pointer_at.hpp"
 #include "proto/pointer_wheel.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/frame_in_slot.hpp"
@@ -28,6 +29,35 @@
 
 namespace rwin::guest {
 
+namespace {
+
+// "Show window contents while dragging", on for this logon. Off, Windows
+// moves a dragged window only when the button comes up, drawing an outline
+// meanwhile on a desktop nobody sees: a mirror following the window sits
+// still for the whole drag and jumps at the end. The drags Windows keeps
+// (WindowDragWatcher) are the ones an application watches - a tool panel
+// docking - so they have to be live. Not written to the profile: the
+// user's own choice comes back at the next logon.
+void show_contents_while_dragging() {
+    BOOL full = FALSE;
+    if (::SystemParametersInfoW(SPI_GETDRAGFULLWINDOWS, 0, &full, 0) == FALSE || full != FALSE) return;
+    if (::SystemParametersInfoW(SPI_SETDRAGFULLWINDOWS, TRUE, nullptr, SPIF_SENDCHANGE) == FALSE) {
+        RWIN_WARN("drag", "cannot show window contents while dragging (error {}): a window Windows "
+                  "moves is mirrored where it ends", ::GetLastError());
+        return;
+    }
+    RWIN_INFO("drag", "showing window contents while dragging, for this logon");
+}
+
+// What the user does through this mirror, put into the guest.
+bool is_input(MessageId id) {
+    return id == MessageId::PointerMove || id == MessageId::PointerButton ||
+           id == MessageId::PointerDelta || id == MessageId::PointerWheel || id == MessageId::Key ||
+           id == MessageId::PointerAt;
+}
+
+}  // namespace
+
 GuestSession::GuestSession(TcpClient& link, std::uint32_t frames_per_second)
     : link_(link),
       frame_interval_ms_(1000 / (frames_per_second != 0 ? frames_per_second : 1)) {}
@@ -36,6 +66,7 @@ void GuestSession::run() {
     RWIN_INFO("session", "serving; frame interval {} ms, wire {}", frame_interval_ms_,
               WireHello::kVersion);
     say_hello();
+    show_contents_while_dragging();
     while (running_) {
         if (link_.wait(frame_interval_ms_, frames_)) {
             if (!link_.receive(incoming_)) return;
@@ -90,7 +121,9 @@ void GuestSession::greet(MessageReader& message) {
     greeted_ = true;
 }
 
+
 void GuestSession::handle(MessageReader& message) {
+    if (watcher_ != nullptr && is_input(message.id())) watcher_->note_input();
     switch (message.id()) {
         case MessageId::WatchScope: {
             const std::uint32_t process_id = message.u32();
@@ -172,6 +205,21 @@ void GuestSession::handle(MessageReader& message) {
         case MessageId::PointerButton:
             press_pointer(message);
             break;
+        case MessageId::PointerAt: {
+            const std::optional<PointerAt> at = PointerAt::read(message);
+            if (!at.has_value()) {
+                RWIN_WARN("input", "malformed pointer at");
+                break;
+            }
+            report_grab();
+            PointerInjector::move_on_screen(at->x, at->y);
+            grabs_.put_at(at->x, at->y);
+            if (at->button != PointerAt::kNoButton) {
+                PointerInjector::press_on_screen(at->x, at->y,
+                                                 static_cast<PointerInjector::Button>(at->button), at->pressed);
+            }
+            break;
+        }
         case MessageId::PointerWheel: {
             const std::optional<PointerWheel> wheel = PointerWheel::read(message);
             if (!wheel.has_value()) {
@@ -346,6 +394,12 @@ void GuestSession::push_window_changes() {
         RWIN_DEBUG("windows", "  {:#x} owner={:#x} {}x{} at {},{} class='{}' title='{}'",
                    window.handle, window.owner, window.width, window.height, window.x,
                    window.y, window.class_name, window.title);
+    }
+    if (drags_ != nullptr) {
+        std::vector<std::uint64_t> shown;
+        shown.reserve(changed->size());
+        for (const GuestWindow& window : *changed) shown.push_back(window.handle);
+        drags_->mirror_only(std::move(shown));
     }
     send_window_list(*changed);
 }

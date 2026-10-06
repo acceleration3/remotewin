@@ -340,6 +340,13 @@ void an_owned_window_with_a_caption_stands_alone() {
     check(!rwin::owned_window_stands_alone(kPopup, 0), "a menu is a popup");
     check(!rwin::owned_window_stands_alone(kCaption, kNoActivate),
           "one that never activates stays a popup: it is never typed into");
+    // Affinity's floating tool panel, as the guest listed it.
+    check(rwin::owned_window_stands_alone(0x16080000, 0x00080000),
+          "an overlapped window with its caption taken away is still a window");
+    check(!rwin::owned_window_stands_alone(0x96000000, 0x08080088),
+          "a WPF dropdown (WS_POPUP, no-activate, topmost) is a popup");
+    check(!rwin::owned_window_stands_alone(0x9e000028, 0x00080000),
+          "a disabled WS_POPUP overlay is a popup");
     check(static_cast<int>(rwin::MessageId::MoveWindow) < 64, "MoveWindow is the host's to send");
 }
 

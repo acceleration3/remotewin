@@ -47,6 +47,9 @@ enum class MessageId : std::uint8_t {
     SlotFree = 15,
     // A wheel turned over a mirror (PointerWheel).
     PointerWheel = 16,
+    // The pointer at a point of the guest's screen while a button pressed
+    // in a mirror is held (PointerAt).
+    PointerAt = 17,
 
     WindowList = 64,
     Frame = 65,

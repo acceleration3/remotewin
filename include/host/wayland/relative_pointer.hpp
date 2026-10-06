@@ -22,6 +22,9 @@ public:
 
 Q_SIGNALS:
     void moved(QPointF unaccelerated);
+    // The same motion as the pointer itself made it, in the surface's
+    // logical units: what wl_pointer.motion moves by.
+    void moved_by(QPointF accelerated);
 
 private:
     struct Release {

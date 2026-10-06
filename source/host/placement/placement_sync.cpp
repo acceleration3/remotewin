@@ -6,6 +6,7 @@
 #include "host/mirror/pixel_mapping.hpp"
 #include "logging/logger.hpp"
 
+#include <algorithm>
 #include <QGuiApplication>
 #include <QScreen>
 
@@ -69,6 +70,8 @@ void PlacementSync::follow_guest(MirrorWindow& mirror, QRect guest, bool placeab
                frame.y(), frame.width(), frame.height(), tracked.surface, remade ? ", new" : "");
     tracked.asked = frame.topLeft();
     tracked.asked_size = frame.size();
+    tracked.recently_asked.push_back(guest.topLeft());
+    if (tracked.recently_asked.size() > kRecentlyAsked) tracked.recently_asked.pop_front();
     tracked.pending = true;
     tracked.placed_once = false;
     tracked.put_back = false;
@@ -136,6 +139,11 @@ void PlacementSync::moved(std::uint64_t window, QRectF frame) {
         return;
     }
     if (guest == it->guest || guest == it->awaiting_guest) return;
+    if (std::find(it->recently_asked.begin(), it->recently_asked.end(), guest) != it->recently_asked.end()) {
+        RWIN_DEBUG("placement", "{:#x} reported at {},{}, where it was put a moment ago; not sent back", window,
+                   guest.x(), guest.y());
+        return;
+    }
     it->moved_guest_to = guest;
     it->awaiting_guest = guest;
     ++it->guest_moves;

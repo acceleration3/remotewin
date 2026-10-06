@@ -3,6 +3,7 @@
 #include "host/link/parent_control.hpp"
 #include "host/mirror/mirror_session.hpp"
 #include "host/mirror/monitor_session.hpp"
+#include "host/mirror/window_report.hpp"
 #include "logging/logger.hpp"
 #include "proto/wire_hello.hpp"
 
@@ -160,6 +161,7 @@ int main(int argc, char** argv) {
     RWIN_INFO("boot", "mirroring pid {} job '{}'{}", process_id, job.toStdString(),
               (process_id == 0 && job.isEmpty()) ? " (the whole desktop)" : "");
     rwin::host::MirrorSession session{link, frames, process_id, job};
+    const rwin::host::WindowReport report{session};
     if (control) {
         QObject::connect(&session, &rwin::host::MirrorSession::ready, control.get(),
                          &rwin::host::ParentControl::report_ready);

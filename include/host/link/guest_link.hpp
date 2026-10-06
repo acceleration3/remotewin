@@ -19,6 +19,7 @@
 // Signal arguments are complete types: Qt's meta-type registration of a
 // signal's arguments looks inside them.
 namespace rwin {
+struct PointerAt;
 struct PointerWheel;
 struct KeyStroke;
 class MessageReader;
@@ -60,6 +61,7 @@ public:
     // The held pointer's own motion, in counts.
     void send_pointer_delta(std::uint64_t window, std::int32_t dx, std::int32_t dy);
     void send_pointer_wheel(const PointerWheel& wheel);
+    void send_pointer_at(const PointerAt& at);
     void send_key(const KeyStroke& stroke);
     void send_close(std::uint64_t window);
     void send_focus(std::uint64_t window);

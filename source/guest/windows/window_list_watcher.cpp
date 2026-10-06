@@ -20,6 +20,7 @@ bool same(const GuestWindow& a, const GuestWindow& b) {
 }  // namespace
 
 std::optional<std::vector<GuestWindow>> WindowListWatcher::changed() {
+    if (const auto handed = hand_off_.handed_to(scope_)) scope_.adopt(*handed);
     std::vector<GuestWindow> found = windows_.windows_in(scope_);
     const bool alive = scope_.alive();
     if (alive == alive_ && found.size() == known_.size()

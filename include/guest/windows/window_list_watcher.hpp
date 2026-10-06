@@ -1,5 +1,6 @@
 #pragma once
 
+#include "guest/windows/foreground_hand_off.hpp"
 #include "guest/windows/launch_scope.hpp"
 #include "guest/windows/window_enumerator.hpp"
 
@@ -38,8 +39,13 @@ public:
     // host asks outright.
     void forget() noexcept { known_.clear(); }
 
+    // Input this mirror put into the guest: what the application does
+    // next with the foreground is its doing (ForegroundHandOff).
+    void note_input() noexcept { hand_off_.note_input(); }
+
 private:
     LaunchScope scope_;
+    ForegroundHandOff hand_off_;
     WindowEnumerator windows_;
     std::vector<GuestWindow> known_;
     bool alive_ = true;

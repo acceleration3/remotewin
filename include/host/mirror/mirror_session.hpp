@@ -15,6 +15,7 @@
 #include <QPointer>
 #include <QString>
 #include <cstdint>
+#include <memory>
 #include <optional>
 
 class QTimer;
@@ -23,6 +24,7 @@ namespace rwin::host {
 
 class GuestLink;
 class MirrorWindow;
+class RelativePointer;
 class SharedFrameFeed;
 struct SharedFrame;
 
@@ -50,6 +52,8 @@ public:
     // What the mirror of ``window`` decided, and where it was put on the
     // desktop; nothing while there is no mirror.
     [[nodiscard]] std::optional<MirrorState> state_of(std::uint64_t window) const;
+    // The guest's windows as they last arrived, topmost first.
+    [[nodiscard]] const QList<GuestWindowInfo>& listed() const noexcept { return listed_; }
 
     // Where the guest's screen is on this desktop, where that is known.
     [[nodiscard]] std::optional<ScreenMapping> guest_screen() const {
@@ -109,6 +113,10 @@ private:
     PixelCursor pixel_cursor_{pointer_globals_};
     CursorPlayer cursor_;
     PointerGrabber grabber_;
+    // The pointer's own motion, for the mirror a button is held in
+    // (MirrorWindow::held_motion); none when the compositor has no
+    // relative pointer.
+    std::unique_ptr<RelativePointer> held_motion_;
     PointerGrab grab_;
     PlacementSync placement_;
     bool application_alive_ = true;

@@ -24,6 +24,7 @@ add_executable(remotewin-guest
     windows/window_focus.cpp
     windows/window_drag_watcher.cpp
     windows/launch_scope.cpp
+    windows/foreground_hand_off.cpp
     windows/window_list_watcher.cpp
     windows/window_mover.cpp
     windows/window_resizer.cpp

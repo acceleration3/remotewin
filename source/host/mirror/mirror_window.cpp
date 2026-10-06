@@ -8,6 +8,7 @@
 #include "host/mirror/gpu_picture.hpp"
 #include "host/mirror/pixel_mapping.hpp"
 #include "logging/logger.hpp"
+#include "proto/pointer_at.hpp"
 #include "proto/pointer_wheel.hpp"
 
 #include <QApplication>
@@ -471,6 +472,7 @@ void MirrorWindow::take_over_drag() {
     // The compositor owns the release now; it need not reach this widget.
     // Keeping the press here leaves a blank mirror alive after the guest hides it.
     held_ = Qt::NoButton;
+    held_at_.reset();
     Q_EMIT let_go();
 }
 
@@ -822,7 +824,12 @@ void MirrorWindow::changeEvent(QEvent* event) {
     // large as its screen lets it be, and asking for a size would take it
     // back out of maximised.
     if (maximized_ && maximized_by_guest_) return;
+    // Nor when the guest restored itself and this followed: the mirror is
+    // still the maximised size as it leaves maximised, and asking for that
+    // would give the restored window the whole screen, at its corner.
+    const bool restored_by_guest = !maximized_ && maximized_by_guest_;
     if (!maximized_) maximized_by_guest_ = false;
+    if (restored_by_guest) return;
     const QSize wanted = maximized_ && guest_room_.isValid() && !guest_room_.isEmpty()
                              ? guest_room_
                              : PixelMapping{devicePixelRatioF()}.guest_size(size());
@@ -900,6 +907,16 @@ std::optional<QPoint> MirrorWindow::guest_position_of(QMouseEvent* event) const 
     return guest_origin() + own;
 }
 
+// Wherever the pointer is, in the guest window's pixels, outside it too: a
+// press the guest has seen holds the mouse capture there, and Windows goes
+// on telling the window where the pointer is until the button comes up.
+// The compositor keeps sending this surface the pointer for as long as the
+// button is held (its implicit grab), so these are the only moves the guest
+// can have - a drag out of a narrow tool panel is all outside it.
+QPoint MirrorWindow::guest_point_of(QMouseEvent* event) const {
+    return guest_origin() + mapping().guest_point(event->position());
+}
+
 QPoint MirrorWindow::guest_origin() const {
     const auto* owner = qobject_cast<const MirrorWindow*>(parentWidget());
     if (owner == nullptr) return QPoint(0, 0);
@@ -927,7 +944,12 @@ void MirrorWindow::mouseMoveEvent(QMouseEvent* event) {
     }
     // Forwarded even over the chrome and the border: that is how the guest
     // updates its own hover highlighting and decides which cursor to show.
-    const std::optional<QPoint> at = guest_position_of(event);
+    // Held, the pointer's own motion moves the guest's (held_motion): a
+    // point against this surface is against where the compositor has put
+    // it, which while Windows drags the window is a step behind it.
+    if (held_at_.has_value()) return;
+    const std::optional<QPoint> at =
+        held_ != Qt::NoButton ? std::optional(guest_point_of(event)) : guest_position_of(event);
     if (!at.has_value()) return;
     link_.send_pointer_move(root().handle(), at->x(), at->y());
 }
@@ -968,17 +990,45 @@ void MirrorWindow::mousePressEvent(QMouseEvent* event) {
     held_ |= event->button();
     link_.send_pointer_button(root().handle(), at->x(), at->y(),
                               guest_button(event->button()), true);
+    if (relative_motion_ && !held_at_.has_value()) {
+        held_at_ = QPointF(root().guest_position_ + *at);
+        RWIN_DEBUG("pointer", "{:#x} held at {},{} on the guest's screen (window at {},{})", handle_,
+                   held_at_->x(), held_at_->y(), root().guest_position_.x(), root().guest_position_.y());
+    }
+}
+
+// Logical units of this surface to the guest's pixels: device pixels per
+// unit, over device pixels per guest pixel.
+void MirrorWindow::held_motion(QPointF logical) {
+    if (!held_at_.has_value()) return;
+    *held_at_ += logical * (devicePixelRatioF() / root().fit_);
+    RWIN_TRACE("pointer", "{:#x} held, moved {:.2f},{:.2f} to {:.1f},{:.1f}", handle_, logical.x(), logical.y(),
+               held_at_->x(), held_at_->y());
+    link_.send_pointer_at(PointerAt{root().handle(), qRound(held_at_->x()), qRound(held_at_->y()),
+                                    PointerAt::kNoButton, false});
 }
 
 void MirrorWindow::mouseReleaseEvent(QMouseEvent* event) {
+    const bool pressed_here = (held_ & event->button()) != 0;
     held_ &= ~event->button();
     if (held_ == Qt::NoButton) Q_EMIT let_go();
-    if (style_.disabled()) return;
+    // A release the guest saw the press of goes to it wherever it happens,
+    // and whatever the window has become since: left out, the guest holds
+    // the button down for good, and whatever it was doing with it - a drag,
+    // with its overlay disabling the window under it - never ends.
+    if (style_.disabled() && !pressed_here) return;
     if (swallow_release_) {
         swallow_release_ = false;
         return;
     }
-    const std::optional<QPoint> at = guest_position_of(event);
+    if (pressed_here && held_at_.has_value()) {
+        link_.send_pointer_at(PointerAt{root().handle(), qRound(held_at_->x()), qRound(held_at_->y()),
+                                        guest_button(event->button()), false});
+        if (held_ == Qt::NoButton) held_at_.reset();
+        return;
+    }
+    const std::optional<QPoint> at =
+        pressed_here ? std::optional(guest_point_of(event)) : guest_position_of(event);
     if (at.has_value()) {
         link_.send_pointer_button(root().handle(), at->x(), at->y(),
                                   guest_button(event->button()), false);

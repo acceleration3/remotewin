@@ -18,10 +18,11 @@ RelativePointer::RelativePointer(zwp_relative_pointer_manager_v1* manager, wl_po
 // wl_fixed_t, in 256ths: unaccelerated motion is in the device's own units,
 // whole counts for a mouse.
 void RelativePointer::motion(void* self, zwp_relative_pointer_v1* /*relative*/, std::uint32_t /*time_high*/,
-                             std::uint32_t /*time_low*/, std::int32_t /*dx*/, std::int32_t /*dy*/,
+                             std::uint32_t /*time_low*/, std::int32_t dx, std::int32_t dy,
                              std::int32_t dx_unaccelerated, std::int32_t dy_unaccelerated) {
-    Q_EMIT static_cast<RelativePointer*>(self)->moved(
-        QPointF(wl_fixed_to_double(dx_unaccelerated), wl_fixed_to_double(dy_unaccelerated)));
+    auto* pointer = static_cast<RelativePointer*>(self);
+    Q_EMIT pointer->moved(QPointF(wl_fixed_to_double(dx_unaccelerated), wl_fixed_to_double(dy_unaccelerated)));
+    Q_EMIT pointer->moved_by(QPointF(wl_fixed_to_double(dx), wl_fixed_to_double(dy)));
 }
 
 }  // namespace rwin::host

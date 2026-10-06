@@ -1,7 +1,8 @@
 #include "guest/windows/window_drag_watcher.hpp"
 
 #include "logging/logger.hpp"
-#include "proto/owned_window.hpp"
+
+#include <algorithm>
 
 // clang-format off
 #include <windows.h>
@@ -27,26 +28,20 @@ void CALLBACK on_move_size_start(HWINEVENTHOOK /*hook*/, DWORD event, HWND windo
     WindowDragWatcher* watcher = listening.load();
     if (watcher == nullptr) return;
 
-    // An owned window mirrored as a popup of its owner is placed where the
-    // guest put it - the one surface the compositor lets the client
-    // position, and the one it will not drag. So Windows keeps that drag:
-    // the guest window moves, and the mirror follows the positions the
-    // window list reports. One mirrored as a window of its own is dragged
-    // by the compositor like any other.
+    const auto handle = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(window));
+    if (!watcher->mirrors(handle)) return;
+    // An owned window keeps Windows' move loop (see WindowDragWatcher): the
+    // guest window moves, its application sees it move, and the mirror
+    // follows the positions the window list reports.
     HWND owner = ::GetWindow(window, GW_OWNER);
-    const auto style = static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_STYLE));
-    const auto extended = static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_EXSTYLE));
-    if (owner != nullptr && ::IsWindowVisible(owner) != FALSE
-        && !owned_window_stands_alone(style, extended)) {
-        return;
-    }
+    if (owner != nullptr && ::IsWindowVisible(owner) != FALSE) return;
 
     // Break the move loop before it moves anything. WM_CANCELMODE is what
     // ends any modal tracking state, and the window's own procedure acts
     // on it at its next message — microseconds after it began, so the
     // guest window never visibly moves.
     ::PostMessageW(window, WM_CANCELMODE, 0, 0);
-    watcher->note(static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(window)));
+    watcher->note(handle);
 }
 
 }  // namespace
@@ -96,6 +91,16 @@ void WindowDragWatcher::note(std::uint64_t window_handle) {
     started_.push_back(window_handle);
     RWIN_DEBUG("drag", "{:#x} started a drag; cancelled and handed to the host",
                window_handle);
+}
+
+void WindowDragWatcher::mirror_only(std::vector<std::uint64_t> windows) {
+    const std::lock_guard lock{mutex_};
+    mirrored_ = std::move(windows);
+}
+
+bool WindowDragWatcher::mirrors(std::uint64_t window_handle) {
+    const std::lock_guard lock{mutex_};
+    return std::find(mirrored_.begin(), mirrored_.end(), window_handle) != mirrored_.end();
 }
 
 std::vector<std::uint64_t> WindowDragWatcher::drained() {

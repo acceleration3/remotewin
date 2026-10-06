@@ -188,6 +188,21 @@ void read_region(HWND window, const WindowSurface& surface, std::vector<WindowRe
     ::DeleteObject(region);
 }
 
+// Whether a window of the scope owns ``window``, at any remove: a dialog
+// Windows or a broker draws over an application's window in a process of
+// its own - the passkey prompt (CredentialUIBroker.exe) over a browser's
+// sign-in page - is that application's, and its owner is disabled until
+// it is answered.
+bool owned_in_scope(HWND window, const LaunchScope& scope) {
+    for (HWND owner = ::GetWindow(window, GW_OWNER); owner != nullptr;
+         owner = ::GetWindow(owner, GW_OWNER)) {
+        DWORD owner_process = 0;
+        ::GetWindowThreadProcessId(owner, &owner_process);
+        if (scope.contains(owner_process)) return true;
+    }
+    return false;
+}
+
 struct Collector {
     std::vector<GuestWindow>* into;
     const LaunchScope* scope;
@@ -200,7 +215,9 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
 
     DWORD process_id = 0;
     ::GetWindowThreadProcessId(window, &process_id);
-    if (!collector->scope->contains(process_id)) return TRUE;
+    if (!collector->scope->contains(process_id) && !owned_in_scope(window, *collector->scope)) {
+        return TRUE;
+    }
 
     GuestWindow found;
     found.handle = reinterpret_cast<std::uintptr_t>(window);

@@ -12,6 +12,7 @@
 #include "proto/picture_rect.hpp"
 #include "proto/pointer_delta.hpp"
 #include "proto/pointer_grab.hpp"
+#include "proto/pointer_at.hpp"
 #include "proto/pointer_wheel.hpp"
 #include "proto/slot_free.hpp"
 #include "proto/wire_hello.hpp"
@@ -393,6 +394,12 @@ void GuestLink::send_pointer_button(std::uint64_t window, std::int32_t x, std::i
     out.put_i32(y);
     out.put_u8(button);
     out.put_u8(pressed ? 1 : 0);
+    send(out.take());
+}
+
+void GuestLink::send_pointer_at(const PointerAt& at) {
+    MessageWriter out{MessageId::PointerAt};
+    at.write(out);
     send(out.take());
 }
 

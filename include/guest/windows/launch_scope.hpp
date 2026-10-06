@@ -44,6 +44,13 @@ public:
 
     [[nodiscard]] bool contains(std::uint32_t process_id) const;
 
+    // Counts ``process_id`` and what it starts from now on, for as long as
+    // it runs: a program the application handed itself to
+    // (ForegroundHandOff). Not one in the Windows directory - the shell,
+    // or a broker serving every application - and not the whole desktop's
+    // scope, which has everything already. Whether it was taken.
+    bool adopt(std::uint32_t process_id);
+
     // Whether anything in the scope is still running. A stub's own window
     // can come and go before the program it started has drawn a thing,
     // so the windows say nothing about whether the application is done.
@@ -68,6 +75,8 @@ private:
     std::wstring directory_;
     // When the launched program started (FILETIME ticks).
     std::uint64_t started_ = 0;
+    // Processes adopted, counted while they run whatever the rules say.
+    std::unordered_set<std::uint32_t> adopted_;
     mutable std::unordered_set<std::uint32_t> members_;
     mutable std::chrono::steady_clock::time_point refreshed_{};
 };

@@ -130,6 +130,9 @@ void LaunchScope::refresh() const {
         if (parent_of.contains(member)) counted.insert(member);
     }
     if (parent_of.contains(process_id_)) counted.insert(process_id_);
+    for (const std::uint32_t adopted : adopted_) {
+        if (parent_of.contains(adopted)) counted.insert(adopted);
+    }
 
     std::unordered_map<std::uint32_t, std::uint64_t> started;
     const auto start_of = [&started](std::uint32_t id) -> std::uint64_t {
@@ -178,6 +181,20 @@ void LaunchScope::refresh() const {
     members_ = std::move(counted);
 }
 
+bool LaunchScope::adopt(std::uint32_t process_id) {
+    if (everything() || process_id == 0 || contains(process_id)) return false;
+    std::wstring image;
+    std::uint64_t started = 0;
+    if (!describe(process_id, image, started)) return false;
+    const std::wstring system = windows_directory();
+    if (!system.empty() && image.rfind(system, 0) == 0) return false;
+    adopted_.insert(process_id);
+    members_.insert(process_id);
+    RWIN_INFO("scope", "pid {} ({}) took the foreground from the application; it belongs to it "
+              "too", process_id, std::string(image.begin(), image.end()));
+    return true;
+}
+
 bool LaunchScope::alive() const {
     if (everything()) return true;
     refresh();
@@ -190,7 +207,8 @@ bool LaunchScope::contains(std::uint32_t process_id) const {
     if (members_.contains(process_id)) return true;
     // A process started since the last refresh, before its window was
     // listed: the job answers for its members at once.
-    return (job_ != nullptr && in_job(job_, process_id)) || (process_id_ != 0 && process_id == process_id_);
+    return (job_ != nullptr && in_job(job_, process_id)) ||
+           (process_id_ != 0 && process_id == process_id_) || adopted_.contains(process_id);
 }
 
 }  // namespace rwin::guest

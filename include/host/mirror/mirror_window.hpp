@@ -112,6 +112,17 @@ public:
     // Follow the state the guest window ended up in. That is how a press
     // on chrome this side does not interpret still reaches this window.
     void follow_guest_state(bool minimized, bool maximized);
+    // Where the guest window's picture is on the guest's screen, as the
+    // window list last said.
+    void note_guest_position(QPoint at) noexcept { guest_position_ = at; }
+    // Whether the pointer's own motion reaches held_motion: then a button
+    // held in this mirror moves the guest's pointer by that motion, from
+    // where the press was, as PointerAt.
+    void follow_relative_motion(bool follows) noexcept { relative_motion_ = follows; }
+    // A button pressed here is held, and the pointer goes by its motion.
+    [[nodiscard]] bool holds() const noexcept { return held_at_.has_value(); }
+    // The pointer moved by ``logical`` units of this surface while held.
+    void held_motion(QPointF logical);
 
     // The guest made this its foreground window; be the active one here.
     void follow_guest_foreground(bool foreground);
@@ -226,6 +237,8 @@ private:
     // and a press there put through would land on whatever the guest has
     // at a place the window does not cover.
     [[nodiscard]] std::optional<QPoint> guest_position_of(QMouseEvent* event) const;
+    // The same, outside the picture too: for a button the guest holds.
+    [[nodiscard]] QPoint guest_point_of(QMouseEvent* event) const;
     void send_key(QKeyEvent* event, bool pressed);
     void ask_guest_for(QSize size);
 
@@ -314,6 +327,11 @@ private:
     WornCursor worn_;
     Qt::Edges hovered_edges_;
     Qt::MouseButtons held_;
+    QPoint guest_position_;
+    // While a button pressed here is held, where the guest's pointer is,
+    // in its screen's pixels: the press, plus the pointer's motion since.
+    std::optional<QPointF> held_at_;
+    bool relative_motion_ = false;
     bool closing_when_released_ = false;
     bool guest_closed_ = false;
     bool applying_guest_size_ = false;

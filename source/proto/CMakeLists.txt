@@ -11,6 +11,7 @@ add_library(rwin_proto STATIC
     picture_rect.cpp
     pointer_delta.cpp
     pointer_wheel.cpp
+    pointer_at.cpp
     pointer_grab.cpp
     pointer_grab_rule.cpp
     slot_free.cpp

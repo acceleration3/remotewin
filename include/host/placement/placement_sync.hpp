@@ -14,6 +14,7 @@
 #include <QSizeF>
 
 #include <cstdint>
+#include <deque>
 #include <optional>
 
 namespace rwin::host {
@@ -91,7 +92,16 @@ private:
         bool put_back = false;
         // The surface last sent to the guest's output.
         std::uint32_t on_guest_screen = 0;
+        // Where this side has lately asked KWin to put the window, as guest
+        // points, newest last. While Windows moves a window itself - a
+        // tool panel's drag - placements follow it every frame, and KWin's
+        // report of one can come after the guest has gone on: it is this
+        // side's own placement coming back, not the user moving the window,
+        // and sending the guest there would drag it back a step.
+        std::deque<QPoint> recently_asked;
     };
+
+    static constexpr std::size_t kRecentlyAsked = 32;
 
     void placed(std::uint64_t window, QPointF frame_corner, qint64 round_trip_ms);
     void not_placed(std::uint64_t window);

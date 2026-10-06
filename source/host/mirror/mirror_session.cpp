@@ -1,5 +1,7 @@
 #include "host/mirror/mirror_session.hpp"
 
+#include "host/wayland/relative_pointer.hpp"
+
 #include "host/chrome/win32_style.hpp"
 #include "host/export/shared_frame.hpp"
 #include "host/export/shared_frame_feed.hpp"
@@ -46,6 +48,16 @@ MirrorSession::MirrorSession(GuestLink& link, SharedFrameFeed& frames, std::uint
     connect(&link_, &GuestLink::connected, this,
             [this] { link_.watch_scope(process_id_, job_name_); });
     link_.watch_scope(process_id_, job_name_);
+    if (pointer_globals_.relative() != nullptr && PointerGlobals::pointer() != nullptr) {
+        held_motion_ = std::make_unique<RelativePointer>(pointer_globals_.relative(), PointerGlobals::pointer());
+        connect(held_motion_.get(), &RelativePointer::moved_by, this, [this](QPointF logical) {
+            for (const auto& mirror : std::as_const(mirrors_)) {
+                if (!mirror.isNull() && mirror->holds()) mirror->held_motion(logical);
+            }
+        });
+    } else {
+        RWIN_INFO("pointer", "no relative pointer: a window Windows drags is followed against its mirror");
+    }
 }
 
 MirrorSession::~MirrorSession() {
@@ -195,6 +207,7 @@ void MirrorSession::open(const GuestWindowInfo& window, MirrorWindow* owner) {
         mirror->wear_guest_cursor(cursor_.look(), cursor_.step());
     connect(mirror, &MirrorWindow::pressed_while_disabled, this, &MirrorSession::bring_forward_for);
     connect(mirror, &MirrorWindow::focused_unasked, this, &MirrorSession::restore_guest_activation);
+    mirror->follow_relative_motion(held_motion_ != nullptr);
     mirrors_.insert(window.handle, mirror);
 }
 
@@ -223,6 +236,7 @@ void MirrorSession::place(MirrorWindow& mirror, const GuestWindowInfo& window,
     }
     // A toplevel goes where the guest put it; a popup is placed against its
     // owner already, and a minimised or maximised one by its state.
+    mirror.note_guest_position(QPoint(window.x, window.y));
     placement_.follow_guest(
         mirror,
         QRect(window.x, window.y, static_cast<int>(window.width), static_cast<int>(window.height)),
