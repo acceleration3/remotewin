@@ -1,5 +1,6 @@
 #include "guest/windows/foreground_hand_off.hpp"
 
+#include "guest/windows/application_process.hpp"
 #include "guest/windows/launch_scope.hpp"
 
 #include <windows.h>
@@ -13,8 +14,8 @@ void ForegroundHandOff::note_input() noexcept {
 std::optional<std::uint32_t> ForegroundHandOff::handed_to(const LaunchScope& scope) {
     HWND foreground = ::GetForegroundWindow();
     if (foreground == nullptr || foreground == foreground_) return std::nullopt;
-    DWORD process_id = 0;
-    ::GetWindowThreadProcessId(foreground, &process_id);
+    const std::uint32_t process_id =
+        application_process_of(reinterpret_cast<std::uintptr_t>(foreground));
     const bool was_in_scope = foreground_in_scope_;
     HWND previous = static_cast<HWND>(foreground_);
     const bool in_scope = scope.contains(process_id);
@@ -37,7 +38,7 @@ std::optional<std::uint32_t> ForegroundHandOff::handed_to(const LaunchScope& sco
     // is as good as the same input.
     const DWORD since_ours = input.dwTime - last_input_;
     if (since_ours > kSameInputMs && since_ours < kWithinMs) return std::nullopt;
-    return static_cast<std::uint32_t>(process_id);
+    return process_id;
 }
 
 }  // namespace rwin::guest

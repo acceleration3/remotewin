@@ -45,14 +45,21 @@ std::wstring lowercase(std::wstring text) {
     return text;
 }
 
-// A process's image path, lowercase, and when it started; false for one
-// that cannot be opened.
+// A process's image path in the kernel's form (\Device\HarddiskVolumeN\...),
+// lowercase, and when it started; false for one that cannot be opened.
+//
+// The kernel's form because it outlives the process: the launched stub has
+// usually exited by the time the mirror asks - Firefox started elevated
+// hands itself to Explorer and is gone within a tenth of a second - and
+// while the agent holds it open, the Win32 form of an exited process's
+// image fails with ERROR_GEN_FAILURE.
 bool describe(std::uint32_t process_id, std::wstring& image, std::uint64_t& started) {
     HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
     if (process == nullptr) return false;
     wchar_t path[MAX_PATH * 2] = {};
     DWORD length = static_cast<DWORD>(std::size(path));
-    const bool named = ::QueryFullProcessImageNameW(process, 0, path, &length) != FALSE;
+    const bool named =
+        ::QueryFullProcessImageNameW(process, PROCESS_NAME_NATIVE, path, &length) != FALSE;
     FILETIME created{};
     FILETIME exited{};
     FILETIME kernel{};
@@ -65,11 +72,20 @@ bool describe(std::uint32_t process_id, std::wstring& image, std::uint64_t& star
     return true;
 }
 
+// The Windows directory in the form ``describe`` gives images in.
 std::wstring windows_directory() {
     wchar_t path[MAX_PATH] = {};
     const UINT length = ::GetWindowsDirectoryW(path, MAX_PATH);
     if (length == 0 || length >= MAX_PATH) return {};
-    return lowercase(std::wstring(path, length)) + L'\\';
+    HANDLE directory = ::CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                     nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (directory == INVALID_HANDLE_VALUE) return {};
+    wchar_t native[MAX_PATH * 2] = {};
+    const DWORD native_length = ::GetFinalPathNameByHandleW(
+        directory, native, static_cast<DWORD>(std::size(native)), VOLUME_NAME_NT);
+    ::CloseHandle(directory);
+    if (native_length == 0 || native_length >= std::size(native)) return {};
+    return lowercase(std::wstring(native, native_length)) + L'\\';
 }
 
 bool in_job(void* job, std::uint32_t process_id) {
@@ -198,7 +214,17 @@ bool LaunchScope::adopt(std::uint32_t process_id) {
 bool LaunchScope::alive() const {
     if (everything()) return true;
     refresh();
-    return !members_.empty();
+    if (!members_.empty()) return true;
+    // A stub that relaunches itself through the shell - Firefox started
+    // elevated, handing itself to Explorer to run unelevated - exits
+    // before the shell has started the replacement, and for that moment
+    // nothing of the application runs.
+    if (started_ == 0) return false;
+    FILETIME now{};
+    ::GetSystemTimeAsFileTime(&now);
+    const std::uint64_t ticks =
+        (static_cast<std::uint64_t>(now.dwHighDateTime) << 32) | now.dwLowDateTime;
+    return ticks - started_ < kRelaunchTicks;
 }
 
 bool LaunchScope::contains(std::uint32_t process_id) const {

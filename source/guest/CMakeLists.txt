@@ -20,6 +20,7 @@ add_executable(remotewin-guest
     cursor/cursor_watcher.cpp
     cursor/monochrome_picture.cpp
     session/tcp_client.cpp
+    windows/application_process.cpp
     windows/window_enumerator.cpp
     windows/window_focus.cpp
     windows/window_drag_watcher.cpp

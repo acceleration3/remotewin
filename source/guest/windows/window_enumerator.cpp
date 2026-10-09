@@ -1,5 +1,6 @@
 #include "guest/windows/window_enumerator.hpp"
 
+#include "guest/windows/application_process.hpp"
 #include "guest/windows/launch_scope.hpp"
 #include "guest/windows/window_surface.hpp"
 
@@ -196,9 +197,9 @@ void read_region(HWND window, const WindowSurface& surface, std::vector<WindowRe
 bool owned_in_scope(HWND window, const LaunchScope& scope) {
     for (HWND owner = ::GetWindow(window, GW_OWNER); owner != nullptr;
          owner = ::GetWindow(owner, GW_OWNER)) {
-        DWORD owner_process = 0;
-        ::GetWindowThreadProcessId(owner, &owner_process);
-        if (scope.contains(owner_process)) return true;
+        if (scope.contains(application_process_of(reinterpret_cast<std::uintptr_t>(owner)))) {
+            return true;
+        }
     }
     return false;
 }
@@ -213,8 +214,8 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
     auto* collector = reinterpret_cast<Collector*>(param);
     if (!worth_showing(window)) return TRUE;
 
-    DWORD process_id = 0;
-    ::GetWindowThreadProcessId(window, &process_id);
+    const std::uint32_t process_id =
+        application_process_of(reinterpret_cast<std::uintptr_t>(window));
     if (!collector->scope->contains(process_id) && !owned_in_scope(window, *collector->scope)) {
         return TRUE;
     }

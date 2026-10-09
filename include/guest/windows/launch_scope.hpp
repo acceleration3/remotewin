@@ -67,6 +67,9 @@ private:
     void refresh() const;
 
     static constexpr std::chrono::milliseconds kRefreshAfter{200};
+    // How long after the launch the application counts as running with
+    // nothing of it running yet, in FILETIME ticks (100 ns).
+    static constexpr std::uint64_t kRelaunchTicks = 5ULL * 10'000'000ULL;
 
     void* job_ = nullptr;
     std::uint32_t process_id_ = 0;
