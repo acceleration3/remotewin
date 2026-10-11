@@ -14,8 +14,7 @@ void ForegroundHandOff::note_input() noexcept {
 std::optional<std::uint32_t> ForegroundHandOff::handed_to(const LaunchScope& scope) {
     HWND foreground = ::GetForegroundWindow();
     if (foreground == nullptr || foreground == foreground_) return std::nullopt;
-    const std::uint32_t process_id =
-        application_process_of(reinterpret_cast<std::uintptr_t>(foreground));
+    const std::uint32_t process_id = applications_.of(reinterpret_cast<std::uintptr_t>(foreground));
     const bool was_in_scope = foreground_in_scope_;
     HWND previous = static_cast<HWND>(foreground_);
     const bool in_scope = scope.contains(process_id);

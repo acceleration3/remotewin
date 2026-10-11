@@ -70,12 +70,18 @@ struct GuestWindow {
 // drawing — cloaked, in DWM's word. A console has one of these beside
 // its real window, identical in class, size and style, and mirroring it
 // puts up a second empty copy of the same terminal.
+class ApplicationProcess;
 class LaunchScope;
 
 class WindowEnumerator {
 public:
+    explicit WindowEnumerator(ApplicationProcess& applications) : applications_(applications) {}
+
     // Narrowed to the application ``scope`` describes.
-    [[nodiscard]] std::vector<GuestWindow> windows_in(const LaunchScope& scope) const;
+    [[nodiscard]] std::vector<GuestWindow> windows_in(const LaunchScope& scope);
+
+private:
+    ApplicationProcess& applications_;
 };
 
 }  // namespace rwin::guest

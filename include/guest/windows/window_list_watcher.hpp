@@ -1,5 +1,6 @@
 #pragma once
 
+#include "guest/windows/application_process.hpp"
 #include "guest/windows/foreground_hand_off.hpp"
 #include "guest/windows/launch_scope.hpp"
 #include "guest/windows/window_enumerator.hpp"
@@ -21,7 +22,7 @@ namespace rwin::guest {
 class WindowListWatcher {
 public:
     WindowListWatcher(const std::string& job_name, std::uint32_t process_id)
-        : scope_(job_name, process_id) {}
+        : scope_(job_name, process_id), hand_off_(applications_), windows_(applications_) {}
 
     // The new set, or nothing when it is the set reported last. Geometry
     // and titles count as part of the set: a window that moved has to
@@ -45,6 +46,8 @@ public:
 
 private:
     LaunchScope scope_;
+    // Before the two that ask it.
+    ApplicationProcess applications_;
     ForegroundHandOff hand_off_;
     WindowEnumerator windows_;
     std::vector<GuestWindow> known_;

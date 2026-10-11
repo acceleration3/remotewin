@@ -5,6 +5,7 @@
 
 namespace rwin::guest {
 
+class ApplicationProcess;
 class LaunchScope;
 
 // Notices the application handing the foreground to another program: a
@@ -22,6 +23,8 @@ class LaunchScope;
 // a window closed or minimised passes the foreground on, but is gone.
 class ForegroundHandOff {
 public:
+    explicit ForegroundHandOff(ApplicationProcess& applications) : applications_(applications) {}
+
     // Input this mirror put into the guest just now.
     void note_input() noexcept;
 
@@ -36,6 +39,7 @@ private:
     // same input reaching the input queue a moment after it was sent.
     static constexpr std::uint32_t kSameInputMs = 100;
 
+    ApplicationProcess& applications_;
     void* foreground_ = nullptr;
     bool foreground_in_scope_ = false;
     std::uint32_t last_input_ = 0;

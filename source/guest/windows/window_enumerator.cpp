@@ -194,10 +194,10 @@ void read_region(HWND window, const WindowSurface& surface, std::vector<WindowRe
 // its own - the passkey prompt (CredentialUIBroker.exe) over a browser's
 // sign-in page - is that application's, and its owner is disabled until
 // it is answered.
-bool owned_in_scope(HWND window, const LaunchScope& scope) {
+bool owned_in_scope(HWND window, const LaunchScope& scope, ApplicationProcess& applications) {
     for (HWND owner = ::GetWindow(window, GW_OWNER); owner != nullptr;
          owner = ::GetWindow(owner, GW_OWNER)) {
-        if (scope.contains(application_process_of(reinterpret_cast<std::uintptr_t>(owner)))) {
+        if (scope.contains(applications.of(reinterpret_cast<std::uintptr_t>(owner)))) {
             return true;
         }
     }
@@ -207,6 +207,7 @@ bool owned_in_scope(HWND window, const LaunchScope& scope) {
 struct Collector {
     std::vector<GuestWindow>* into;
     const LaunchScope* scope;
+    ApplicationProcess* applications;
     HWND foreground;
 };
 
@@ -215,8 +216,9 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
     if (!worth_showing(window)) return TRUE;
 
     const std::uint32_t process_id =
-        application_process_of(reinterpret_cast<std::uintptr_t>(window));
-    if (!collector->scope->contains(process_id) && !owned_in_scope(window, *collector->scope)) {
+        collector->applications->of(reinterpret_cast<std::uintptr_t>(window));
+    if (!collector->scope->contains(process_id)
+        && !owned_in_scope(window, *collector->scope, *collector->applications)) {
         return TRUE;
     }
 
@@ -250,9 +252,10 @@ BOOL CALLBACK collect(HWND window, LPARAM param) {
 
 }  // namespace
 
-std::vector<GuestWindow> WindowEnumerator::windows_in(const LaunchScope& scope) const {
+std::vector<GuestWindow> WindowEnumerator::windows_in(const LaunchScope& scope) {
+    applications_.forget_closed();
     std::vector<GuestWindow> found;
-    Collector collector{&found, &scope, ::GetForegroundWindow()};
+    Collector collector{&found, &scope, &applications_, ::GetForegroundWindow()};
     ::EnumWindows(&collect, reinterpret_cast<LPARAM>(&collector));
     return found;
 }
