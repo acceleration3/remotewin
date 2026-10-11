@@ -58,6 +58,7 @@ add_library(rwin_host STATIC
     cursor/worn_cursor.cpp
     export/copy_wait.cpp
     export/export_answer.cpp
+    export/export_hello.cpp
     export/export_request.cpp
     export/export_socket.cpp
     export/pci_address.cpp

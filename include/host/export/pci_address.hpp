@@ -24,6 +24,8 @@ struct PciAddress {
     [[nodiscard]] static std::optional<PciAddress> of_drm_node(const std::string& node);
 
     [[nodiscard]] std::string to_string() const;
+    // "pci-0000_03_00_0", as Mesa's DRI_PRIME names the GPU to render on.
+    [[nodiscard]] std::string prime_name() const;
 };
 
 }  // namespace rwin::host

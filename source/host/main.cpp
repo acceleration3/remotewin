@@ -1,3 +1,4 @@
+#include "host/export/export_hello.hpp"
 #include "host/export/shared_frame_feed.hpp"
 #include "host/link/guest_link.hpp"
 #include "host/link/parent_control.hpp"
@@ -12,7 +13,9 @@
 #include <QCommandLineParser>
 #include <QGuiApplication>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
+#include <string>
 #include <unistd.h>
 
 namespace {
@@ -22,18 +25,31 @@ namespace {
 // rather than report a mirror that merely ended.
 constexpr int kExitWireMismatch = 3;
 
+// Windows are drawn on the GPU the guest's surfaces are on, so its frames
+// can stay on that GPU: on another, they come as pixels over the guest's
+// network. Mesa renders on the GPU DRI_PRIME names and hands the compositor
+// buffers it can show wherever the compositor draws. Chosen before Qt makes
+// its EGL display, and only where nobody chose already; what was done is
+// said once the log is open.
+std::string draw_on_the_guests_gpu(const QString& export_socket) {
+    if (export_socket.isEmpty()) return {};
+    if (const char* chosen = std::getenv("DRI_PRIME"); chosen != nullptr) {
+        return std::string("DRI_PRIME is ") + chosen + " already";
+    }
+    std::string why;
+    const std::optional<rwin::host::ExportHello> hello =
+        rwin::host::ExportHello::greet(export_socket.toStdString(), 1, why);
+    if (!hello.has_value() || !hello->gpu().pci.has_value()) {
+        return {};
+    }
+    const std::string name = hello->gpu().pci->prime_name();
+    ::setenv("DRI_PRIME", name.c_str(), 1);
+    return "drawing on the guest's GPU, " + hello->gpu().pci->to_string() + " (DRI_PRIME=" + name + ")";
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    QApplication app(argc, argv);
-    // The session says when it is done: an application's last window closing
-    // is not it while the application runs on to open another - Steam's
-    // updater giving way to its sign-in, a dialog between two windows.
-    app.setQuitOnLastWindowClosed(false);
-    QCoreApplication::setApplicationName(QStringLiteral("remotewin"));
-    QCoreApplication::setApplicationVersion(
-        QStringLiteral("wire %1").arg(rwin::WireHello::kVersion));
-
     QCommandLineParser parser;
     parser.setApplicationDescription(
         QStringLiteral("Mirror a guest Windows application's windows, or the guest's whole "
@@ -83,6 +99,23 @@ int main(int argc, char** argv) {
         QStringLiteral("Report LISTENING <port> and READY on stdout; accept RAISE on stdin. "
                        "Exit when the parent closes stdin.")};
     parser.addOption(managed_option);
+
+    // Read once before the application exists, for what has to be decided
+    // before it does; process() below reads them again, and answers --help.
+    QStringList early_arguments;
+    for (int at = 0; at < argc; ++at) early_arguments << QString::fromLocal8Bit(argv[at]);
+    parser.parse(early_arguments);
+    const std::string gpu_choice = draw_on_the_guests_gpu(
+        parser.isSet(export_option) ? parser.value(export_option) : qEnvironmentVariable("RWIN_EXPORT_SOCKET"));
+
+    QApplication app(argc, argv);
+    // The session says when it is done: an application's last window closing
+    // is not it while the application runs on to open another - Steam's
+    // updater giving way to its sign-in, a dialog between two windows.
+    app.setQuitOnLastWindowClosed(false);
+    QCoreApplication::setApplicationName(QStringLiteral("remotewin"));
+    QCoreApplication::setApplicationVersion(
+        QStringLiteral("wire %1").arg(rwin::WireHello::kVersion));
     parser.process(app);
     const bool managed = parser.isSet(managed_option);
     bool valid_port = false;
@@ -103,6 +136,7 @@ int main(int argc, char** argv) {
 
     rwin::Logger::instance().opened("remotewin");
     RWIN_INFO("boot", "wire {}", rwin::WireHello::kVersion);
+    if (!gpu_choice.empty()) RWIN_INFO("export", "{}", gpu_choice);
     rwin::host::GuestLink link;
     // Opened before the guest dials in: it is told at its hello which way
     // its frames are to come.

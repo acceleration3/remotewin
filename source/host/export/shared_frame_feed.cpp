@@ -1,5 +1,6 @@
 #include "host/export/shared_frame_feed.hpp"
 
+#include "host/export/export_hello.hpp"
 #include "host/export/rendering_gpu.hpp"
 #include "host/export/slot_lease.hpp"
 #include "host/export/surface_memory.hpp"
@@ -19,14 +20,6 @@
 
 namespace rwin::host {
 
-namespace {
-
-// How long the device has to answer hello: it answers at once, from a
-// thread of its own.
-constexpr int kHelloMs = 2000;
-
-}  // namespace
-
 SharedFrameFeed::SharedFrameFeed(GuestLink& link, QObject* parent) : QObject(parent), link_(link) {
     connect(&link_, &GuestLink::connected, this, &SharedFrameFeed::offer);
     connect(&link_, &GuestLink::ring_announced, this, &SharedFrameFeed::take_ring);
@@ -41,33 +34,17 @@ SharedFrameFeed::~SharedFrameFeed() = default;
 
 void SharedFrameFeed::open(const std::string& path) {
     std::string why;
-    std::optional<ExportSocket> socket = ExportSocket::connect(path, why);
-    if (!socket.has_value()) {
+    std::optional<ExportHello> hello = ExportHello::greet(path, ++next_tag_, why);
+    if (!hello.has_value()) {
         RWIN_WARN("export", "frames come as pixels: {}", why);
         return;
     }
-    const std::uint64_t tag = ++next_tag_;
-    bool gone = false;
-    std::optional<ExportSocket::Received> answer;
-    if (socket->send(ExportRequest{ExportRequest::Operation::Hello, 0, tag}) && socket->wait(kHelloMs)) {
-        answer = socket->receive(gone);
-    }
-    if (!answer.has_value() || answer->answer.operation != static_cast<std::uint32_t>(ExportRequest::Operation::Hello)
-        || answer->answer.tag != tag) {
-        RWIN_WARN("export", "frames come as pixels: the GPU device at '{}' did not answer hello", path);
-        return;
-    }
-    if (!answer->answer.ok()) {
-        RWIN_WARN("export", "frames come as pixels: the GPU device at '{}' exports nothing ({})", path,
-                  to_string(answer->answer.status));
-        return;
-    }
-    const ExportGpu gpu = answer->answer.gpu();
+    const ExportGpu gpu = hello->gpu();
     if (const std::optional<std::string> refusal = RenderingGpu{}.refusal_for(gpu)) {
         RWIN_WARN("export", "frames come as pixels: {}", *refusal);
         return;
     }
-    socket_ = std::move(socket);
+    socket_ = std::move(hello->socket());
     notifier_ = new QSocketNotifier(socket_->descriptor(), QSocketNotifier::Read, this);
     connect(notifier_, &QSocketNotifier::activated, this, &SharedFrameFeed::read_answers);
     RWIN_INFO("export", "frames stay on the GPU: '{}', {}", path, gpu.pci->to_string());

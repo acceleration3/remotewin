@@ -128,6 +128,8 @@ void pci_addresses_read_as_sysfs_writes_them() {
     check(!rwin::host::PciAddress::parse("0000:03:20.0").has_value(), "a device past 0x1f");
     check(!rwin::host::PciAddress::parse("card1").has_value(), "a name that is no address");
     check(rwin::host::PciAddress{0, 0x7B, 0, 0}.to_string() == "0000:7b:00.0", "written as sysfs writes it");
+    check(rwin::host::PciAddress{1, 0x7B, 0x1F, 7}.prime_name() == "pci-0001_7b_1f_7",
+          "and as Mesa's DRI_PRIME names a GPU");
 }
 
 // Frames become ready out of the order they were named; an older one shown

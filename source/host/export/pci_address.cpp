@@ -64,4 +64,11 @@ std::string PciAddress::to_string() const {
     return text;
 }
 
+std::string PciAddress::prime_name() const {
+    char text[sizeof "pci-0000_00_00_0"] = {};
+    std::snprintf(text, sizeof text, "pci-%04x_%02x_%02x_%x", static_cast<unsigned>(domain),
+                  static_cast<unsigned>(bus), static_cast<unsigned>(device), static_cast<unsigned>(function));
+    return text;
+}
+
 }  // namespace rwin::host
