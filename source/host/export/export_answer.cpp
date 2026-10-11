@@ -40,7 +40,6 @@ ExportGpu ExportAnswer::gpu() const noexcept {
     if ((body[23] & kOnPci) != 0) {
         gpu.pci = PciAddress{get<std::uint32_t>(body, 16), body[20], body[21], body[22]};
     }
-    gpu.capacity = get<std::uint32_t>(body, 24);
     return gpu;
 }
 

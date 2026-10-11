@@ -65,13 +65,11 @@ void a_hello_names_the_gpu() {
     bytes[53] = 0x00;
     bytes[54] = 0x00;
     bytes[55] = 1;
-    put(bytes, 56, std::uint32_t{64});
     const std::optional<ExportAnswer> hello = ExportAnswer::decode(bytes);
     check(hello.has_value() && hello->ok() && hello->tag == 7, "a hello decodes");
     const rwin::host::ExportGpu gpu = hello->gpu();
     check(gpu.uuid[0] == 0xA0 && gpu.uuid[15] == 0xAF, "its UUID is the 16 bytes at 32");
     check(gpu.pci == rwin::host::PciAddress{0, 3, 0, 0}, "its PCI address is at 48, on PCI by bit 0 at 55");
-    check(gpu.capacity == 64, "and how many surfaces a connection holds at 56");
     bytes[55] = 0;
     check(!ExportAnswer::decode(bytes)->gpu().pci.has_value(), "without the flag it is on no PCI bus");
 }

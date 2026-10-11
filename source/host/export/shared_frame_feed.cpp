@@ -70,8 +70,7 @@ void SharedFrameFeed::open(const std::string& path) {
     socket_ = std::move(socket);
     notifier_ = new QSocketNotifier(socket_->descriptor(), QSocketNotifier::Read, this);
     connect(notifier_, &QSocketNotifier::activated, this, &SharedFrameFeed::read_answers);
-    RWIN_INFO("export", "frames stay on the GPU: '{}', {}, {} surfaces a connection", path,
-              gpu.pci->to_string(), gpu.capacity);
+    RWIN_INFO("export", "frames stay on the GPU: '{}', {}", path, gpu.pci->to_string());
 }
 
 void SharedFrameFeed::offer() {

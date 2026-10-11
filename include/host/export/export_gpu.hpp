@@ -14,8 +14,6 @@ struct ExportGpu {
     std::array<std::uint8_t, 16> uuid{};
     // Nothing for a GPU on no PCI bus.
     std::optional<PciAddress> pci;
-    // Surfaces one connection may hold at once.
-    std::uint32_t capacity = 0;
 
     [[nodiscard]] bool operator==(const ExportGpu&) const noexcept = default;
 };
