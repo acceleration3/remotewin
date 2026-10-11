@@ -112,6 +112,9 @@ public:
     // Follow the state the guest window ended up in. That is how a press
     // on chrome this side does not interpret still reaches this window.
     void follow_guest_state(bool minimized, bool maximized);
+    // Out of minimised, back into the state it was minimised from:
+    // showNormal would take a maximised mirror out of maximised as well.
+    void unminimize();
     // Where the guest window's picture is on the guest's screen, as the
     // window list last said.
     void note_guest_position(QPoint at) noexcept { guest_position_ = at; }

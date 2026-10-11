@@ -477,7 +477,10 @@ void MirrorWindow::take_over_drag() {
 }
 
 void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
-    guest_maximized_ = maximized;
+    // IsZoomed is false for a minimised window, and Windows restores it
+    // maximised all the same: while it is minimised, whether it is
+    // maximised stays what it was.
+    if (!minimized) guest_maximized_ = maximized;
     // A popup has no state of its own: it shows and hides with its parent.
     if (parentWidget() != nullptr) return;
 
@@ -489,12 +492,13 @@ void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
         if (minimized) {
             showMinimized();
         } else {
-            showNormal();
+            unminimize();
             raise();
         }
         applying_guest_state_ = false;
         RWIN_DEBUG("chrome", "{:#x} follows guest minimized={}", handle_, minimized);
     }
+    if (minimized) return;
 
     // The guest window was maximised from its own chrome — the button in
     // the pixels, which is the one the user sees. The mirror covers this
@@ -516,6 +520,11 @@ void MirrorWindow::follow_guest_state(bool minimized, bool maximized) {
         applying_guest_state_ = false;
         RWIN_DEBUG("chrome", "{:#x} restored because the guest window was", handle_);
     }
+}
+
+void MirrorWindow::unminimize() {
+    setWindowState(windowState() & ~Qt::WindowMinimized);
+    show();
 }
 
 void MirrorWindow::place_under(MirrorWindow& owner, QPoint guest_offset) {

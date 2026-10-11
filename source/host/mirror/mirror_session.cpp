@@ -78,7 +78,7 @@ void MirrorSession::raise() {
             continue;
         if (auto mirror = mirrors_.value(window.handle); !mirror.isNull()) {
             if (mirror->isMinimized())
-                mirror->showNormal();
+                mirror->unminimize();
             link_.send_focus(window.handle);
             mirror->come_forward();
             return;

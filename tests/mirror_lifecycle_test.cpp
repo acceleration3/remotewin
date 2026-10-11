@@ -73,5 +73,23 @@ int main(int argc, char** argv) {
     mirror->guest_closed();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     check(mirror.isNull(), "dragged guest window leaves no stale mirror");
+
+    // Windows says a minimised window is not maximised, and restores it
+    // maximised.
+    mirror = new rwin::host::MirrorWindow(link, window, nullptr, {}, cursor);
+    mirror->present(frame);
+    mirror->follow_guest_state(false, true);
+    mirror->show();
+    QApplication::processEvents();
+    mirror->follow_guest_state(true, false);
+    QApplication::processEvents();
+    check(mirror->isMinimized(), "a guest window minimised is minimised here");
+    check(mirror->isMaximized(), "minimised, a maximised window is still maximised");
+    mirror->follow_guest_state(false, true);
+    QApplication::processEvents();
+    check(!mirror->isMinimized() && mirror->isMaximized(),
+          "a maximised window restored from minimised comes back maximised");
+    mirror->guest_closed();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     return failures == 0 ? 0 : 1;
 }
