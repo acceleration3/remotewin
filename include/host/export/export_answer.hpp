@@ -35,6 +35,8 @@ struct ExportAnswer {
         Unavailable = 5,
     };
 
+    // The device's: what it reads of the requests of this major version.
+    std::uint16_t minor = 0;
     std::uint32_t operation = kUnreadable;
     Status status = Status::Malformed;
     std::uint64_t surface = 0;

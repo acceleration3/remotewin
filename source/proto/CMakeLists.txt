@@ -1,4 +1,5 @@
 add_library(rwin_proto STATIC
+    clock_echo.cpp
     cursor_picture.cpp
     frame_decoder.cpp
     frame_in_slot.cpp

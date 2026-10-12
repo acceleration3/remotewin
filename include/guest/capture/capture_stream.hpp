@@ -50,7 +50,11 @@ public:
 
         [[nodiscard]] ID3D11Texture2D* texture() const noexcept { return texture_; }
         [[nodiscard]] Extent content() const noexcept { return content_; }
+        // When the compositor shows it (SystemRelativeTime): the blank after
+        // the one it was composed at, on capture_clock_now's clock.
         [[nodiscard]] std::int64_t source_time() const noexcept { return source_time_; }
+        // When it was taken from the capture, on the same clock.
+        [[nodiscard]] std::int64_t taken_time() const noexcept { return taken_time_; }
 
     private:
         friend class CaptureStream;
@@ -61,6 +65,7 @@ public:
         ID3D11Texture2D* texture_;
         Extent content_;
         std::int64_t source_time_ = 0;
+        std::int64_t taken_time_ = 0;
     };
 
     // ``arrivals`` is raised each time the compositor has a frame here.

@@ -37,6 +37,17 @@ target_link_libraries(rwin_export_wire_test PRIVATE rwin::proto)
 target_include_directories(rwin_export_wire_test PRIVATE "${RWIN_INCLUDE_DIR}")
 add_test(NAME rwin_export_wire_test COMMAND rwin_export_wire_test)
 
+# Where a frame's time goes: the guest's clock on this side's, and the
+# spread of each stage.
+add_executable(rwin_latency_test
+    latency_test.cpp
+    "${PROJECT_SOURCE_DIR}/source/host/latency/clock_offset.cpp"
+    "${PROJECT_SOURCE_DIR}/source/host/latency/display_lock.cpp"
+    "${PROJECT_SOURCE_DIR}/source/host/latency/frame_stamps.cpp"
+    "${PROJECT_SOURCE_DIR}/source/host/latency/latency_meter.cpp")
+target_include_directories(rwin_latency_test PRIVATE "${RWIN_INCLUDE_DIR}")
+add_test(NAME rwin_latency_test COMMAND rwin_latency_test)
+
 add_executable(rwin_unit_padding_test
     unit_padding_test.cpp
     "${PROJECT_SOURCE_DIR}/source/host/cursor/unit_padding.cpp")

@@ -13,11 +13,10 @@ HostScene::HostScene(QRect area, QColor backdrop)
     image_.fill(backdrop);
 }
 
-// QWidget::grab paints the mirror through its own paintEvent, at its own
-// device pixel ratio, into a buffer that starts transparent: the picture
-// the compositor is handed, before the compositor puts it on anything.
+// What the mirror hands the compositor - its own pixels, and the picture
+// drawn from the GPU over them - before the compositor puts it on anything.
 bool HostScene::add(host::MirrorWindow& mirror, const host::MirrorState& state, QRect where) {
-    QImage painted = mirror.grab().toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    QImage painted = mirror.grab_shown();
     // Device pixels from here on: at its own ratio the painter below would
     // scale it back to logical units.
     painted.setDevicePixelRatio(1.0);

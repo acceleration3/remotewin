@@ -26,6 +26,7 @@ std::optional<ExportAnswer> ExportAnswer::decode(std::span<const std::uint8_t> d
     const auto status = get<std::uint32_t>(datagram, 12);
     if (status > static_cast<std::uint32_t>(Status::Unavailable)) return std::nullopt;
     ExportAnswer answer;
+    answer.minor = get<std::uint16_t>(datagram, 6);
     answer.operation = get<std::uint32_t>(datagram, 8);
     answer.status = static_cast<Status>(status);
     answer.surface = get<std::uint64_t>(datagram, 16);

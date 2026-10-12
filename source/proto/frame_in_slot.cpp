@@ -11,6 +11,9 @@ void FrameInSlot::write(MessageWriter& out) const {
     out.put_u32(ring);
     out.put_u32(slot);
     out.put_u64(copies);
+    out.put_u64(static_cast<std::uint64_t>(composed));
+    out.put_u64(static_cast<std::uint64_t>(taken));
+    out.put_u64(static_cast<std::uint64_t>(copied));
 }
 
 std::optional<FrameInSlot> FrameInSlot::read(MessageReader& in) {
@@ -19,6 +22,9 @@ std::optional<FrameInSlot> FrameInSlot::read(MessageReader& in) {
     frame.ring = in.u32();
     frame.slot = in.u32();
     frame.copies = in.u64();
+    frame.composed = static_cast<std::int64_t>(in.u64());
+    frame.taken = static_cast<std::int64_t>(in.u64());
+    frame.copied = static_cast<std::int64_t>(in.u64());
     if (!in.ok() || frame.slot >= SlotRing::kSlots || frame.copies == 0) return std::nullopt;
     return frame;
 }

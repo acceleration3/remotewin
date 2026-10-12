@@ -1,7 +1,7 @@
 // A picture drawn from a dma-buf on the GPU lands where the pixel path's
 // QPainter puts one, to the device pixel, keyed as the pixel path keys it;
-// and a frame's slot is let go of once a later frame has been drawn and the
-// GPU is done with it. The dma-buf is made here with GBM on the GPU Qt draws
+// and a frame's slot is let go of as soon as this side's copy of it is done
+// on the GPU, without waiting for another frame. The dma-buf is made here with GBM on the GPU Qt draws
 // on, as the GPU device makes one: a host with no such GPU, or no display,
 // judges nothing.
 #include "host/export/shared_frame.hpp"
@@ -95,17 +95,25 @@ private:
     gbm_bo* bo_ = nullptr;
 };
 
+bool released_within(const std::weak_ptr<const rwin::host::SlotLease>& lease, int milliseconds) {
+    QElapsedTimer waited;
+    waited.start();
+    while (!lease.expired() && waited.elapsed() < milliseconds) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    return lease.expired();
+}
+
 void draws_one_to_one_and_keyed(rwin::host::GpuPicture& picture, const Buffer& buffer) {
     rwin::host::GuestLink link;
     auto lease = std::make_shared<const rwin::host::SlotLease>(link, rwin::SlotFree{1, 1, 0});
     const std::weak_ptr<const rwin::host::SlotLease> first_lease = lease;
     picture.show_frame(rwin::host::SharedFrame{buffer.exported(1), std::move(lease), nullptr, 1});
+    check(released_within(first_lease, 2000), "the slot is freed once this side's copy of it is done");
     rwin::host::PictureLayout layout;
     layout.picture = QRect(QPoint(3, 2), QSize(kWidth, kHeight));
     layout.color_key = kKey;
     layout.bars = true;
     picture.lay_out(layout);
-    const QImage drawn = picture.grabFramebuffer().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const QImage drawn = picture.drawn().convertToFormat(QImage::Format_ARGB32_Premultiplied);
     check(!drawn.isNull(), "the picture was drawn");
     int wrong = 0;
     for (int y = 0; y < drawn.height(); ++y) {
@@ -127,27 +135,29 @@ void draws_one_to_one_and_keyed(rwin::host::GpuPicture& picture, const Buffer& b
     // A shaped window: nothing of the picture outside its region.
     layout.shape = QRegion(QRect(QPoint(3, 2), QSize(10, kHeight)));
     picture.lay_out(layout);
-    const QImage shaped = picture.grabFramebuffer().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const QImage shaped = picture.drawn().convertToFormat(QImage::Format_ARGB32_Premultiplied);
     check(shaped.pixel(3 + 1, 2 + 1) == pattern(1, 1), "inside its region the picture is drawn");
     check(shaped.pixel(3 + 20, 2 + 1) == 0, "outside it nothing is");
     layout.shape = QRegion();
-    // Fitted: resampled, not a copy, and still inside the picture's place.
-    layout.picture = QRect(QPoint(0, 0), QSize(kWidth * 2, kHeight * 2));
+    // Fitted: resampled, not a copy, and still inside the picture's place -
+    // three quarters of the window's device size, whatever its scale.
+    layout.picture = QRect(QPoint(0, 0), drawn.size() * 3 / 4);
     layout.smooth = true;
     layout.bars = false;
     picture.lay_out(layout);
-    const QImage fitted = picture.grabFramebuffer().convertToFormat(QImage::Format_ARGB32_Premultiplied);
-    check(qAlpha(fitted.pixel(41, 41)) != 0 && fitted.pixel(fitted.width() - 1, fitted.height() - 1) == 0,
+    const QImage fitted = picture.drawn().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const QPoint inside = layout.picture.center();
+    check(qAlpha(fitted.pixel(inside)) != 0 && fitted.pixel(fitted.width() - 1, fitted.height() - 1) == 0,
           "fitted, the picture fills its place and nothing past it");
 
-    // A second frame drawn: the first's slot is let go of once the GPU has
-    // finished the draw that replaced it.
-    picture.show_frame(rwin::host::SharedFrame{buffer.exported(2), nullptr, nullptr, 1});
-    static_cast<void>(picture.grabFramebuffer());
-    QElapsedTimer waited;
-    waited.start();
-    while (!first_lease.expired() && waited.elapsed() < 2000) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-    check(first_lease.expired(), "the replaced frame's slot is freed once the GPU is done with it");
+    // The slot freed, the picture is still there to draw again: it is this
+    // side's copy that is drawn.
+    layout.picture = QRect(QPoint(3, 2), QSize(kWidth, kHeight));
+    layout.smooth = false;
+    layout.bars = true;
+    picture.lay_out(layout);
+    const QImage again = picture.drawn().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    check(again.pixel(3 + 1, 2 + 1) == pattern(1, 1), "drawn again after its slot was freed");
 }
 
 }  // namespace
@@ -170,8 +180,14 @@ int main(int argc, char** argv) {
     QWidget window;
     window.setAttribute(Qt::WA_TranslucentBackground);
     window.resize(80, 50);
-    auto* picture = new rwin::host::GpuPicture(&window);
-    picture->setGeometry(window.rect());
+    auto* picture = new rwin::host::GpuPicture();
+    QWidget* view = QWidget::createWindowContainer(picture, &window);
+    view->setGeometry(window.rect());
+    window.show();
+    QElapsedTimer shown;
+    shown.start();
+    while (!picture->isExposed() && shown.elapsed() < 2000) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    check(picture->isExposed(), "the picture's window is on screen");
     bool failed = false;
     QObject::connect(picture, &rwin::host::GpuPicture::failed, [&](const QString& why) {
         std::printf("GPU path refused: %s\n", qPrintable(why));

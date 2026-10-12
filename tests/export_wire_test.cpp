@@ -50,11 +50,22 @@ std::vector<std::uint8_t> answer(std::uint32_t operation, std::uint32_t status, 
 void a_request_is_laid_out_as_the_device_reads_it() {
     const std::array<std::uint8_t, 32> bytes =
         ExportRequest{ExportRequest::Operation::Sync, 0x0102'0304'0506'0708ULL, 0x1122'3344'5566'7788ULL}.encode();
-    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    0,    0,    3,    0,    0,
+    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    1,    0,    3,    0,    0,
                                                 0,    0,    0,    0,    0,    0x08, 0x07, 0x06, 0x05, 0x04, 0x03,
                                                 0x02, 0x01, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
-    check(bytes == expected, "magic AVXQ, major 1, minor 0, operation, reserved, surface, tag; little-endian");
+    check(bytes == expected, "magic AVXQ, major 1, minor 1, operation, reserved, surface, tag; little-endian");
     check(ExportRequest{}.encode()[8] == 1, "a request is hello unless it says otherwise");
+}
+
+// A timing's refresh is where the others have their reserved word, and the
+// moment it names where they name a surface.
+void a_timing_is_laid_out_as_the_device_reads_it() {
+    ExportRequest timing{ExportRequest::Operation::Timing, 0, 9};
+    timing.refresh_millihz = 144000;
+    timing.blank = 0x0102'0304'0506'0708ULL;
+    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    1,    0,    5, 0, 0, 0, 0x80, 0x32, 0x02, 0,
+                                                0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 9, 0, 0, 0, 0,    0,    0,    0};
+    check(timing.encode() == expected, "operation 5, refresh at 12, the blank at 16");
 }
 
 void a_hello_names_the_gpu() {
@@ -118,6 +129,7 @@ void what_is_no_answer_is_refused() {
     std::vector<std::uint8_t> minor = answer(1, 0, 0, 1);
     put(minor, 6, std::uint16_t{4});
     check(ExportAnswer::decode(minor).has_value(), "any minor of major 1 reads as this layout");
+    check(ExportAnswer::decode(minor)->minor == 4, "the device's minor is the u16 at 6");
 }
 
 void pci_addresses_read_as_sysfs_writes_them() {
@@ -175,6 +187,7 @@ void a_copy_is_waited_for_until_it_ran() {
 
 int main() {
     a_request_is_laid_out_as_the_device_reads_it();
+    a_timing_is_laid_out_as_the_device_reads_it();
     a_hello_names_the_gpu();
     an_export_says_how_the_picture_lies();
     a_sync_counts_copies_and_a_revocation_says_why();

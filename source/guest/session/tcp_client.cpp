@@ -1,6 +1,5 @@
 #include "guest/session/tcp_client.hpp"
 
-#include "guest/capture/frame_signal.hpp"
 #include "logging/logger.hpp"
 
 // clang-format off
@@ -72,20 +71,7 @@ bool TcpClient::connect(const std::string& host, std::uint16_t port) {
 }
 
 bool TcpClient::wait_readable(std::uint32_t timeout_ms) const {
-    fd_set readable;
-    FD_ZERO(&readable);
-    FD_SET(static_cast<SOCKET>(socket_), &readable);
-    timeval timeout{};
-    timeout.tv_sec = static_cast<long>(timeout_ms / 1000);
-    timeout.tv_usec = static_cast<long>((timeout_ms % 1000) * 1000);
-    return ::select(0, &readable, nullptr, nullptr, &timeout) > 0;
-}
-
-bool TcpClient::wait(std::uint32_t timeout_ms, const FrameSignal& frames) {
-    // The socket first: with both set, the host is heard, and the frame's
-    // event stays set for the next wait.
-    const HANDLE waited[] = {static_cast<HANDLE>(readable_), static_cast<HANDLE>(frames.event())};
-    if (::WaitForMultipleObjects(2, waited, FALSE, timeout_ms) != WAIT_OBJECT_0) return false;
+    if (::WaitForSingleObject(static_cast<HANDLE>(readable_), timeout_ms) != WAIT_OBJECT_0) return false;
     // Resets the event; Winsock sets it again while unread bytes remain.
     WSANETWORKEVENTS happened{};
     ::WSAEnumNetworkEvents(static_cast<SOCKET>(socket_), static_cast<WSAEVENT>(readable_), &happened);
@@ -100,6 +86,7 @@ bool TcpClient::wait_writable() const {
 }
 
 bool TcpClient::send(const std::vector<std::uint8_t>& bytes) {
+    const std::lock_guard held{sending_};
     const auto sequence = ++sends_;
     timing_.note("send_begin", sequence, 0, bytes.size());
     std::size_t sent = 0;

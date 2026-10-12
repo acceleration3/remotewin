@@ -62,6 +62,12 @@ GraphicsDevice::GraphicsDevice() {
         RWIN_ERROR("capture", "the Direct3D device is not a DXGI device");
         return;
     }
+    // Its copies and edge reads are ahead of the application's own work on
+    // the GPU: a frame copied late is a frame shown late. 7 is the highest.
+    constexpr INT kHighestGpuPriority = 7;
+    if (FAILED(dxgi->SetGPUThreadPriority(kHighestGpuPriority))) {
+        RWIN_DEBUG("capture", "the GPU will not put this device's work first");
+    }
     const HRESULT wrapped = CreateDirect3D11DeviceFromDXGIDevice(dxgi, &winrt_device_);
     dxgi->Release();
     if (FAILED(wrapped)) {

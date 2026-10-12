@@ -5,6 +5,9 @@
 #include "host/export/export_socket.hpp"
 #include "host/export/shared_frame.hpp"
 #include "host/export/window_ring.hpp"
+#include "host/latency/display_lock.hpp"
+#include "host/latency/guest_clock.hpp"
+#include "host/latency/latency_log.hpp"
 #include "logging/frame_timing.hpp"
 
 #include <QObject>
@@ -64,6 +67,11 @@ public:
     // come as pixels from here on.
     void give_up(const std::string& why);
 
+    // A frame from here reached the screen (GpuPicture::frame_timed): said
+    // in the log with the rest (LatencyLog), and, while this application is
+    // the active one, what times the guest's display (DisplayLock).
+    void shown(const FrameStamps& stamps);
+
 Q_SIGNALS:
     void frame_ready(quint64 window, const rwin::host::SharedFrame& frame);
 
@@ -80,6 +88,7 @@ private:
         std::uint64_t order;
         CopyWait wait;
         std::shared_ptr<const SlotLease> lease;
+        FrameStamps stamps;
     };
 
     void offer();
@@ -94,6 +103,7 @@ private:
     void ask_sync(PendingFrame frame);
     // Sent, and its answer awaited in order; nothing once given up.
     std::optional<std::uint64_t> ask(ExportRequest::Operation operation, std::uint64_t surface);
+    std::optional<std::uint64_t> ask(const ExportRequest& request);
     [[nodiscard]] WindowRing* ring_of(quint64 window, std::uint32_t ring);
 
     GuestLink& link_;
@@ -111,6 +121,10 @@ private:
     static constexpr int kMostExportAsks = 500;
     static constexpr int kExportRetryMs = 2;
     FrameTiming timing_{"feed"};
+    GuestClock clock_;
+    LatencyLog latency_;
+    DisplayLock lock_;
+    bool active_ = false;
 };
 
 }  // namespace rwin::host

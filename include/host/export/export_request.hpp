@@ -12,7 +12,7 @@ struct ExportRequest {
     static constexpr std::size_t kBytes = 32;
     static constexpr std::uint32_t kMagic = 0x51585641;  // "AVXQ"
     static constexpr std::uint16_t kMajor = 1;
-    static constexpr std::uint16_t kMinor = 0;
+    static constexpr std::uint16_t kMinor = 1;
 
     enum class Operation : std::uint32_t {
         // Which GPU the surfaces are on.
@@ -23,13 +23,20 @@ struct ExportRequest {
         Sync = 3,
         // The hold let go of.
         Release = 4,
+        // The display here: the guest's display clock blanks in phase with
+        // ``blank``, at ``refresh_millihz``.
+        Timing = 5,
     };
 
     Operation operation = Operation::Hello;
-    // The guest's id for the surface; 0 for hello and only for hello.
+    // The guest's id for the surface; 0 for hello and timing.
     std::uint64_t surface = 0;
     // This side's own, answered back.
     std::uint64_t tag = 0;
+    // A timing's: the refresh, and a moment on CLOCK_MONOTONIC in
+    // nanoseconds the guest is to blank in phase with.
+    std::uint32_t refresh_millihz = 0;
+    std::uint64_t blank = 0;
 
     [[nodiscard]] std::array<std::uint8_t, kBytes> encode() const noexcept;
 };

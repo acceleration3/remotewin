@@ -24,7 +24,8 @@ set(RWIN_PROTOCOL_SOURCES)
 foreach(protocol
         unstable/pointer-constraints/pointer-constraints-unstable-v1
         unstable/relative-pointer/relative-pointer-unstable-v1
-        stable/viewporter/viewporter)
+        stable/viewporter/viewporter
+        stable/presentation-time/presentation-time)
     get_filename_component(name "${protocol}" NAME)
     set(xml "${WAYLAND_PROTOCOLS_DIR}/${protocol}.xml")
     add_custom_command(
@@ -68,6 +69,12 @@ add_library(rwin_host STATIC
     export/unique_fd.cpp
     export/window_ring.cpp
     input/guest_button.cpp
+    latency/clock_offset.cpp
+    latency/display_lock.cpp
+    latency/frame_stamps.cpp
+    latency/guest_clock.cpp
+    latency/latency_log.cpp
+    latency/latency_meter.cpp
     input/held_keys.cpp
     input/key_translator.cpp
     input/pointer_grabber.cpp
@@ -89,12 +96,15 @@ add_library(rwin_host STATIC
     wayland/cursor_surface_viewport.cpp
     wayland/locked_pointer.cpp
     wayland/pointer_globals.cpp
+    wayland/presentation_times.cpp
     wayland/relative_pointer.cpp
     ${RWIN_PROTOCOL_SOURCES}
     "${RWIN_INCLUDE_DIR}/host/cursor/cursor_animation.hpp"
     "${RWIN_INCLUDE_DIR}/host/cursor/cursor_player.hpp"
     "${RWIN_INCLUDE_DIR}/host/export/shared_frame_feed.hpp"
     "${RWIN_INCLUDE_DIR}/host/input/pointer_grabber.hpp"
+    "${RWIN_INCLUDE_DIR}/host/latency/guest_clock.hpp"
+    "${RWIN_INCLUDE_DIR}/host/wayland/presentation_times.hpp"
     "${RWIN_INCLUDE_DIR}/host/mirror/window_report.hpp"
     "${RWIN_INCLUDE_DIR}/host/wayland/relative_pointer.hpp"
     "${RWIN_INCLUDE_DIR}/host/link/guest_link.hpp"

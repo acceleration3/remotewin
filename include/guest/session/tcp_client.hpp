@@ -3,12 +3,11 @@
 #include "logging/frame_timing.hpp"
 
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
 namespace rwin::guest {
-
-class FrameSignal;
 
 // The socket to the host, owned.
 //
@@ -27,15 +26,13 @@ public:
 
     [[nodiscard]] bool connect(const std::string& host, std::uint16_t port);
 
+    // From any thread: each message goes whole, one after another.
     [[nodiscard]] bool send(const std::vector<std::uint8_t>& bytes);
 
-    // True when a read would not block.
+    // Until the host has said something, or ``timeout_ms`` passed; true
+    // for the first. One thread waits here: the event it waits on is reset
+    // by the wait.
     [[nodiscard]] bool wait_readable(std::uint32_t timeout_ms) const;
-
-    // Until the host has said something, a capture has a frame, or
-    // ``timeout_ms`` passed; true for the first. What paces the session:
-    // frames go as the compositor composes them.
-    [[nodiscard]] bool wait(std::uint32_t timeout_ms, const FrameSignal& frames);
 
     // Bytes as they arrive, appended to ``into``. False once the peer is
     // gone, which is how the session learns to exit.
@@ -54,6 +51,7 @@ private:
     // buffer itself.
     void* readable_ = nullptr;
     std::string last_error_;
+    std::mutex sending_;
     FrameTiming timing_{"socket"};
     std::uint64_t sends_ = 0;
 };

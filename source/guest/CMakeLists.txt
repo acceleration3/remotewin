@@ -1,5 +1,6 @@
 add_executable(remotewin-guest
     main.cpp
+    capture/capture_clock.cpp
     capture/capture_stream.cpp
     capture/changed_tiles.cpp
     capture/content_bounds.cpp
@@ -15,6 +16,7 @@ add_executable(remotewin-guest
     input/pointer_grab_watcher.cpp
     input/pointer_injector.cpp
     session/guest_session.cpp
+    session/multimedia_thread.cpp
     cursor/cursor_decoder.cpp
     cursor/cursor_image.cpp
     cursor/cursor_watcher.cpp
@@ -34,7 +36,7 @@ add_executable(remotewin-guest
     windows/shadow_setting.cpp
 )
 target_link_libraries(remotewin-guest PRIVATE
-    rwin::proto rwin::logging ws2_32 gdi32 user32 dwmapi d3d11 dxgi runtimeobject ole32)
+    rwin::proto rwin::logging ws2_32 gdi32 user32 dwmapi d3d11 dxgi runtimeobject ole32 avrt)
 
 # Statically linked: this drops onto a stock Windows install with no
 # runtime to ship beside it.

@@ -1,6 +1,8 @@
 #include "host/link/guest_link.hpp"
 
+#include "host/latency/frame_stamps.hpp"
 #include "logging/logger.hpp"
+#include "proto/clock_echo.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/frame_route.hpp"
 #include "proto/guest_cursor.hpp"
@@ -299,6 +301,15 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
         Q_EMIT pointer_grabbed(*grab);
         break;
     }
+    case MessageId::ClockEcho: {
+        const std::optional<ClockEcho> echo = ClockEcho::read(message);
+        if (!echo.has_value()) {
+            RWIN_WARN("link", "malformed clock echo");
+            break;
+        }
+        Q_EMIT clock_echoed(*echo, now_ns());
+        break;
+    }
     default:
         RWIN_WARN("link", "unknown message id {}", static_cast<int>(message.id()));
         break;
@@ -450,6 +461,12 @@ void GuestLink::send_route(bool shared_surfaces) {
 void GuestLink::send_slot_free(const SlotFree& freed) {
     MessageWriter out{MessageId::SlotFree};
     freed.write(out);
+    send(out.take());
+}
+
+void GuestLink::send_clock_probe() {
+    MessageWriter out{MessageId::ClockProbe};
+    out.put_u64(static_cast<std::uint64_t>(now_ns()));
     send(out.take());
 }
 

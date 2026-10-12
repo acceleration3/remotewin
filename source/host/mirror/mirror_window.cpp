@@ -309,12 +309,29 @@ MirrorState MirrorWindow::state() const {
     return state;
 }
 
+QImage MirrorWindow::grab_shown() {
+    QImage shown = grab().toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    if (!shows_gpu_frame()) return shown;
+    QImage picture = gpu_->drawn().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    shown.setDevicePixelRatio(1.0);
+    QPainter painter{&shown};
+    painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+    painter.drawImage(QPoint(0, 0), picture);
+    painter.end();
+    shown.setDevicePixelRatio(devicePixelRatioF());
+    return shown;
+}
+
 void MirrorWindow::take_gpu_frames() {
     if (gpu_ != nullptr) return;
-    gpu_ = new GpuPicture(this);
-    gpu_->setGeometry(rect());
-    gpu_->hide();
+    gpu_ = new GpuPicture();
+    gpu_view_ = QWidget::createWindowContainer(gpu_, this);
+    gpu_view_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    gpu_view_->setFocusPolicy(Qt::NoFocus);
+    gpu_view_->setGeometry(rect());
+    gpu_view_->hide();
     connect(gpu_, &GpuPicture::failed, this, &MirrorWindow::gpu_failed);
+    connect(gpu_, &GpuPicture::frame_timed, this, &MirrorWindow::frame_timed);
 }
 
 // A popup's window is made again here, the first time: one is placed
@@ -328,7 +345,7 @@ void MirrorWindow::present_shared(const SharedFrame& frame) {
     frame_ = QImage();
     gpu_->show_frame(frame);
     gpu_->lay_out(gpu_layout());
-    if (gpu_->isHidden()) gpu_->show();
+    if (gpu_view_->isHidden()) gpu_view_->show();
     // This window's own pixels are painted again only when what they are
     // changes - the pixel path's picture gone, or the bars round another
     // size: painted every frame, the whole window would be sent to the GPU
@@ -369,9 +386,9 @@ PictureLayout MirrorWindow::gpu_layout() const {
 
 void MirrorWindow::present(const QImage& pixels) {
     ++frames_presented_;
-    if (gpu_ != nullptr && !gpu_->isHidden()) {
+    if (gpu_ != nullptr && !gpu_view_->isHidden()) {
         gpu_->forget();
-        gpu_->hide();
+        gpu_view_->hide();
     }
     if (!style_.color_keyed()) {
         frame_ = pixels;
@@ -856,7 +873,7 @@ void MirrorWindow::ask_guest_for(QSize size) {
 
 void MirrorWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    if (gpu_ != nullptr) gpu_->setGeometry(rect());
+    if (gpu_view_ != nullptr) gpu_view_->setGeometry(rect());
     if (parentWidget() != nullptr) return;
     // Whatever the mirror's size came from, the guest's window has to be
     // fitted into it again — and its shape put where the picture now is.

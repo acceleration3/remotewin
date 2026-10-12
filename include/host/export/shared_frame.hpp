@@ -1,6 +1,7 @@
 #pragma once
 
 #include "host/export/surface_memory.hpp"
+#include "host/latency/frame_stamps.hpp"
 
 #include <QSize>
 
@@ -22,6 +23,7 @@ struct SharedFrame {
     std::shared_ptr<UniqueFd> fence;
     std::uint32_t ring = 0;
     std::uint64_t order = 0;
+    FrameStamps stamps;
 
     [[nodiscard]] QSize size() const {
         return QSize(static_cast<int>(memory->layout().width), static_cast<int>(memory->layout().height));

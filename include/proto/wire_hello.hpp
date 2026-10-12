@@ -18,7 +18,7 @@ class MessageWriter;
 // is read, a mismatch is one line naming both versions instead.
 struct WireHello {
     // Raised with every change to what any mirror message carries.
-    static constexpr std::uint32_t kVersion = 4;
+    static constexpr std::uint32_t kVersion = 5;
 
     std::uint32_t version = kVersion;
 

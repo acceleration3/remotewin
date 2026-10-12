@@ -195,12 +195,14 @@ void MirrorSession::open(const GuestWindowInfo& window, MirrorWindow* owner) {
                                     placement_.tag_for(window.handle), pixel_cursor_);
     // A toplevel is made ready for frames on the GPU before it is first
     // shown; a popup - a menu, mostly, whose frames come as pixels - only
-    // once one arrives, rather than an OpenGL window for every menu opened.
+    // once one arrives, rather than a picture window for every menu opened.
     if (frames_.offered()) {
         if (!popup)
             mirror->take_gpu_frames();
         connect(mirror, &MirrorWindow::gpu_failed, this,
                 [this](const QString& why) { frames_.give_up(why.toStdString()); });
+        connect(mirror, &MirrorWindow::frame_timed, this,
+                [this](const FrameStamps& stamps) { frames_.shown(stamps); });
     }
     // Whatever the guest shows now, not the arrow until it next changes.
     if (cursor_.shown().id != 0 || !cursor_.shown().shown)

@@ -1,9 +1,14 @@
 #include "guest/session/guest_session.hpp"
 
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include "guest/windows/window_surface.hpp"
+#include "guest/capture/capture_clock.hpp"
+#include "guest/session/multimedia_thread.hpp"
 #include "logging/logger.hpp"
+#include "proto/clock_echo.hpp"
 #include "proto/pointer_at.hpp"
 #include "proto/pointer_wheel.hpp"
 #include "proto/cursor_picture.hpp"
@@ -67,38 +72,90 @@ void GuestSession::run() {
               WireHello::kVersion);
     say_hello();
     show_contents_while_dragging();
+    const MultimediaThread timely;
+    std::thread reader{[this] { read_link(); }};
     while (running_) {
-        if (link_.wait(frame_interval_ms_, frames_)) {
-            if (!link_.receive(incoming_)) return;
-            decoder_.feed(incoming_.data(), incoming_.size());
-            incoming_.clear();
-
-            const std::uint8_t* payload = nullptr;
-            std::size_t size = 0;
-            while (running_ && decoder_.next(&payload, &size)) {
-                MessageReader message{payload, size};
-                if (greeted_) {
-                    handle(message);
-                } else {
-                    greet(message);
-                }
-            }
-            if (decoder_.overflowed()) return;
-        }
+        wait_for_work();
+        serve_queued();
+        if (!running_) break;
+        // Frames first: one waiting is on its way to the screen, and nothing
+        // below is - enumerating windows took longer than copying a frame.
+        send_frames();
+        if (input_noted_.exchange(false) && watcher_ != nullptr) watcher_->note_input();
         // Said with every window list; a change of it is a list to say again.
         if (shadows_.changed() && watcher_ != nullptr) watcher_->forget();
         push_window_changes();
         report_drags();
-        send_frames();
         report_cursor();
+        const std::lock_guard held{shared_};
         report_grab();
     }
+    reader.join();
+}
+
+// The reader's: every message decoded here, input put into the guest at
+// once and the rest handed to the main loop. It looks up every
+// kReadWaitMs, so it notices the session ending.
+void GuestSession::read_link() {
+    const MultimediaThread timely;
+    std::vector<std::uint8_t> incoming;
+    while (running_) {
+        if (!link_.wait_readable(kReadWaitMs)) continue;
+        if (!link_.receive(incoming)) break;
+        decoder_.feed(incoming.data(), incoming.size());
+        incoming.clear();
+        const std::uint8_t* payload = nullptr;
+        std::size_t size = 0;
+        while (running_ && decoder_.next(&payload, &size)) {
+            MessageReader message{payload, size};
+            if (!greeted_) {
+                greet(message);
+            } else if (!handle_input(message)) {
+                queue(payload, size);
+            }
+        }
+        if (decoder_.overflowed()) break;
+    }
+    running_ = false;
+    woken_.raise();
+}
+
+void GuestSession::queue(const std::uint8_t* payload, std::size_t size) {
+    {
+        const std::lock_guard held{inbox_lock_};
+        inbox_.emplace_back(payload, payload + size);
+    }
+    woken_.raise();
+}
+
+// Until a message is queued, a capture has a frame, or the frame interval
+// passed: what paces the main loop.
+void GuestSession::wait_for_work() {
+    const HANDLE waited[] = {static_cast<HANDLE>(woken_.event()), static_cast<HANDLE>(frames_.event())};
+    ::WaitForMultipleObjects(2, waited, FALSE, frame_interval_ms_);
+}
+
+void GuestSession::serve_queued() {
+    {
+        const std::lock_guard held{inbox_lock_};
+        serving_.swap(inbox_);
+    }
+    for (const std::vector<std::uint8_t>& payload : serving_) {
+        if (!running_) break;
+        MessageReader message{payload.data(), payload.size()};
+        handle(message);
+    }
+    serving_.clear();
+}
+
+void GuestSession::send(std::vector<std::uint8_t> bytes) {
+    if (!link_.send(bytes)) running_ = false;
 }
 
 void GuestSession::say_hello() {
     MessageWriter out{MessageId::GuestHello};
     WireHello{}.write(out);
-    running_ = link_.send(out.take());
+    send(out.take());
 }
 
 void GuestSession::greet(MessageReader& message) {
@@ -123,7 +180,6 @@ void GuestSession::greet(MessageReader& message) {
 
 
 void GuestSession::handle(MessageReader& message) {
-    if (watcher_ != nullptr && is_input(message.id())) watcher_->note_input();
     switch (message.id()) {
         case MessageId::WatchScope: {
             const std::uint32_t process_id = message.u32();
@@ -171,6 +227,10 @@ void GuestSession::handle(MessageReader& message) {
             const std::uint64_t window = message.u64();
             if (!message.ok()) break;
             captures_.try_emplace(window, std::make_unique<WindowCapture>(graphics_, frames_));
+            {
+                const std::lock_guard held{shared_};
+                subscribed_.insert(window);
+            }
             RWIN_INFO("session", "subscribed to window {:#x} ({} now)", window,
                       captures_.size());
             break;
@@ -178,9 +238,69 @@ void GuestSession::handle(MessageReader& message) {
         case MessageId::Unsubscribe: {
             const std::uint64_t window = message.u64();
             captures_.erase(window);
-            drawn_.erase(window);
+            {
+                const std::lock_guard held{shared_};
+                subscribed_.erase(window);
+                drawn_.erase(window);
+            }
             rings_.erase(window);
+            edges_.erase(window);
             RWIN_INFO("session", "unsubscribed from window {:#x}", window);
+            break;
+        }
+        case MessageId::CloseWindow: {
+            const std::uint64_t window = message.u64();
+            if (!message.ok()) break;
+            RWIN_INFO("session", "closing window {:#x}", window);
+            ::PostMessageW(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(window)),
+                           WM_CLOSE, 0, 0);
+            break;
+        }
+        case MessageId::MoveWindow: {
+            const std::uint64_t window = message.u64();
+            const std::int32_t x = message.i32();
+            const std::int32_t y = message.i32();
+            if (!message.ok()) break;
+            // The host's corner is the drawn part's, which is the picture's
+            // less the margin a window reserves round itself.
+            std::pair<std::int32_t, std::int32_t> into;
+            {
+                const std::lock_guard held{shared_};
+                into = picture_offset(window);
+            }
+            mover_.move(WindowSurface{window}, x - into.first, y - into.second);
+            break;
+        }
+        case MessageId::ResizeWindow: {
+            const std::uint64_t window = message.u64();
+            const std::uint32_t width = message.u32();
+            const std::uint32_t height = message.u32();
+            if (message.ok()) resizer_.resize(window, width, height);
+            break;
+        }
+        default:
+            RWIN_WARN("session", "unknown message id {}",
+                      static_cast<int>(message.id()));
+            break;
+    }
+}
+
+// Put into the guest from the thread that read it, whatever the main loop
+// is doing: input that waited behind a window enumeration waited up to
+// 7.5 ms. What it shares with the main loop is under shared_.
+bool GuestSession::handle_input(MessageReader& message) {
+    if (!is_input(message.id()) && message.id() != MessageId::FocusWindow && message.id() != MessageId::ClockProbe) {
+        return false;
+    }
+    if (is_input(message.id())) input_noted_ = true;
+    const std::lock_guard held{shared_};
+    switch (message.id()) {
+        case MessageId::ClockProbe: {
+            const std::uint64_t probed = message.u64();
+            if (!message.ok()) break;
+            MessageWriter out{MessageId::ClockEcho};
+            ClockEcho{probed, capture_clock_now()}.write(out);
+            send(out.take());
             break;
         }
         case MessageId::PointerMove: {
@@ -246,42 +366,15 @@ void GuestSession::handle(MessageReader& message) {
             if (message.ok()) focus_.give_to(window);
             break;
         }
-        case MessageId::CloseWindow: {
-            const std::uint64_t window = message.u64();
-            if (!message.ok()) break;
-            RWIN_INFO("session", "closing window {:#x}", window);
-            ::PostMessageW(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(window)),
-                           WM_CLOSE, 0, 0);
-            break;
-        }
-        case MessageId::MoveWindow: {
-            const std::uint64_t window = message.u64();
-            const std::int32_t x = message.i32();
-            const std::int32_t y = message.i32();
-            if (!message.ok()) break;
-            // The host's corner is the drawn part's, which is the picture's
-            // less the margin a window reserves round itself.
-            const auto [into_x, into_y] = picture_offset(window);
-            mover_.move(WindowSurface{window}, x - into_x, y - into_y);
-            break;
-        }
-        case MessageId::ResizeWindow: {
-            const std::uint64_t window = message.u64();
-            const std::uint32_t width = message.u32();
-            const std::uint32_t height = message.u32();
-            if (message.ok()) resizer_.resize(window, width, height);
-            break;
-        }
         default:
-            RWIN_WARN("session", "unknown message id {}",
-                      static_cast<int>(message.id()));
             break;
     }
+    return true;
 }
 
 void GuestSession::move_pointer(std::uint64_t window, std::int32_t x, std::int32_t y) {
     if (window == kMonitorWindow) {
-        if (monitor_ != nullptr) PointerInjector::move_on_screen(monitor_->screen_x(x), monitor_->screen_y(y));
+        if (monitor_at_.has_value()) PointerInjector::move_on_screen(monitor_at_->x + x, monitor_at_->y + y);
         return;
     }
     const auto [into_x, into_y] = picture_offset(window);
@@ -301,8 +394,8 @@ void GuestSession::press_pointer(MessageReader& message) {
     const bool pressed = message.u8() != 0;
     if (!message.ok()) return;
     if (window == kMonitorWindow) {
-        if (monitor_ != nullptr) {
-            PointerInjector::press_on_screen(monitor_->screen_x(x), monitor_->screen_y(y), button, pressed);
+        if (monitor_at_.has_value()) {
+            PointerInjector::press_on_screen(monitor_at_->x + x, monitor_at_->y + y, button, pressed);
         }
         return;
     }
@@ -316,9 +409,8 @@ void GuestSession::press_pointer(MessageReader& message) {
 
 void GuestSession::turn_wheel(const PointerWheel& wheel) {
     if (wheel.window == kMonitorWindow) {
-        if (monitor_ != nullptr) {
-            PointerInjector::turn_on_screen(monitor_->screen_x(wheel.x), monitor_->screen_y(wheel.y), wheel.dx,
-                                            wheel.dy);
+        if (monitor_at_.has_value()) {
+            PointerInjector::turn_on_screen(monitor_at_->x + wheel.x, monitor_at_->y + wheel.y, wheel.dx, wheel.dy);
         }
         return;
     }
@@ -369,12 +461,12 @@ void GuestSession::report_cursor() {
     RWIN_DEBUG("cursor", "cursor now {:#x} {}", cursor->id, cursor->shown ? "shown" : "hidden");
     MessageWriter changed{MessageId::CursorChanged};
     cursor->write(changed);
-    running_ = link_.send(changed.take());
+    send(changed.take());
 }
 
 std::uint64_t GuestSession::mirrored_foreground() const {
     const auto foreground = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(::GetForegroundWindow()));
-    return captures_.contains(foreground) ? foreground : 0;
+    return subscribed_.contains(foreground) ? foreground : 0;
 }
 
 void GuestSession::report_grab() {
@@ -382,7 +474,7 @@ void GuestSession::report_grab() {
     if (!grab.has_value()) return;
     MessageWriter out{MessageId::PointerGrabbed};
     grab->write(out);
-    running_ = link_.send(out.take());
+    send(out.take());
 }
 
 void GuestSession::push_window_changes() {
@@ -414,6 +506,7 @@ std::pair<std::int32_t, std::int32_t> GuestSession::picture_offset(
 
 void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
     MessageWriter out{MessageId::WindowList};
+    std::unique_lock held{shared_};
     out.put_u8(watcher_->application_alive() ? 1 : 0);
     // What the guest has room for, so a mirror is not dragged past a size
     // the window could never be given; and whether it shades any window.
@@ -466,7 +559,8 @@ void GuestSession::send_window_list(const std::vector<GuestWindow>& windows) {
             out.put_i32(rect.bottom - drawn_y);
         }
     }
-    running_ = link_.send(out.take());
+    held.unlock();
+    send(out.take());
 }
 
 void GuestSession::take_route(bool shared_surfaces) {
@@ -502,6 +596,12 @@ void GuestSession::recapture() {
     }
 }
 
+PictureEdges& GuestSession::edges_for(std::uint64_t window) {
+    auto [edges, added] = edges_.try_emplace(window);
+    if (added) edges->second = std::make_unique<PictureEdges>(graphics_);
+    return *edges->second;
+}
+
 SurfaceRing& GuestSession::ring_for(std::uint64_t window) {
     auto [ring, added] = rings_.try_emplace(window);
     if (added) ring->second = std::make_unique<SurfaceRing>(graphics_, *surface_ids_, window, rings_made_);
@@ -509,9 +609,12 @@ SurfaceRing& GuestSession::ring_for(std::uint64_t window) {
 }
 
 void GuestSession::note_drawn(std::uint64_t window_handle, const DrawnArea& area) {
-    auto [known, added] = drawn_.try_emplace(window_handle, area);
-    if (!added && known->second == area) return;
-    known->second = area;
+    {
+        const std::lock_guard held{shared_};
+        auto [known, added] = drawn_.try_emplace(window_handle, area);
+        if (!added && known->second == area) return;
+        known->second = area;
+    }
     // The reported geometry is derived from this, so it has to be said
     // again now that it has changed.
     if (watcher_ != nullptr) watcher_->forget();
@@ -536,8 +639,13 @@ void GuestSession::send_frames() {
     }
     for (const std::uint64_t handle : vanished) {
         captures_.erase(handle);
-        drawn_.erase(handle);
+        {
+            const std::lock_guard held{shared_};
+            subscribed_.erase(handle);
+            drawn_.erase(handle);
+        }
         rings_.erase(handle);
+        edges_.erase(handle);
         send_window_gone(handle);
     }
 }
@@ -566,7 +674,7 @@ CaptureResult GuestSession::send_shared_frame(std::uint64_t handle, WindowCaptur
     if (grabbed != CaptureResult::Fresh) return grabbed;
     // A margin round what the window draws is trimmed away, which takes its
     // pixels: such a frame goes as pixels, and its ring waits for the next.
-    if (surface.margin_is_reserved() && !edges_.all_drawn(*frame)) {
+    if (surface.margin_is_reserved() && !edges_for(handle).all_drawn(*frame)) {
         rings_.erase(handle);
         if (capture.keep(*frame, surface)) send_pixels(handle, capture);
         return grabbed;
@@ -594,7 +702,7 @@ void GuestSession::send_pixels(std::uint64_t handle, const WindowCapture& captur
     out.put_u32(capture.width());
     out.put_u32(capture.height());
     out.put_bytes(capture.pixels(), capture.size_bytes());
-    running_ = link_.send(out.take());
+    send(out.take());
 }
 
 void GuestSession::send_delivery(const SurfaceRing::Delivery& delivery) {
@@ -608,7 +716,7 @@ void GuestSession::send_delivery(const SurfaceRing::Delivery& delivery) {
     }
     MessageWriter out{MessageId::FrameInSlot};
     delivery.frame.write(out);
-    running_ = link_.send(out.take());
+    send(out.take());
 }
 
 void GuestSession::send_monitor_frame() {
@@ -618,6 +726,7 @@ void GuestSession::send_monitor_frame() {
         return;
     }
     const CaptureResult grabbed = monitor_->grab();
+    publish_monitor_origin();
     if (grabbed == CaptureResult::Unchanged) return;
     if (grabbed == CaptureResult::Gone) {
         lose_monitor();
@@ -631,6 +740,7 @@ void GuestSession::send_monitor_shared() {
     if (!ring.has_free_slot()) return;
     std::optional<CaptureStream::Frame> frame;
     const CaptureResult grabbed = monitor_->grab(frame);
+    publish_monitor_origin();
     if (grabbed == CaptureResult::Unchanged) return;
     if (grabbed == CaptureResult::Gone) {
         lose_monitor();
@@ -645,9 +755,18 @@ void GuestSession::send_monitor_shared() {
     if (monitor_->keep(*frame)) send_monitor_pixels();
 }
 
+void GuestSession::publish_monitor_origin() {
+    const std::lock_guard held{shared_};
+    monitor_at_ = ScreenPoint{monitor_->screen_x(0), monitor_->screen_y(0)};
+}
+
 void GuestSession::lose_monitor() {
     RWIN_ERROR("frames", "the monitor can no longer be captured");
     monitor_.reset();
+    {
+        const std::lock_guard held{shared_};
+        monitor_at_.reset();
+    }
     rings_.erase(kMonitorWindow);
     send_window_gone(kMonitorWindow);
 }
@@ -662,7 +781,7 @@ void GuestSession::send_monitor_pixels() {
     out.put_u32(monitor_->width());
     out.put_u32(monitor_->height());
     out.put_bytes(monitor_->pixels(), monitor_->size_bytes());
-    running_ = link_.send(out.take());
+    send(out.take());
 }
 
 void GuestSession::send_monitor_patch() {
@@ -681,13 +800,13 @@ void GuestSession::send_monitor_patch() {
                           static_cast<std::size_t>(rect.width) * 4);
         }
     }
-    running_ = link_.send(out.take());
+    send(out.take());
 }
 
 void GuestSession::send_window_gone(std::uint64_t window_handle) {
     MessageWriter out{MessageId::WindowGone};
     out.put_u64(window_handle);
-    running_ = link_.send(out.take());
+    send(out.take());
 }
 
 }  // namespace rwin::guest

@@ -26,8 +26,11 @@
 #include "guest/windows/work_area.hpp"
 #include "proto/frame_decoder.hpp"
 
+#include <atomic>
 #include <cstdint>
 #include <map>
+#include <mutex>
+#include <optional>
 #include <utility>
 #include <memory>
 #include <set>
@@ -61,6 +64,20 @@ public:
     void run();
 
 private:
+    // How often the reader looks up from the socket to see whether the
+    // session is still running.
+    static constexpr std::uint32_t kReadWaitMs = 100;
+
+    // The reader thread's.
+    void read_link();
+    void queue(const std::uint8_t* payload, std::size_t size);
+    // Input, focus and clock probes, handled where they were read: true
+    // when ``message`` was one.
+    [[nodiscard]] bool handle_input(MessageReader& message);
+    // The main loop's.
+    void wait_for_work();
+    void serve_queued();
+    void send(std::vector<std::uint8_t> bytes);
     void say_hello();
     // The host's hello, which has to be the first thing it sends.
     void greet(MessageReader& message);
@@ -81,6 +98,7 @@ private:
     void send_monitor_pixels();
     void send_monitor_patch();
     void lose_monitor();
+    void publish_monitor_origin();
     // The host's FrameRoute.
     void take_route(bool shared_surfaces);
     // Frames go as pixels from here on, for every window.
@@ -93,15 +111,19 @@ private:
     void turn_wheel(const PointerWheel& wheel);
     void report_drags();
     void report_cursor();
+    // With shared_ held.
     void report_grab();
     // The foreground window when it is one of the mirrored application's
-    // (one subscribed to), else 0.
+    // (one subscribed to), else 0. With shared_ held.
     [[nodiscard]] std::uint64_t mirrored_foreground() const;
 
     TcpClient& link_;
     GraphicsDevice graphics_;
     // Before every capture that raises it, so it outlives them all.
     FrameSignal frames_;
+    // Raised when the main loop has something other than a frame: a
+    // message the reader queued, the reader ending, the cursor changing.
+    FrameSignal woken_;
     WindowFocus focus_;
     PointerInjector pointer_{focus_};
     KeyboardInjector keyboard_{focus_};
@@ -112,7 +134,7 @@ private:
     // host's compositor holds the window. Mirroring the whole monitor,
     // Windows drags its own windows inside the picture.
     std::unique_ptr<WindowDragWatcher> drags_;
-    CursorWatcher cursor_;
+    CursorWatcher cursor_{woken_};
     CursorDecoder cursor_pictures_;
     PointerGrabWatcher grabs_;
     ShadowSetting shadows_;
@@ -137,7 +159,8 @@ private:
     // otherwise reported larger than anything it ever fills.
     // Where in the picture (WindowSurface) the host's coordinates start:
     // the host has the part of it that draws something, which is all of it
-    // unless the window leaves a transparent margin round itself.
+    // unless the window leaves a transparent margin round itself. With
+    // shared_ held.
     [[nodiscard]] std::pair<std::int32_t, std::int32_t> picture_offset(
         std::uint64_t window_handle) const;
 
@@ -161,17 +184,37 @@ private:
     // (kMonitorWindow).
     std::map<std::uint64_t, std::unique_ptr<SurfaceRing>> rings_;
     // Whether a frame of a window that may leave a margin round itself
-    // draws out to its edges, and so needs no trimming.
-    PictureEdges edges_{graphics_};
+    // draws out to its edges, and so needs no trimming: one per window, each
+    // remembering what its window's last frames said.
+    std::map<std::uint64_t, std::unique_ptr<PictureEdges>> edges_;
+    [[nodiscard]] PictureEdges& edges_for(std::uint64_t window);
 
     // Cursor handles the host already has the pixels for.
     std::set<std::uint64_t> sent_cursors_;
-    std::vector<std::uint8_t> incoming_;
+    // What the reader handed the main loop, and what the main loop is
+    // working through.
+    std::mutex inbox_lock_;
+    std::vector<std::vector<std::uint8_t>> inbox_;
+    std::vector<std::vector<std::uint8_t>> serving_;
+    // What input, read on the reader thread, shares with the main loop:
+    // drawn_, grabs_, subscribed_ and monitor_at_. Held briefly on both.
+    std::mutex shared_;
+    // The windows subscribed to, as the reader sees them.
+    std::set<std::uint64_t> subscribed_;
+    struct ScreenPoint {
+        std::int32_t x = 0;
+        std::int32_t y = 0;
+    };
+    // The captured monitor's top left on the guest's screen, once known.
+    std::optional<ScreenPoint> monitor_at_;
+    // Input was put into the guest since the main loop last looked.
+    std::atomic<bool> input_noted_{false};
     // The longest the session sleeps: frames wake it as they are composed,
     // and this is how often windows, the cursor and the grab are looked at
     // when nothing does.
     std::uint32_t frame_interval_ms_;
-    bool running_ = true;
+    std::atomic<bool> running_{true};
+    // The reader's.
     bool greeted_ = false;
     FrameTiming timing_{"guest"};
 };

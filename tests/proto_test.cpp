@@ -1,3 +1,4 @@
+#include "proto/clock_echo.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/frame_decoder.hpp"
 #include "proto/frame_in_slot.hpp"
@@ -394,16 +395,25 @@ void a_slot_ring_crosses_whole() {
 }
 
 void a_frame_in_a_slot_crosses_whole() {
-    const rwin::FrameInSlot frame{.window = 0xFFFF'0000'1234ULL, .ring = 3, .slot = 2, .copies = 0x1'0000'0001ULL};
+    const rwin::FrameInSlot frame{.window = 0xFFFF'0000'1234ULL,
+                                  .ring = 3,
+                                  .slot = 2,
+                                  .copies = 0x1'0000'0001ULL,
+                                  .composed = 0x7FFF'0000'0000'0001LL,
+                                  .taken = 3,
+                                  .copied = -2};
     rwin::MessageWriter writer{rwin::MessageId::FrameInSlot};
     frame.write(writer);
     check(read_back<rwin::FrameInSlot>(writer.take()) == frame, "a frame in a slot reads back as written");
 
     rwin::MessageWriter pinned{rwin::MessageId::FrameInSlot};
-    rwin::FrameInSlot{.window = 5, .ring = 0x0102, .slot = 1, .copies = 0x0304}.write(pinned);
-    const std::vector<std::uint8_t> expected{0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 1, 2, 0, 0, 0, 1,
-                                             0, 0, 0, 0, 0, 0, 3, 4};
-    check(body_of(std::move(pinned)) == expected, "window u64, ring u32, slot u32, copies u64");
+    rwin::FrameInSlot{
+        .window = 5, .ring = 0x0102, .slot = 1, .copies = 0x0304, .composed = 0x0506, .taken = 0x0607, .copied = 0x0708}
+        .write(pinned);
+    const std::vector<std::uint8_t> expected{0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 1, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3, 4,
+                                             0, 0, 0, 0, 0, 0, 5, 6, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0, 0, 0, 7, 8};
+    check(body_of(std::move(pinned)) == expected,
+          "window u64, ring u32, slot u32, copies u64, composed i64, taken i64, copied i64");
 
     rwin::MessageWriter outside{rwin::MessageId::FrameInSlot};
     rwin::FrameInSlot{.window = 5, .ring = 1, .slot = 3, .copies = 1}.write(outside);
@@ -411,6 +421,22 @@ void a_frame_in_a_slot_crosses_whole() {
     rwin::MessageWriter uncopied{rwin::MessageId::FrameInSlot};
     rwin::FrameInSlot{.window = 5, .ring = 1, .slot = 0, .copies = 0}.write(uncopied);
     check(!read_back<rwin::FrameInSlot>(uncopied.take()).has_value(), "copy 0 is no frame and is refused");
+}
+
+void a_clock_echo_crosses_whole() {
+    const rwin::ClockEcho echo{.probed = 0xFEDC'BA98'7654'3210ULL, .guest = -5};
+    rwin::MessageWriter writer{rwin::MessageId::ClockEcho};
+    echo.write(writer);
+    check(read_back<rwin::ClockEcho>(writer.take()) == echo, "a clock echo reads back as written");
+
+    rwin::MessageWriter pinned{rwin::MessageId::ClockEcho};
+    rwin::ClockEcho{.probed = 0x0102, .guest = 0x0304}.write(pinned);
+    const std::vector<std::uint8_t> expected{0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 3, 4};
+    check(body_of(std::move(pinned)) == expected, "probed u64, guest i64");
+
+    rwin::MessageWriter cut{rwin::MessageId::ClockEcho};
+    cut.put_u64(1);
+    check(!read_back<rwin::ClockEcho>(cut.take()).has_value(), "an echo without the guest's clock is refused");
 }
 
 void a_freed_slot_crosses_whole() {
@@ -433,6 +459,7 @@ int main() {
     a_slot_ring_crosses_whole();
     a_frame_in_a_slot_crosses_whole();
     a_freed_slot_crosses_whole();
+    a_clock_echo_crosses_whole();
     a_key_stroke_crosses_whole();
     a_short_key_stroke_is_refused();
     the_guest_desktop_crosses_whole();

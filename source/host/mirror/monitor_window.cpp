@@ -70,9 +70,9 @@ void MonitorWindow::set_interactive(bool interactive) {
 
 void MonitorWindow::present(const QImage& pixels) {
     const QSize before = picture_size();
-    if (gpu_ != nullptr && !gpu_->isHidden()) {
+    if (gpu_ != nullptr && !gpu_view_->isHidden()) {
         gpu_->forget();
-        gpu_->hide();
+        gpu_view_->hide();
     }
     frame_ = pixels;
     note_picture(before);
@@ -81,10 +81,14 @@ void MonitorWindow::present(const QImage& pixels) {
 
 void MonitorWindow::take_gpu_frames() {
     if (gpu_ != nullptr) return;
-    gpu_ = new GpuPicture(this);
-    gpu_->setGeometry(rect());
-    gpu_->hide();
+    gpu_ = new GpuPicture();
+    gpu_view_ = QWidget::createWindowContainer(gpu_, this);
+    gpu_view_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    gpu_view_->setFocusPolicy(Qt::NoFocus);
+    gpu_view_->setGeometry(rect());
+    gpu_view_->hide();
     connect(gpu_, &GpuPicture::failed, this, &MonitorWindow::gpu_failed);
+    connect(gpu_, &GpuPicture::frame_timed, this, &MonitorWindow::frame_timed);
 }
 
 void MonitorWindow::present_shared(const SharedFrame& frame) {
@@ -94,7 +98,7 @@ void MonitorWindow::present_shared(const SharedFrame& frame) {
     gpu_->show_frame(frame);
     note_picture(before);
     lay_out_gpu();
-    if (gpu_->isHidden()) gpu_->show();
+    if (gpu_view_->isHidden()) gpu_view_->show();
 }
 
 void MonitorWindow::note_picture(QSize before) {
@@ -113,8 +117,8 @@ QSize MonitorWindow::picture_size() const {
 
 void MonitorWindow::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    if (gpu_ == nullptr) return;
-    gpu_->setGeometry(rect());
+    if (gpu_view_ == nullptr) return;
+    gpu_view_->setGeometry(rect());
     lay_out_gpu();
 }
 

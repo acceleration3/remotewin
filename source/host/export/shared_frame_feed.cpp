@@ -10,6 +10,7 @@
 #include "proto/slot_free.hpp"
 #include "proto/slot_ring.hpp"
 
+#include <QGuiApplication>
 #include <QImage>
 #include <QSocketNotifier>
 #include <QTimer>
@@ -20,7 +21,7 @@
 
 namespace rwin::host {
 
-SharedFrameFeed::SharedFrameFeed(GuestLink& link, QObject* parent) : QObject(parent), link_(link) {
+SharedFrameFeed::SharedFrameFeed(GuestLink& link, QObject* parent) : QObject(parent), link_(link), clock_(link) {
     connect(&link_, &GuestLink::connected, this, &SharedFrameFeed::offer);
     connect(&link_, &GuestLink::ring_announced, this, &SharedFrameFeed::take_ring);
     connect(&link_, &GuestLink::frame_in_slot, this, &SharedFrameFeed::take_frame);
@@ -100,8 +101,13 @@ void SharedFrameFeed::take_frame(const FrameInSlot& frame) {
     if (ring == nullptr) return;
     const auto order = ring->named();
     timing_.note("received", order, 0, frame.window);
+    FrameStamps stamps;
+    stamps.note_now(FrameStamps::Stage::Received);
+    stamps.note(FrameStamps::Stage::Composed, clock_.to_host(frame.composed).value_or(0));
+    stamps.note(FrameStamps::Stage::Taken, clock_.to_host(frame.taken).value_or(0));
+    stamps.note(FrameStamps::Stage::Copied, clock_.to_host(frame.copied).value_or(0));
     ask_sync(PendingFrame{frame.window, frame.ring, frame.slot, order, CopyWait{frame.copies},
-                          std::move(lease)});
+                          std::move(lease), stamps});
 }
 
 void SharedFrameFeed::ask_sync(PendingFrame frame) {
@@ -112,14 +118,38 @@ void SharedFrameFeed::ask_sync(PendingFrame frame) {
 }
 
 std::optional<std::uint64_t> SharedFrameFeed::ask(ExportRequest::Operation operation, std::uint64_t surface) {
+    return ask(ExportRequest{operation, surface, 0});
+}
+
+std::optional<std::uint64_t> SharedFrameFeed::ask(const ExportRequest& request) {
     if (!offered()) return std::nullopt;
-    const std::uint64_t tag = ++next_tag_;
-    if (!socket_->send(ExportRequest{operation, surface, tag})) {
+    ExportRequest tagged = request;
+    tagged.tag = ++next_tag_;
+    if (!socket_->send(tagged)) {
         give_up("the GPU device's export socket took no more requests");
         return std::nullopt;
     }
-    asked_.push_back(Asked{operation, surface, tag});
-    return tag;
+    asked_.push_back(Asked{tagged.operation, tagged.surface, tagged.tag});
+    return tagged.tag;
+}
+
+// Only the application the user is in times the guest's display: there is
+// one display clock, and a mirror on another output would put it in phase
+// with that one instead.
+void SharedFrameFeed::shown(const FrameStamps& stamps) {
+    latency_.take(stamps);
+    const bool active = QGuiApplication::applicationState() == Qt::ApplicationActive;
+    if (active_ && !active) lock_.forget();
+    active_ = active;
+    if (!active) return;
+    const std::optional<DisplayLock::Timing> timing = lock_.take(stamps, now_ns());
+    if (!timing.has_value()) return;
+    RWIN_DEBUG("latency", "asking the guest's display for {:.3f} Hz, blanking {:.2f} ms before this output does",
+               timing->refresh_millihz / 1000.0, static_cast<double>(lock_.ahead()) / 1e6);
+    ExportRequest request{ExportRequest::Operation::Timing, 0, 0};
+    request.refresh_millihz = timing->refresh_millihz;
+    request.blank = static_cast<std::uint64_t>(timing->blank);
+    static_cast<void>(ask(request));
 }
 
 void SharedFrameFeed::read_answers() {
@@ -161,6 +191,9 @@ void SharedFrameFeed::take_answer(ExportSocket::Received received) {
             synced(answer, std::move(received.descriptor), std::move(frame));
             return;
         }
+        case ExportRequest::Operation::Timing:
+            if (!answer.ok()) RWIN_DEBUG("export", "the GPU device did not take the timing: {}", to_string(answer.status));
+            return;
         case ExportRequest::Operation::Hello:
         case ExportRequest::Operation::Release:
             return;
@@ -222,9 +255,10 @@ void SharedFrameFeed::synced(const ExportAnswer& answer, UniqueFd fence, Pending
             const std::shared_ptr<const SurfaceMemory>& memory = ring->memory(frame.slot);
             if (memory == nullptr || !fence.valid() || !ring->show(frame.order)) return;
             timing_.note("ready", frame.order, 0, frame.window);
+            frame.stamps.note_now(FrameStamps::Stage::Ready);
             Q_EMIT frame_ready(frame.window, SharedFrame{memory, std::move(frame.lease),
                                                          std::make_shared<UniqueFd>(std::move(fence)), frame.ring,
-                                                         frame.order});
+                                                         frame.order, frame.stamps});
             return;
         }
         case CopyWait::Verdict::AskAgain:

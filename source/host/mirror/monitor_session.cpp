@@ -18,6 +18,8 @@ MonitorSession::MonitorSession(GuestLink& link, SharedFrameFeed& frames, const Q
         connect(&frames, &SharedFrameFeed::frame_ready, this, &MonitorSession::show_shared_frame);
         connect(&window_, &MonitorWindow::gpu_failed, this,
                 [&frames](const QString& why) { frames.give_up(why.toStdString()); });
+        connect(&window_, &MonitorWindow::frame_timed, this,
+                [&frames](const FrameStamps& stamps) { frames.shown(stamps); });
     }
     // Asked once the guest has said it speaks this wire: asked before, the
     // request goes to nobody, and asked again, a capture is made again.

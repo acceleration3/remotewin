@@ -1,5 +1,6 @@
 #include "guest/capture/capture_stream.hpp"
 
+#include "guest/capture/capture_clock.hpp"
 #include "guest/capture/frame_signal.hpp"
 #include "guest/capture/graphics_device.hpp"
 #include "logging/logger.hpp"
@@ -330,7 +331,8 @@ CaptureStream::Frame::Frame(Frame&& other) noexcept
     : frame_(std::exchange(other.frame_, nullptr)),
       texture_(std::exchange(other.texture_, nullptr)),
       content_(other.content_),
-      source_time_(other.source_time_) {}
+      source_time_(other.source_time_),
+      taken_time_(other.taken_time_) {}
 
 CaptureStream::Frame& CaptureStream::Frame::operator=(Frame&& other) noexcept {
     if (this == &other) return *this;
@@ -339,6 +341,7 @@ CaptureStream::Frame& CaptureStream::Frame::operator=(Frame&& other) noexcept {
     texture_ = std::exchange(other.texture_, nullptr);
     content_ = other.content_;
     source_time_ = other.source_time_;
+    taken_time_ = other.taken_time_;
     return *this;
 }
 
@@ -450,6 +453,7 @@ std::optional<CaptureStream::Frame> CaptureStream::next_frame() {
     ABI::Windows::Foundation::TimeSpan composed{};
     if (SUCCEEDED(frame->get_SystemRelativeTime(&composed)))
         held.source_time_ = composed.Duration;
+    held.taken_time_ = capture_clock_now();
     if (picture.width == 0 || picture.height == 0) return std::nullopt;
     timing_.note("capture", ++captured_, held.source_time_, drained);
     if (sample_pixels_) sample_frame(held);

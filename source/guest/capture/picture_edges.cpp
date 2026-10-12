@@ -37,58 +37,98 @@ ID3D11Texture2D* staging(ID3D11Device* device, UINT width, UINT height) {
 PictureEdges::~PictureEdges() { release(); }
 
 void PictureEdges::release() noexcept {
-    if (rows_ != nullptr) rows_->Release();
-    if (columns_ != nullptr) columns_->Release();
-    rows_ = nullptr;
-    columns_ = nullptr;
+    for (Edges& edges : edges_) {
+        if (edges.rows != nullptr) edges.rows->Release();
+        if (edges.columns != nullptr) edges.columns->Release();
+        edges = Edges{};
+    }
     size_ = {};
+    verdict_.reset();
+    unread_ = 0;
 }
 
+// A new size is a new picture: what the old one's edges said is not its.
 bool PictureEdges::fit(CaptureStream::Extent size) {
-    if (size == size_ && rows_ != nullptr && columns_ != nullptr) return true;
+    if (size == size_ && edges_[0].rows != nullptr) return true;
     release();
-    rows_ = staging(device_.device(), size.width, 2);
-    columns_ = staging(device_.device(), 2, size.height);
-    if (rows_ == nullptr || columns_ == nullptr) {
-        RWIN_WARN("shared", "no staging texture for a {}x{} picture's edges", size.width, size.height);
-        release();
-        return false;
+    for (Edges& edges : edges_) {
+        edges.rows = staging(device_.device(), size.width, 2);
+        edges.columns = staging(device_.device(), 2, size.height);
+        if (edges.rows == nullptr || edges.columns == nullptr) {
+            RWIN_WARN("shared", "no staging texture for a {}x{} picture's edges", size.width, size.height);
+            release();
+            return false;
+        }
     }
     size_ = size;
     return true;
 }
 
-bool PictureEdges::all_drawn(const CaptureStream::Frame& frame) {
-    const CaptureStream::Extent size = frame.content();
-    if (!fit(size)) return false;
+void PictureEdges::copy(Edges& edges, const CaptureStream::Frame& frame) {
     ID3D11DeviceContext* context = device_.context();
-    const D3D11_BOX top{0, 0, 0, size.width, 1, 1};
-    const D3D11_BOX bottom{0, size.height - 1, 0, size.width, size.height, 1};
-    const D3D11_BOX left{0, 0, 0, 1, size.height, 1};
-    const D3D11_BOX right{size.width - 1, 0, 0, size.width, size.height, 1};
-    context->CopySubresourceRegion(rows_, 0, 0, 0, 0, frame.texture(), 0, &top);
-    context->CopySubresourceRegion(rows_, 0, 0, 1, 0, frame.texture(), 0, &bottom);
-    context->CopySubresourceRegion(columns_, 0, 0, 0, 0, frame.texture(), 0, &left);
-    context->CopySubresourceRegion(columns_, 0, 1, 0, 0, frame.texture(), 0, &right);
-    return rows_drawn() && columns_drawn();
+    const D3D11_BOX top{0, 0, 0, size_.width, 1, 1};
+    const D3D11_BOX bottom{0, size_.height - 1, 0, size_.width, size_.height, 1};
+    const D3D11_BOX left{0, 0, 0, 1, size_.height, 1};
+    const D3D11_BOX right{size_.width - 1, 0, 0, size_.width, size_.height, 1};
+    context->CopySubresourceRegion(edges.rows, 0, 0, 0, 0, frame.texture(), 0, &top);
+    context->CopySubresourceRegion(edges.rows, 0, 0, 1, 0, frame.texture(), 0, &bottom);
+    context->CopySubresourceRegion(edges.columns, 0, 0, 0, 0, frame.texture(), 0, &left);
+    context->CopySubresourceRegion(edges.columns, 0, 1, 0, 0, frame.texture(), 0, &right);
+    edges.copied = true;
 }
 
-bool PictureEdges::rows_drawn() {
+bool PictureEdges::all_drawn(const CaptureStream::Frame& frame) {
+    if (!fit(frame.content())) return false;
+    Edges& current = edges_[next_];
+    Edges& previous = edges_[1 - next_];
+    next_ = 1 - next_;
+    copy(current, frame);
+    // The frame before's edges, if the GPU is done with them; the newest
+    // ones, waited for, when nothing has said anything for too long.
+    const bool overdue = !verdict_.has_value() || unread_ >= kMostUnread;
+    std::optional<bool> heard = previous.copied ? read(previous, false) : std::nullopt;
+    if (!heard.has_value() && overdue) heard = read(current, true);
+    if (!heard.has_value()) {
+        ++unread_;
+        return verdict_.value_or(false);
+    }
+    verdict_ = heard;
+    unread_ = 0;
+    return *verdict_;
+}
+
+std::optional<bool> PictureEdges::read(Edges& edges, bool wait) {
+    const std::optional<bool> rows = rows_drawn(edges.rows, wait);
+    if (!rows.has_value()) return std::nullopt;
+    const std::optional<bool> columns = columns_drawn(edges.columns, wait);
+    if (!columns.has_value()) return std::nullopt;
+    edges.copied = false;
+    return *rows && *columns;
+}
+
+// A map that fails for any other reason than the copy still running says
+// "not drawn": the frame is then read back whole, which is never wrong.
+std::optional<bool> PictureEdges::rows_drawn(ID3D11Texture2D* rows, bool wait) {
     D3D11_MAPPED_SUBRESOURCE mapped{};
-    if (FAILED(device_.context()->Map(rows_, 0, D3D11_MAP_READ, 0, &mapped))) return false;
+    const HRESULT result = device_.context()->Map(rows, 0, D3D11_MAP_READ, wait ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+    if (result == DXGI_ERROR_WAS_STILL_DRAWING) return std::nullopt;
+    if (FAILED(result)) return false;
     const auto* pixels = static_cast<const std::uint8_t*>(mapped.pData);
     bool drawn[2] = {false, false};
     for (std::size_t row = 0; row < 2; ++row) {
         const std::uint8_t* line = pixels + row * mapped.RowPitch;
         for (std::uint32_t x = 0; x < size_.width && !drawn[row]; ++x) drawn[row] = line[x * kBytesPerPixel + kAlpha] != 0;
     }
-    device_.context()->Unmap(rows_, 0);
+    device_.context()->Unmap(rows, 0);
     return drawn[0] && drawn[1];
 }
 
-bool PictureEdges::columns_drawn() {
+std::optional<bool> PictureEdges::columns_drawn(ID3D11Texture2D* columns, bool wait) {
     D3D11_MAPPED_SUBRESOURCE mapped{};
-    if (FAILED(device_.context()->Map(columns_, 0, D3D11_MAP_READ, 0, &mapped))) return false;
+    const HRESULT result =
+        device_.context()->Map(columns, 0, D3D11_MAP_READ, wait ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+    if (result == DXGI_ERROR_WAS_STILL_DRAWING) return std::nullopt;
+    if (FAILED(result)) return false;
     const auto* pixels = static_cast<const std::uint8_t*>(mapped.pData);
     bool drawn[2] = {false, false};
     for (std::uint32_t y = 0; y < size_.height && !(drawn[0] && drawn[1]); ++y) {
@@ -96,7 +136,7 @@ bool PictureEdges::columns_drawn() {
         drawn[0] = drawn[0] || row[kAlpha] != 0;
         drawn[1] = drawn[1] || row[kBytesPerPixel + kAlpha] != 0;
     }
-    device_.context()->Unmap(columns_, 0);
+    device_.context()->Unmap(columns, 0);
     return drawn[0] && drawn[1];
 }
 

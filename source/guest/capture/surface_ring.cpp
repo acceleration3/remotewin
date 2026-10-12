@@ -1,5 +1,6 @@
 #include "guest/capture/surface_ring.hpp"
 
+#include "guest/capture/capture_clock.hpp"
 #include "guest/capture/graphics_device.hpp"
 #include "guest/capture/surface_id_reader.hpp"
 #include "logging/logger.hpp"
@@ -58,8 +59,13 @@ std::optional<SurfaceRing::Delivery> SurfaceRing::copy(CaptureStream::Frame& fra
     device_.context()->Flush();
     // Flush submits the copy; it does not complete it. Keep WGC's pool buffer
     // out of reuse until the host's fenced release proves the copy finished.
+    // The capture is stamped with the blank it is shown at; the compositor
+    // composed it at the blank before.
+    const std::int64_t composed = frame.source_time() != 0 ? frame.source_time() - composition_period() : 0;
+    const std::int64_t taken = frame.taken_time();
     sources_[*slot] = std::move(frame);
-    delivery.frame = FrameInSlot{window_, ledger_.ring(), *slot, ledger_.filled(*slot)};
+    delivery.frame = FrameInSlot{window_, ledger_.ring(),      *slot, ledger_.filled(*slot),
+                                 composed, taken, capture_clock_now()};
     return delivery;
 }
 

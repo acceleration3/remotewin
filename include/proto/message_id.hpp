@@ -50,6 +50,10 @@ enum class MessageId : std::uint8_t {
     // The pointer at a point of the guest's screen while a button pressed
     // in a mirror is held (PointerAt).
     PointerAt = 17,
+    // The host's clock, [host_ns:u64] (CLOCK_MONOTONIC): the guest answers
+    // at once with a ClockEcho, which is how the host puts the guest's
+    // moments on its own clock (GuestClock).
+    ClockProbe = 18,
 
     WindowList = 64,
     Frame = 65,
@@ -76,6 +80,8 @@ enum class MessageId : std::uint8_t {
     SlotRing = 73,
     // A window's newest frame is in a slot of its ring (FrameInSlot).
     FrameInSlot = 74,
+    // The answer to a ClockProbe (ClockEcho).
+    ClockEcho = 75,
 
     ProbeCreateWindow = 128,
     ProbeObserve = 129,

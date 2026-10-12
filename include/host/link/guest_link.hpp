@@ -1,6 +1,7 @@
 #pragma once
 
 #include "host/link/guest_window_info.hpp"
+#include "proto/clock_echo.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/frame_decoder.hpp"
 #include "proto/frame_in_slot.hpp"
@@ -71,6 +72,8 @@ public:
     // Whether the guest is to keep its frames on the GPU (FrameRoute).
     void send_route(bool shared_surfaces);
     void send_slot_free(const SlotFree& freed);
+    // This side's clock now, for the guest to answer (ClockEcho).
+    void send_clock_probe();
 
 Q_SIGNALS:
     // A guest dialled in and speaks this wire.
@@ -98,6 +101,9 @@ Q_SIGNALS:
     void cursor_pictured(const rwin::CursorPicture& picture);
     void cursor_changed(const rwin::GuestCursor& cursor);
     void pointer_grabbed(const rwin::PointerGrab& grab);
+    // The guest answered a clock probe; ``heard`` is this side's clock
+    // (now_ns) as the answer was read.
+    void clock_echoed(const rwin::ClockEcho& echo, qint64 heard);
 
 private:
     void accept_guest();

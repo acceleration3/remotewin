@@ -5,6 +5,7 @@
 #include "host/cursor/worn_cursor.hpp"
 #include "host/input/held_keys.hpp"
 #include "host/input/key_translator.hpp"
+#include "host/latency/frame_stamps.hpp"
 #include "host/link/guest_window_info.hpp"
 #include "host/mirror/mirror_state.hpp"
 #include "host/mirror/picture_layout.hpp"
@@ -68,12 +69,15 @@ public:
 
     // What this mirror decided, for a harness to compare with the window.
     [[nodiscard]] MirrorState state() const;
+    // What this mirror shows, in its device pixels: its own pixels, and the
+    // picture drawn from the GPU over them, as the compositor puts the one
+    // on the other. For a harness.
+    [[nodiscard]] QImage grab_shown();
 
     void present(const QImage& pixels);
     // Frames that stay on the GPU are drawn here from now on, as well as
-    // frames of pixels. Best before the mirror is first shown: it makes the
-    // mirror's window an OpenGL one (GpuPicture), and a window made one
-    // after it is shown is made again.
+    // frames of pixels: in a window of their own over this one's
+    // (GpuPicture), which the compositor holds as a subsurface of it.
     void take_gpu_frames();
     void present_shared(const SharedFrame& frame);
     void retitle(const QString& title);
@@ -180,6 +184,8 @@ Q_SIGNALS:
     void focused_unasked(std::uint64_t window);
     // A frame that stayed on the GPU could not be drawn here.
     void gpu_failed(const QString& why);
+    // A frame drawn from the GPU reached the screen (GpuPicture::frame_timed).
+    void frame_timed(const rwin::host::FrameStamps& stamps);
 
 protected:
     bool event(QEvent* event) override;
@@ -256,6 +262,8 @@ private:
     QImage keyed_;
     // The picture when the guest's frames stay on the GPU; null otherwise.
     GpuPicture* gpu_ = nullptr;
+    // What shows gpu_ inside this widget; it owns gpu_.
+    QWidget* gpu_view_ = nullptr;
     // The guest window's size, in its own pixels.
     //
     // One guest pixel is one device pixel here. A mirror's logical size is
