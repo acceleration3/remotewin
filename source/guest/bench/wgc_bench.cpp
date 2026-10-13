@@ -126,6 +126,46 @@ void draw_gdi(HWND window, std::uint64_t frame) {
     ::GdiFlush();
 }
 
+// One BGRA pixel of a captured frame, read through a staging texture: what
+// tells a frame that holds the window's picture from one that lost it (an
+// overlay plane the capture left out shows the desktop behind instead).
+struct Pixel {
+    bool read = false;
+    std::uint8_t blue = 0, green = 0, red = 0;
+};
+
+Pixel read_pixel(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture2D* texture, std::uint32_t x,
+                 std::uint32_t y) {
+    Pixel pixel;
+    D3D11_TEXTURE2D_DESC described{};
+    texture->GetDesc(&described);
+    if (x >= described.Width || y >= described.Height) return pixel;
+    D3D11_TEXTURE2D_DESC staging_desc{};
+    staging_desc.Width = 1;
+    staging_desc.Height = 1;
+    staging_desc.MipLevels = 1;
+    staging_desc.ArraySize = 1;
+    staging_desc.Format = described.Format;
+    staging_desc.SampleDesc.Count = 1;
+    staging_desc.Usage = D3D11_USAGE_STAGING;
+    staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    ID3D11Texture2D* staging = nullptr;
+    if (FAILED(device->CreateTexture2D(&staging_desc, nullptr, &staging))) return pixel;
+    const D3D11_BOX box{x, y, 0, x + 1, y + 1, 1};
+    context->CopySubresourceRegion(staging, 0, 0, 0, 0, texture, 0, &box);
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (SUCCEEDED(context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped))) {
+        const auto* bytes = static_cast<const std::uint8_t*>(mapped.pData);
+        pixel.read = true;
+        pixel.blue = bytes[0];
+        pixel.green = bytes[1];
+        pixel.red = bytes[2];
+        context->Unmap(staging, 0);
+    }
+    staging->Release();
+    return pixel;
+}
+
 double percentile(std::vector<double> values, double fraction) {
     if (values.empty()) return 0.0;
     std::sort(values.begin(), values.end());
@@ -177,6 +217,7 @@ int main(int argc, char** argv) {
                 shown.width, shown.height, seconds, gdi ? "GDI" : "Direct3D 11");
 
     std::vector<double> gaps_ms;
+    Pixel last_pixel;
     std::int64_t last_source = 0;
     std::uint64_t frames = 0, drawn = 0, second_frames = 0;
     double second_worst = 0.0;
@@ -202,6 +243,16 @@ int main(int argc, char** argv) {
                 second_worst = std::max(second_worst, gap);
             }
             if (source > last_source) last_source = source;
+            // The window's middle, in the captured picture's coordinates.
+            if (!gdi) {
+                RECT placed{};
+                ::GetWindowRect(window, &placed);
+                const std::uint32_t x = whole_window ? frame->content().width / 2
+                                                     : static_cast<std::uint32_t>((placed.left + placed.right) / 2);
+                const std::uint32_t y = whole_window ? frame->content().height / 2
+                                                     : static_cast<std::uint32_t>((placed.top + placed.bottom) / 2);
+                last_pixel = read_pixel(device.device(), device.context(), frame->texture(), x, y);
+            }
             ++frames;
             ++second_frames;
         }
@@ -229,7 +280,14 @@ int main(int argc, char** argv) {
     std::printf("gap ms: p50 %.1f  p95 %.1f  p99 %.1f  worst %.1f;  >20 ms %lld,  >50 ms %lld\n",
                 percentile(gaps_ms, 0.50), percentile(gaps_ms, 0.95), percentile(gaps_ms, 0.99), worst,
                 static_cast<long long>(late), static_cast<long long>(stalls));
+    // The window draws blue 128 and red and green that add up to 255, all
+    // through its cycle; a frame without the window's picture shows neither.
+    const bool pictured = gdi || (last_pixel.read && last_pixel.blue >= 120 && last_pixel.blue <= 136 &&
+                                  last_pixel.red + last_pixel.green >= 245 && last_pixel.red + last_pixel.green <= 265);
+    if (!gdi)
+        std::printf("window pixel in the last frame: %s r %u g %u b %u\n", pictured ? "the window's" : "NOT the window's",
+                    last_pixel.red, last_pixel.green, last_pixel.blue);
     const bool kept_up = fps >= kPassFps && worst <= kPassGapMs;
-    std::printf("%s\n", kept_up ? "PASS" : "FAIL");
-    return kept_up ? 0 : 1;
+    std::printf("%s\n", kept_up && pictured ? "PASS" : "FAIL");
+    return kept_up && pictured ? 0 : 1;
 }
