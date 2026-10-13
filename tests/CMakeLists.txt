@@ -41,6 +41,7 @@ add_test(NAME rwin_export_wire_test COMMAND rwin_export_wire_test)
 # spread of each stage.
 add_executable(rwin_latency_test
     latency_test.cpp
+    "${PROJECT_SOURCE_DIR}/source/host/latency/cadence_meter.cpp"
     "${PROJECT_SOURCE_DIR}/source/host/latency/clock_offset.cpp"
     "${PROJECT_SOURCE_DIR}/source/host/latency/display_lock.cpp"
     "${PROJECT_SOURCE_DIR}/source/host/latency/frame_stamps.cpp"

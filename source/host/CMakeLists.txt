@@ -69,6 +69,7 @@ add_library(rwin_host STATIC
     export/unique_fd.cpp
     export/window_ring.cpp
     input/guest_button.cpp
+    latency/cadence_meter.cpp
     latency/clock_offset.cpp
     latency/display_lock.cpp
     latency/frame_stamps.cpp

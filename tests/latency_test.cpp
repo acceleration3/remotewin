@@ -1,6 +1,7 @@
 // A frame's time, stage by stage: the guest's clock put on this side's from
 // probes, trusting the one that crossed fastest; and the meter's spread of
 // each stage, skipping stages a frame was not seen at.
+#include "host/latency/cadence_meter.hpp"
 #include "host/latency/clock_offset.hpp"
 #include "host/latency/display_lock.hpp"
 #include "host/latency/frame_stamps.hpp"
@@ -205,9 +206,64 @@ void frames_without_their_stamps_say_nothing() {
     check(!lock.take(unrefreshed, 2'000'000'000).has_value(), "an output with no fixed refresh times nothing");
 }
 
+constexpr std::int64_t kRefresh = 13'333'333;
+
+rwin::host::FrameStamps at(std::int64_t composed_blank, std::int64_t presented_refresh) {
+    rwin::host::FrameStamps frame;
+    // Composed 4 ms before a blank's own refresh, the way to the screen 10 ms.
+    frame.note(Stage::Composed, 1'000'000'000 + composed_blank * kRefresh);
+    frame.note(Stage::Presented, 1'010'000'000 + presented_refresh * kRefresh + 250'000);
+    frame.refresh_ns = kRefresh;
+    return frame;
+}
+
+void frames_shown_in_the_rhythm_composed_are_steady() {
+    rwin::host::CadenceMeter cadence;
+    for (int frame = 0; frame < 10; ++frame) cadence.take(at(frame, frame));
+    check(cadence.steady() == 9 && cadence.held() == 0 && cadence.rushed() == 0, "one blank, one refresh: steady");
+    // A blank with no frame, the frame before kept two refreshes: the rhythm
+    // composed is the rhythm shown, and the blank is counted.
+    cadence.take(at(11, 11));
+    check(cadence.steady() == 10 && cadence.unshown_blanks() == 1, "a blank with no frame is counted, and steady");
+    check(cadence.longest_on_screen_ns() > 2 * kRefresh - 1'000'000, "the longest frame on screen is two refreshes");
+}
+
+void a_frame_late_to_the_screen_is_held_and_the_next_rushed() {
+    rwin::host::CadenceMeter cadence;
+    cadence.take(at(0, 0));
+    cadence.take(at(1, 1));
+    cadence.take(at(2, 3));
+    cadence.take(at(3, 4));
+    check(cadence.held() == 1 && cadence.rushed() == 0 && cadence.steady() == 2, "one refresh late is held once");
+    cadence.take(at(4, 4));
+    check(cadence.rushed() == 1, "two frames in one refresh: the one before is never seen");
+    check(cadence.unshown_blanks() == 0, "a frame late to the screen leaves no blank without a frame");
+}
+
+void a_screen_at_rest_and_frames_without_their_stamps_say_nothing() {
+    rwin::host::CadenceMeter cadence;
+    cadence.take(at(0, 0));
+    cadence.take(at(100, 100));
+    check(cadence.steady() + cadence.held() + cadence.rushed() == 0, "a screen at rest is no rhythm");
+    rwin::host::FrameStamps unpresented = at(101, 101);
+    unpresented.note(Stage::Presented, 0);
+    cadence.take(unpresented);
+    cadence.take(at(102, 102));
+    check(cadence.steady() == 1 && cadence.unshown_blanks() == 1, "a frame never presented leaves its blank unshown");
+    cadence.take(at(103, 104));
+    check(cadence.held() == 1, "the rhythm picks up from the frame seen last");
+    cadence.restart();
+    check(cadence.held() == 0 && cadence.longest_on_screen_ns() == 0, "restarted, nothing is counted");
+    cadence.take(at(104, 105));
+    check(cadence.steady() == 1, "the frame before a restart is still the one before");
+}
+
 }  // namespace
 
 int main() {
+    frames_shown_in_the_rhythm_composed_are_steady();
+    a_frame_late_to_the_screen_is_held_and_the_next_rushed();
+    a_screen_at_rest_and_frames_without_their_stamps_say_nothing();
     the_fastest_answer_is_trusted();
     old_answers_are_let_go();
     each_stage_is_timed_from_the_one_before();
