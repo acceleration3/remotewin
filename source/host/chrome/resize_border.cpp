@@ -2,12 +2,16 @@
 
 namespace rwin::host {
 
+void ResizeBorder::fit_to(QMargins band) noexcept {
+    band_ = band.isNull() ? QMargins(kThickness, kThickness, kThickness, kThickness) : band;
+}
+
 Qt::Edges ResizeBorder::at(QPointF position, QSize size) const noexcept {
     Qt::Edges edges;
-    if (position.x() < kThickness) edges |= Qt::LeftEdge;
-    if (position.x() >= size.width() - kThickness) edges |= Qt::RightEdge;
-    if (position.y() < kThickness) edges |= Qt::TopEdge;
-    if (position.y() >= size.height() - kThickness) edges |= Qt::BottomEdge;
+    if (position.x() < band_.left()) edges |= Qt::LeftEdge;
+    if (position.x() >= size.width() - band_.right()) edges |= Qt::RightEdge;
+    if (position.y() < band_.top()) edges |= Qt::TopEdge;
+    if (position.y() >= size.height() - band_.bottom()) edges |= Qt::BottomEdge;
     return edges;
 }
 

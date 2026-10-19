@@ -25,9 +25,12 @@ SharedFrameFeed::SharedFrameFeed(GuestLink& link, QObject* parent) : QObject(par
     connect(&link_, &GuestLink::connected, this, &SharedFrameFeed::offer);
     connect(&link_, &GuestLink::ring_announced, this, &SharedFrameFeed::take_ring);
     connect(&link_, &GuestLink::frame_in_slot, this, &SharedFrameFeed::take_frame);
-    connect(&link_, &GuestLink::window_gone, this, &SharedFrameFeed::drop_window);
+    connect(&link_, &GuestLink::window_gone, this, [this](WindowId window) {
+        pixels_only_.erase(window);
+        drop_window(window);
+    });
     // A window the guest sends as pixels has no ring any more.
-    connect(&link_, &GuestLink::frame_arrived, this, [this](quint64 window, const QImage&) { drop_window(window); });
+    connect(&link_, &GuestLink::frame_arrived, this, [this](WindowId window, const QImage&) { drop_window(window); });
 }
 
 // Leases let go of after the socket: what they free is the guest's.
@@ -66,20 +69,28 @@ void SharedFrameFeed::give_up(const std::string& why) {
     syncing_.clear();
     rings_.clear();
     export_asks_.clear();
+    pixels_only_.clear();
+}
+
+void SharedFrameFeed::pixels_for(WindowId window, const std::string& why) {
+    if (!offered() || !pixels_only_.insert(window).second) return;
+    RWIN_WARN("export", "{}'s frames come as pixels from here on: {}", window, why);
+    link_.send_window_pixels(window);
+    drop_window(window);
 }
 
 void SharedFrameFeed::take_ring(const SlotRing& ring) {
-    if (!offered()) return;
+    if (!offered() || pixels_only_.contains(ring.window)) return;
     drop_window(ring.window);
-    rings_.insert_or_assign(ring.window, WindowRing{ring});
-    RWIN_DEBUG("export", "{:#x}: ring {} of {}x{}", ring.window, ring.ring, ring.width, ring.height);
+    rings_.insert_or_assign(ring.window.key(), WindowRing{ring});
+    RWIN_DEBUG("export", "{}: ring {} of {}x{}", ring.window, ring.ring, ring.width, ring.height);
     for (const std::uint64_t surface : ring.surfaces) {
         if (!ask(ExportRequest::Operation::Export, surface).has_value()) return;
     }
 }
 
-void SharedFrameFeed::drop_window(quint64 window) {
-    const auto known = rings_.find(window);
+void SharedFrameFeed::drop_window(WindowId window) {
+    const auto known = rings_.find(window.key());
     if (known == rings_.end()) return;
     const std::array<std::uint64_t, SlotRing::kSlots> surfaces = known->second.surfaces();
     rings_.erase(known);
@@ -88,9 +99,16 @@ void SharedFrameFeed::drop_window(quint64 window) {
     }
 }
 
-WindowRing* SharedFrameFeed::ring_of(quint64 window, std::uint32_t ring) {
-    const auto known = rings_.find(window);
+WindowRing* SharedFrameFeed::ring_of(WindowId window, std::uint32_t ring) {
+    const auto known = rings_.find(window.key());
     return known != rings_.end() && known->second.ring() == ring ? &known->second : nullptr;
+}
+
+std::optional<WindowId> SharedFrameFeed::window_of(std::uint64_t surface) const {
+    for (const auto& [key, ring] : rings_) {
+        if (ring.slot_of(surface).has_value()) return WindowId::of_key(key);
+    }
+    return std::nullopt;
 }
 
 // A frame in a ring this side does not hold - one replaced, or one named
@@ -100,7 +118,7 @@ void SharedFrameFeed::take_frame(const FrameInSlot& frame) {
     WindowRing* ring = ring_of(frame.window, frame.ring);
     if (ring == nullptr) return;
     const auto order = ring->named();
-    timing_.note("received", order, 0, frame.window);
+    timing_.note("received", order, 0, frame.window.key());
     FrameStamps stamps;
     stamps.note_now(FrameStamps::Stage::Received);
     stamps.note(FrameStamps::Stage::Composed, clock_.to_host(frame.composed).value_or(0));
@@ -223,38 +241,40 @@ void SharedFrameFeed::exported(const ExportAnswer& answer, UniqueFd dma_buf) {
         }
     }
     export_asks_.erase(answer.surface);
+    const std::optional<WindowId> window = window_of(answer.surface);
+    if (!window.has_value()) {
+        // Its ring was replaced while it was being exported.
+        if (answer.ok()) static_cast<void>(ask(ExportRequest::Operation::Release, answer.surface));
+        return;
+    }
     if (!answer.ok()) {
-        give_up("the GPU device did not export surface " + std::to_string(answer.surface) + ": "
-                + to_string(answer.status));
+        pixels_for(*window, "the GPU device did not export surface " + std::to_string(answer.surface) + ": "
+                                + to_string(answer.status));
         return;
     }
     const ExportedLayout layout = answer.layout();
     if (layout.fourcc != ExportedLayout::kArgb8888 || layout.width == 0 || layout.height == 0 || !dma_buf.valid()) {
-        give_up("surface " + std::to_string(answer.surface) + " was exported as something other than B8G8R8A8");
+        pixels_for(*window,
+                   "surface " + std::to_string(answer.surface) + " was exported as something other than B8G8R8A8");
         return;
     }
-    for (auto& [window, ring] : rings_) {
-        const std::optional<std::uint32_t> slot = ring.slot_of(answer.surface);
-        if (!slot.has_value()) continue;
-        ring.exported(*slot, std::make_shared<const SurfaceMemory>(answer.surface, layout, std::move(dma_buf)));
-        return;
-    }
-    // Its ring was replaced while it was being exported.
-    static_cast<void>(ask(ExportRequest::Operation::Release, answer.surface));
+    WindowRing& ring = rings_.at(window->key());
+    ring.exported(*ring.slot_of(answer.surface),
+                  std::make_shared<const SurfaceMemory>(answer.surface, layout, std::move(dma_buf)));
 }
 
 void SharedFrameFeed::synced(const ExportAnswer& answer, UniqueFd fence, PendingFrame frame) {
     WindowRing* ring = ring_of(frame.window, frame.ring);
     if (ring == nullptr) return;
     if (!answer.ok()) {
-        RWIN_DEBUG("export", "{:#x}: slot {} not synced: {}", frame.window, frame.slot, to_string(answer.status));
+        RWIN_DEBUG("export", "{}: slot {} not synced: {}", frame.window, frame.slot, to_string(answer.status));
         return;
     }
     switch (frame.wait.answered(answer.copies())) {
         case CopyWait::Verdict::Ready: {
             const std::shared_ptr<const SurfaceMemory>& memory = ring->memory(frame.slot);
             if (memory == nullptr || !fence.valid() || !ring->show(frame.order)) return;
-            timing_.note("ready", frame.order, 0, frame.window);
+            timing_.note("ready", frame.order, 0, frame.window.key());
             frame.stamps.note_now(FrameStamps::Stage::Ready);
             Q_EMIT frame_ready(frame.window, SharedFrame{memory, std::move(frame.lease),
                                                          std::make_shared<UniqueFd>(std::move(fence)), frame.ring,
@@ -266,7 +286,7 @@ void SharedFrameFeed::synced(const ExportAnswer& answer, UniqueFd fence, Pending
                                [this, again = std::move(frame)]() mutable { ask_sync(std::move(again)); });
             return;
         case CopyWait::Verdict::GiveUp:
-            RWIN_WARN("export", "{:#x}: copy {} into slot {} never ran (the device has run {}); frame dropped",
+            RWIN_WARN("export", "{}: copy {} into slot {} never ran (the device has run {}); frame dropped",
                       frame.window, frame.wait.copies(), frame.slot, answer.copies());
             return;
     }
@@ -274,9 +294,15 @@ void SharedFrameFeed::synced(const ExportAnswer& answer, UniqueFd fence, Pending
 
 void SharedFrameFeed::revoked(const ExportAnswer& answer) {
     if (answer.surface == 0) {
-        RWIN_WARN("export", "the GPU device was reset; every shared surface is gone");
+        // The guest makes every window's ring afresh when told again, those
+        // it was sending as pixels included: until then each window would
+        // stop at its last frame.
+        RWIN_WARN("export", "the GPU device was reset; every shared surface is gone, asking for new ones");
         rings_.clear();
         syncing_.clear();
+        export_asks_.clear();
+        pixels_only_.clear();
+        link_.send_route(true);
         return;
     }
     // A ring the guest let go of whole is forgotten, rather than kept until

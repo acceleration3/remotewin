@@ -1,7 +1,9 @@
 #include "conform/expectation.hpp"
+#include "proto/window_id.hpp"
 
 #include <QString>
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
@@ -40,7 +42,7 @@ WindowTruth overlapped() {
 
 MirrorState faithful() {
     MirrorState mirror;
-    mirror.handle = 0x500c4;
+    mirror.window = rwin::WindowId{0x500c4, 1};
     mirror.flags = Qt::Window | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
     mirror.visible = true;
     mirror.forwards_input = true;
@@ -112,7 +114,7 @@ void the_taskbar_rule_is_windows_own() {
     WindowTruth owned_app = owned;
     owned_app.extended_style |= 0x40000;
     MirrorState popup = faithful();
-    popup.popup_of = 0x1234;
+    popup.popup_of = rwin::WindowId{0x1234, 1};
     popup.flags = Qt::ToolTip | Qt::FramelessWindowHint;
     const auto rows = checked(owned_app, popup);
     const Expectation::Check* limited = find(rows, "taskbar");
@@ -164,7 +166,7 @@ void an_owned_popup_is_placed_against_its_owner() {
     MirrorState owner_mirror = faithful();
     owner_mirror.position = QPoint(100, 100);
     MirrorState popup_mirror = faithful();
-    popup_mirror.popup_of = owner.handle;
+    popup_mirror.popup_of = rwin::WindowId{static_cast<std::uint32_t>(owner.handle), 1};
     popup_mirror.flags = Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
     popup_mirror.resizable = false;
     popup_mirror.picture = QRect(0, 0, 202, 122);
@@ -206,7 +208,7 @@ void a_modal_dialog_is_one_whose_owner_is_disabled() {
     dialog.handle = 0x600aa;
     dialog.owner = owner.handle;
     MirrorState mirror = faithful();
-    mirror.attached_to = owner.handle;
+    mirror.attached_to = rwin::WindowId{static_cast<std::uint32_t>(owner.handle), 1};
     mirror.flags = Qt::Tool | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint;
     mirror.modal = true;
     const Expectation expectation{dialog, dialog, owner, false, true};

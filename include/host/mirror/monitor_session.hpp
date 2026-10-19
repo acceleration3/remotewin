@@ -4,6 +4,7 @@
 #include "host/cursor/pixel_cursor.hpp"
 #include "host/mirror/monitor_window.hpp"
 #include "host/wayland/pointer_globals.hpp"
+#include "proto/window_id.hpp"
 
 #include <QImage>
 #include <QObject>
@@ -41,10 +42,11 @@ Q_SIGNALS:
     void ready();
 
 private:
-    void show_frame(quint64 window, const QImage& pixels);
-    void show_patch(quint64 window, QSize picture, QPoint at, const QImage& pixels);
-    void show_shared_frame(quint64 window, const SharedFrame& frame);
-    void forget(quint64 window);
+    void show_frame(WindowId window, const QImage& pixels);
+    void show_patch(WindowId window, QSize picture, QPoint at, const QImage& pixels);
+    void show_shared_frame(WindowId window, const SharedFrame& frame);
+    void surface_lost(WindowId window);
+    void note_ready();
 
     GuestLink& link_;
     // Bound before anything that sizes the cursor.

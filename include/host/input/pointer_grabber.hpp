@@ -2,6 +2,7 @@
 
 #include "host/mirror/mirror_state.hpp"
 #include "proto/pointer_grab.hpp"
+#include "proto/window_id.hpp"
 
 #include <QObject>
 #include <QPoint>
@@ -62,7 +63,7 @@ public:
     void take_motion(QPointF unaccelerated);
 
     // What was asked of the compositor for ``window``'s mirror, if anything.
-    void describe(std::uint64_t window, MirrorState& state) const;
+    void describe(WindowId window, MirrorState& state) const;
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;

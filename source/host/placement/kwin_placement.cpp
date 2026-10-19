@@ -26,7 +26,7 @@ constexpr int kExpiryCheckMs = 500;
 // it removes white space it trims, not these), and nothing draws them.
 constexpr char16_t kMarker = 0x2063;
 constexpr std::array<char16_t, 4> kDigits{0x200B, 0x200C, 0x200D, 0x2060};
-constexpr int kDigitCount = 16;
+constexpr int kDigitCount = 32;
 
 // Finds this process's windows by their tag, and reports where each is
 // put - not during a drag, which is reported once, where it ends.

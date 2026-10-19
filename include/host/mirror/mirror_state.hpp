@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proto/pointer_grab.hpp"
+#include "proto/window_id.hpp"
 
 #include <Qt>
 
@@ -25,12 +26,12 @@ namespace rwin::host {
 // in. For checking a mirror against the window it mirrors from outside;
 // nothing in the mirror reads this.
 struct MirrorState {
-    std::uint64_t handle = 0;
-    // The guest window this one is a popup of, or 0 for a toplevel.
-    std::uint64_t popup_of = 0;
+    WindowId window;
+    // The guest window this one is a popup of, or none for a toplevel.
+    WindowId popup_of;
     // The guest window whose mirror this toplevel is attached to - its
-    // transient parent - or 0.
-    std::uint64_t attached_to = 0;
+    // transient parent - or none.
+    WindowId attached_to;
     // Attached to a window the guest has disabled while this one is up:
     // the modal dialog of that window, which the mirror brings forward
     // when the window is clicked.

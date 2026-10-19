@@ -23,6 +23,10 @@ void ParentControl::report_ready() {
     report("READY\n");
 }
 
+void ParentControl::report_app(const QString& aumid) {
+    report("APP " + aumid.toUtf8() + '\n');
+}
+
 void ParentControl::report(const QByteArray& status) {
     if (status_.write(status) == status.size() && status_.flush())
         return;

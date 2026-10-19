@@ -9,9 +9,9 @@
 #include "host/mirror/pixel_mapping.hpp"
 #include "logging/logger.hpp"
 #include "proto/key_stroke.hpp"
-#include "proto/message_id.hpp"
 #include "proto/pointer_wheel.hpp"
 
+#include "proto/window_id.hpp"
 #include <QCloseEvent>
 #include <QEnterEvent>
 #include <QEvent>

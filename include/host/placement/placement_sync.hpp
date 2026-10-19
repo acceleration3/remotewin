@@ -2,6 +2,7 @@
 
 #include "host/placement/kwin_placement.hpp"
 #include "host/placement/screen_mapping.hpp"
+#include "proto/window_id.hpp"
 
 #include <QElapsedTimer>
 #include <QHash>
@@ -11,6 +12,7 @@
 #include <QPointer>
 #include <QRect>
 #include <QRectF>
+#include <QSize>
 #include <QSizeF>
 
 #include <cstdint>
@@ -20,6 +22,7 @@
 namespace rwin::host {
 
 class GuestLink;
+class GuestWindow;
 class MirrorWindow;
 struct MirrorState;
 
@@ -40,24 +43,24 @@ public:
 
     // What the mirror of ``window`` is known to the compositor by: a
     // suffix of its title, or nothing where nothing is placed.
-    [[nodiscard]] QString tag_for(std::uint64_t window) const;
+    [[nodiscard]] QString tag_for(WindowId window) const;
 
-    // The guest window's picture, in guest screen pixels, as the window
-    // list said. ``placeable`` is false for a window minimised or
+    // Where the guest window's picture is, as the guest last said.
+    // ``placeable`` is false for a window minimised or
     // maximised in the guest, and for a mirror that is a popup: those are
     // placed by their state and their owner, not by this. A mirror whose
     // surface was made again is placed again: the compositor put the new
     // one where it chose.
-    void follow_guest(MirrorWindow& mirror, QRect guest, bool placeable);
+    void follow_guest(MirrorWindow& mirror, const GuestWindow& window, bool placeable);
     // A mirror maximised for the guest is maximised on the guest's own
     // screen - the output it is, here - as Windows maximises a window on the
     // monitor it is on; KWin would maximise it on the one its user is on.
     // Once per surface.
     void keep_on_guest_screen(MirrorWindow& mirror);
-    void forget(std::uint64_t window);
+    void forget(WindowId window);
 
     // The record of ``window`` into ``state``.
-    void describe(std::uint64_t window, MirrorState& state) const;
+    void describe(WindowId window, MirrorState& state) const;
 
     // Where the guest's screen - this desktop's primary output - is, as
     // the compositor lays it out; nothing where it does not say.
@@ -66,7 +69,12 @@ public:
 private:
     struct Tracked {
         QPointer<MirrorWindow> mirror;
+        // The picture's corner on the guest's screen; the frame's size, and
+        // where the picture sits in it: what the guest is told when the
+        // window is put somewhere here.
         QPoint guest;
+        QSize frame_size;
+        QPoint picture_offset;
         std::uint32_t surface = 0;
         bool placeable = false;
         bool pending = false;
@@ -80,8 +88,8 @@ private:
         std::optional<QRectF> reported;
         std::uint32_t guest_moves = 0;
         std::optional<QPoint> moved_guest_to;
-        // A guest move asked for and not yet seen in a window list: when it
-        // is, it is this side's own move coming back.
+        // A guest move asked for and not yet reported back: when it is, it
+        // is this side's own move coming back.
         std::optional<QPoint> awaiting_guest;
         // Since this side's placement was done: KWin's own placement of a
         // new window - on the output its user is on - can be reported after
@@ -103,12 +111,14 @@ private:
 
     static constexpr std::size_t kRecentlyAsked = 32;
 
-    void placed(std::uint64_t window, QPointF frame_corner, qint64 round_trip_ms);
-    void not_placed(std::uint64_t window);
-    void moved(std::uint64_t window, QRectF frame);
+    // ``key``: WindowId::key, which is what KWinPlacement knows a window by.
+    void placed(std::uint64_t key, QPointF frame_corner, qint64 round_trip_ms);
+    void not_placed(std::uint64_t key);
+    void moved(std::uint64_t key, QRectF frame);
 
     GuestLink& link_;
     KWinPlacement kwin_;
+    // By WindowId::key.
     QHash<quint64, Tracked> tracked_;
 };
 

@@ -3,11 +3,11 @@
 #include "conform/input_expectation.hpp"
 #include "conform/scenario.hpp"
 #include "conform/scenario_outcome.hpp"
-#include "host/link/guest_window_info.hpp"
 #include "host/mirror/mirror_state.hpp"
 #include "proto/pointer_grab.hpp"
 #include "proto/probe/input_record.hpp"
 #include "proto/probe/window_truth.hpp"
+#include "proto/window_id.hpp"
 
 #include <QColor>
 #include <QHash>
@@ -24,7 +24,6 @@
 class QWindow;
 
 namespace rwin::host {
-class GuestLink;
 class MirrorSession;
 class MirrorWindow;
 }  // namespace rwin::host
@@ -54,12 +53,14 @@ public:
         QRegion shell_overlay;
     };
 
-    ScenarioRunner(ProbeLink& probe, host::MirrorSession& mirrors, host::GuestLink& link,
-                   Settings settings);
+    ScenarioRunner(ProbeLink& probe, host::MirrorSession& mirrors, Settings settings);
 
     [[nodiscard]] ScenarioOutcome run(const Scenario& scenario);
 
 private:
+    // The guest window the probe knows by ``handle``, as the mirror's guest
+    // half names it; none while it has not told of it.
+    [[nodiscard]] WindowId id_of(std::uint64_t handle) const;
     [[nodiscard]] bool make_windows(const Scenario& scenario, ScenarioOutcome& outcome);
     [[nodiscard]] static QString signature_of(const Scenario& scenario, const ScenarioOutcome& outcome);
     void skip_if_seen(const Scenario& scenario, ScenarioOutcome& outcome);
@@ -109,8 +110,6 @@ private:
     ProbeLink& probe_;
     host::MirrorSession& mirrors_;
     Settings settings_;
-    // What the mirror's guest half last said about each window.
-    QHash<quint64, host::GuestWindowInfo> reported_;
     // Generated scenarios run so far, by what their windows came out as.
     QHash<QString, QString> seen_;
     int timestamp_ = 0;

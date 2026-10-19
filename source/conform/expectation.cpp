@@ -67,7 +67,7 @@ std::optional<Check> shown(const Subject& s) {
 // kept above the owner by the compositor.
 std::optional<Check> owner(const Subject& s) {
     return equal(handle_text(s.truth.owner),
-                 handle_text(s.mirror.popup_of != 0 ? s.mirror.popup_of : s.mirror.attached_to));
+                 handle_text(!s.mirror.popup_of.none() ? s.mirror.popup_of.hwnd : s.mirror.attached_to.hwnd));
 }
 
 // A window whose owner is disabled while it is enabled is that owner's
@@ -84,7 +84,7 @@ std::optional<Check> modal(const Subject& s) {
 // the compositor's decision, which may refuse a client focus it was not
 // given (focus stealing prevention). A WS_EX_NOACTIVATE window never asks.
 std::optional<Check> activation(const Subject& s) {
-    if (!s.truth.foreground || !on_screen(s.truth) || s.mirror.popup_of != 0) return std::nullopt;
+    if (!s.truth.foreground || !on_screen(s.truth) || !s.mirror.popup_of.none()) return std::nullopt;
     if (has_ex(s.truth, Win32Style::kWsExNoActivate)) {
         return equal(QStringLiteral("never asked"), s.mirror.activation_requests == 0
                                                           ? QStringLiteral("never asked")
@@ -103,7 +103,7 @@ std::optional<Check> activation(const Subject& s) {
 // difference is the rounding of that and not a misplacement; where the
 // compositor then puts it is its own (docs/conformance.md, known limits).
 std::optional<Check> owner_offset(const Subject& s) {
-    if (s.owner == nullptr || s.owner_mirror == nullptr || s.mirror.popup_of == 0) {
+    if (s.owner == nullptr || s.owner_mirror == nullptr || s.mirror.popup_of.none()) {
         return std::nullopt;
     }
     if (!on_screen(s.truth)) return std::nullopt;
@@ -134,7 +134,7 @@ std::optional<Check> taskbar(const Subject& s) {
     const Qt::WindowFlags type = s.mirror.flags & Qt::WindowType_Mask;
     // A toplevel attached to another is left off the taskbar by the
     // desktop's task manager, which shows the window it is attached to.
-    const bool actual = s.mirror.popup_of == 0 && s.mirror.attached_to == 0
+    const bool actual = s.mirror.popup_of.none() && s.mirror.attached_to.none()
                         && (type == Qt::Window || type == Qt::Dialog);
     return equal(yes_no(expected), yes_no(actual));
 }
@@ -165,12 +165,12 @@ std::optional<Check> resizable(const Subject& s) {
 }
 
 std::optional<Check> minimized(const Subject& s) {
-    if (s.mirror.popup_of != 0) return std::nullopt;
+    if (!s.mirror.popup_of.none()) return std::nullopt;
     return equal(yes_no(s.truth.iconic), yes_no(s.mirror.minimized));
 }
 
 std::optional<Check> maximized(const Subject& s) {
-    if (s.mirror.popup_of != 0) return std::nullopt;
+    if (!s.mirror.popup_of.none()) return std::nullopt;
     return equal(yes_no(s.truth.zoomed), yes_no(s.mirror.maximized));
 }
 
@@ -250,7 +250,7 @@ std::optional<Check> shadow(const Subject& s) {
 // against its owner (owner_offset); a maximised or minimised window by its
 // state.
 std::optional<Check> host_position(const Subject& s) {
-    if (s.screen == nullptr || !on_screen(s.truth) || s.truth.zoomed || s.mirror.popup_of != 0) {
+    if (s.screen == nullptr || !on_screen(s.truth) || s.truth.zoomed || !s.mirror.popup_of.none()) {
         return std::nullopt;
     }
     const QString expected = point_text(s.truth.visible.left, s.truth.visible.top);

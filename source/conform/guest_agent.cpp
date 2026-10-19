@@ -96,14 +96,12 @@ std::optional<std::uint32_t> GuestAgent::launch(const QString& executable, const
     return static_cast<std::uint32_t>(result->value(QStringLiteral("pid")).toInteger());
 }
 
-std::optional<std::uint32_t> GuestAgent::start_window_mirror(std::uint16_t port,
-                                                             std::uint32_t process_id,
-                                                             QString& error) {
-    const std::optional<QJsonObject> result =
-        request(QStringLiteral("start_window_mirror"),
-                QJsonObject{{QStringLiteral("port"), port},
-                            {QStringLiteral("pid"), static_cast<qint64>(process_id)}},
-                error);
+std::optional<std::uint32_t> GuestAgent::start_window_mirror(const MirrorStart& start, QString& error) {
+    QJsonObject params{{QStringLiteral("port"), start.port},
+                       {QStringLiteral("pid"), static_cast<qint64>(start.process_id)}};
+    if (!start.exe.isEmpty()) params.insert(QStringLiteral("exe"), start.exe);
+    if (!start.log.isEmpty()) params.insert(QStringLiteral("log_path"), start.log);
+    const std::optional<QJsonObject> result = request(QStringLiteral("start_window_mirror"), params, error);
     if (!result.has_value()) return std::nullopt;
     return static_cast<std::uint32_t>(result->value(QStringLiteral("pid")).toInteger());
 }

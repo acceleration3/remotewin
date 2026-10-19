@@ -31,11 +31,18 @@ public:
     [[nodiscard]] std::optional<std::uint32_t> launch(const QString& executable,
                                                       const QString& arguments, QString& error);
 
-    // Starts the mirror's guest half in the session of ``process_id``,
-    // dialling back to ``port``. Its process id.
-    [[nodiscard]] std::optional<std::uint32_t> start_window_mirror(std::uint16_t port,
-                                                                   std::uint32_t process_id,
-                                                                   QString& error);
+    // The mirror's guest half to start: in the session of ``process_id``,
+    // dialling back to ``port``. ``exe`` and ``log`` are guest paths; empty,
+    // the agent's own (the guest half installed with it, and its log).
+    struct MirrorStart {
+        std::uint16_t port = 0;
+        std::uint32_t process_id = 0;
+        QString exe;
+        QString log;
+    };
+
+    // Its process id.
+    [[nodiscard]] std::optional<std::uint32_t> start_window_mirror(const MirrorStart& start, QString& error);
 
 private:
     [[nodiscard]] std::optional<QJsonObject> request(const QString& command,

@@ -2,6 +2,7 @@
 
 #include "host/link/guest_link.hpp"
 #include "proto/key_stroke.hpp"
+#include "proto/window_id.hpp"
 
 namespace rwin::host {
 
@@ -13,7 +14,7 @@ void HeldKeys::note(const KeyStroke& stroke) {
     if (stroke.scan_code != 0) held_.set(slot_of(stroke.scan_code), stroke.pressed);
 }
 
-void HeldKeys::release_all(GuestLink& link, std::uint64_t window) {
+void HeldKeys::release_all(GuestLink& link, WindowId window) {
     for (std::size_t slot = 0; slot < held_.size(); ++slot) {
         if (!held_.test(slot)) continue;
         KeyStroke release;

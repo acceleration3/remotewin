@@ -3,7 +3,7 @@
 #include "conform/expectation.hpp"
 #include "conform/input_expectation.hpp"
 #include "conform/pixel_comparison.hpp"
-#include "host/link/guest_window_info.hpp"
+#include "host/link/guest_window.hpp"
 #include "host/mirror/mirror_state.hpp"
 #include "proto/pointer_grab.hpp"
 #include "proto/probe/cursor_truth.hpp"
@@ -34,7 +34,7 @@ struct ScenarioOutcome {
         std::optional<WindowTruth> truth;
         std::optional<host::MirrorState> mirror;
         // What the mirror's guest half last reported for it, as it arrived.
-        std::optional<host::GuestWindowInfo> reported;
+        std::optional<host::GuestWindow> reported;
         std::optional<bool> casts_shadow;
         std::vector<Expectation::Check> checks;
         std::optional<PixelComparison> pixels;

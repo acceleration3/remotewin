@@ -1,5 +1,6 @@
 #include "host/chrome/win32_style.hpp"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
@@ -27,8 +28,8 @@ void plain_words_are_a_plain_toplevel() {
     check(style.activates(), "no WS_EX_NOACTIVATE: activates");
     check(style.closable(), "no CS_NOCLOSE: closable");
     check(!style.topmost(), "desktop band, no WS_EX_TOPMOST: not topmost");
-    check(style.in_taskbar(), "unowned, not a tool window: on the taskbar");
-    check(style.toplevel_type() == Qt::Window, "a taskbar window is Qt::Window");
+    check(!style.in_taskbar(), "no taskbar button said: off the taskbar");
+    check(style.toplevel_type() == Qt::Tool, "off the taskbar is Qt::Tool");
     check(style.opacity() == 255, "no LWA_ALPHA: opaque");
     check(!style.color_keyed(), "no LWA_COLORKEY: not keyed");
     check((style.hints() & Qt::FramelessWindowHint) != 0, "always frameless");
@@ -42,8 +43,6 @@ void window_style_bits() {
           "WS_CAPTION: title bar");
     check(!Win32Style{Words{.style = Win32Style::kWsBorder}}.has_caption(),
           "WS_BORDER alone is not WS_CAPTION");
-    check(Win32Style{Words{.style = Win32Style::kWsBorder}}.has_frame(),
-          "WS_BORDER alone is a frame");
     check(Win32Style{Words{.style = Win32Style::kWsDisabled}}.disabled(),
           "WS_DISABLED: no input");
     const Win32Style boxes{Words{.style = Win32Style::kWsSysMenu | Win32Style::kWsMinimizeBox
@@ -61,11 +60,8 @@ void extended_style_bits() {
     const Win32Style quiet{Words{.extended_style = Win32Style::kWsExNoActivate}};
     check(!quiet.activates(), "WS_EX_NOACTIVATE: does not activate");
     check((quiet.hints() & Qt::WindowDoesNotAcceptFocus) != 0, "and takes no focus");
-    check(!quiet.in_taskbar(), "WS_EX_NOACTIVATE: off the taskbar by default");
-
-    const Win32Style tool{Words{.extended_style = Win32Style::kWsExToolWindow}};
-    check(!tool.in_taskbar(), "WS_EX_TOOLWINDOW: off the taskbar");
-    check(tool.toplevel_type() == Qt::Tool, "off the taskbar is Qt::Tool");
+    check(Win32Style{Words{.extended_style = Win32Style::kWsExToolWindow}}.tool_window(),
+          "WS_EX_TOOLWINDOW: a tool window");
 
     const Win32Style see_through{Words{.extended_style = Win32Style::kWsExLayered
                                                           | Win32Style::kWsExTransparent}};
@@ -76,21 +72,16 @@ void extended_style_bits() {
           "WS_EX_TRANSPARENT alone is a paint order, not a hole");
 }
 
-void the_taskbar_rule() {
-    check(!Win32Style{Words{.owned = true}}.in_taskbar(), "owned: no button of its own");
-    check(Win32Style{Words{.extended_style = Win32Style::kWsExAppWindow, .owned = true}}
-              .in_taskbar(),
-          "WS_EX_APPWINDOW forces a button on an owned window");
-    check(Win32Style{Words{.extended_style = Win32Style::kWsExAppWindow
-                                             | Win32Style::kWsExToolWindow}}
-              .in_taskbar(),
-          "WS_EX_APPWINDOW forces a button on a tool window");
+// Windows' own rule, applied in the guest: the words are not read again.
+void the_taskbar_is_the_guests_to_say() {
+    const Win32Style button{Words{.owned = true, .taskbar_button = true}};
+    check(button.in_taskbar(), "a button said: on the taskbar, owned or not");
+    check(button.toplevel_type() == Qt::Window, "a taskbar window is Qt::Window");
+    check(!Win32Style{Words{.extended_style = Win32Style::kWsExAppWindow}}.in_taskbar(),
+          "WS_EX_APPWINDOW without the guest's button is no button");
 }
 
 void class_style_bits() {
-    const Win32Style shaded{Words{.class_style = Win32Style::kCsDropShadow}};
-    check(shaded.casts_shadow(), "CS_DROPSHADOW: shaded");
-    check((shaded.hints() & Qt::NoDropShadowWindowHint) == 0, "shaded keeps its shadow");
 
     const Win32Style stuck{Words{.style = Win32Style::kWsSysMenu,
                                  .class_style = Win32Style::kCsNoClose}};
@@ -98,25 +89,14 @@ void class_style_bits() {
     check((stuck.hints() & Qt::WindowCloseButtonHint) == 0, "and no close button");
 }
 
-void dwm_frame() {
-    check(Win32Style{Words{.style = Win32Style::kWsCaption, .dwm_frame = true}}.casts_shadow(),
-          "a frame DWM draws has DWM's shadow");
-    check(!Win32Style{Words{.dwm_frame = true}}.casts_shadow(),
-          "DWM enabled on a frameless window draws nothing to shade");
-    check(!Win32Style{Words{.style = Win32Style::kWsCaption}}.casts_shadow(),
-          "a frame DWM is not drawing has no shadow");
-}
-
-// SPI_GETDROPSHADOW off turns off both kinds of shadow, as measured on a
-// guest with "Show shadows under windows" unticked.
-void the_desktop_can_turn_shadows_off() {
-    const Win32Style framed{Words{.style = Win32Style::kWsCaption, .dwm_frame = true,
-                                  .desktop_shadows = false}};
-    check(!framed.casts_shadow(), "no desktop shadows: a DWM frame is unshaded");
-    check((framed.hints() & Qt::NoDropShadowWindowHint) != 0, "and asks for no shadow");
-    check(!Win32Style{Words{.class_style = Win32Style::kCsDropShadow, .desktop_shadows = false}}
-               .casts_shadow(),
-          "no desktop shadows: CS_DROPSHADOW is unshaded");
+// Windows' answer, from the guest: CS_DROPSHADOW, DWM's frame and the
+// desktop's "Show shadows under windows" are its to weigh.
+void shading_is_the_guests_to_say() {
+    const Win32Style shaded{Words{.shaded = true}};
+    check(shaded.casts_shadow(), "shaded: casts a shadow");
+    check((shaded.hints() & Qt::NoDropShadowWindowHint) == 0, "shaded keeps its shadow");
+    check(!Win32Style{Words{.class_style = Win32Style::kCsDropShadow}}.casts_shadow(),
+          "CS_DROPSHADOW the guest did not shade is unshaded");
 }
 
 void layering() {
@@ -145,13 +125,32 @@ void an_owned_dialog_stands_alone() {
           "owned, with a caption: attached to its owner, not a popup of it");
     check(!Win32Style{Words{.style = Win32Style::kWsCaption}}.stands_alone(),
           "not owned: nothing to stand apart from");
-    check(!Win32Style{Words{.style = Win32Style::kWsBorder, .owned = true}}.stands_alone(),
-          "owned, with no caption: a popup");
+    check(!Win32Style{Words{.style = Win32Style::kWsPopup | Win32Style::kWsBorder, .owned = true}}.stands_alone(),
+          "owned, a WS_POPUP with no caption: a popup");
+}
+
+bool owned_stands_alone(std::uint32_t style, std::uint32_t extended) {
+    return Win32Style{Words{.style = style, .extended_style = extended, .owned = true}}.stands_alone();
+}
+
+// What the guest lists for windows met in the field.
+void owned_windows_as_listed() {
+    constexpr std::uint32_t kPopup = Win32Style::kWsPopup;
+    constexpr std::uint32_t kNoActivate = Win32Style::kWsExNoActivate;
+    check(owned_stands_alone(0x00CF0000, 0x80), "a tool window with a caption is a window of its own");
+    check(!owned_stands_alone(kPopup | Win32Style::kWsBorder, 0), "a bordered popup is a popup");
+    check(!owned_stands_alone(kPopup, 0), "a menu is a popup");
+    check(!owned_stands_alone(Win32Style::kWsCaption, kNoActivate),
+          "one that never activates stays a popup: it is never typed into");
+    check(owned_stands_alone(0x16080000, 0x00080000),
+          "Affinity's floating panel, an overlapped window with its caption taken away, is a window");
+    check(!owned_stands_alone(0x96000000, 0x08080088), "a WPF dropdown (WS_POPUP, no-activate, topmost) is a popup");
+    check(!owned_stands_alone(0x9e000028, 0x00080000), "a disabled WS_POPUP overlay is a popup");
 }
 
 void equality_is_over_every_word() {
     check(Win32Style{Words{}} == Win32Style{Words{}}, "equal words, equal style");
-    check(!(Win32Style{Words{}} == Win32Style{Words{.dwm_frame = true}}),
+    check(!(Win32Style{Words{}} == Win32Style{Words{.shaded = true}}),
           "one word apart, not equal");
 }
 
@@ -161,13 +160,13 @@ int main() {
     plain_words_are_a_plain_toplevel();
     window_style_bits();
     extended_style_bits();
-    the_taskbar_rule();
+    the_taskbar_is_the_guests_to_say();
     class_style_bits();
-    dwm_frame();
-    the_desktop_can_turn_shadows_off();
+    shading_is_the_guests_to_say();
     layering();
     bands();
     an_owned_dialog_stands_alone();
+    owned_windows_as_listed();
     equality_is_over_every_word();
 
     if (failures != 0) {

@@ -17,12 +17,12 @@ void check(bool condition, const char* what) {
     ++failures;
 }
 
-constexpr std::uint64_t kGame = 0x500c4;
+constexpr rwin::WindowId kGame{0x500c4, 1};
 constexpr PointerGrabRule::Point kMiddle{1280, 720};
 constexpr PointerGrab::Area kWindowClip{400, 300, 1200, 900};
 
 PointerGrabRule::Look look(bool shown, std::optional<PointerGrab::Area> clip, PointerGrabRule::Point cursor,
-                           std::uint64_t now, std::uint64_t foreground = kGame) {
+                           std::uint64_t now, rwin::WindowId foreground = kGame) {
     return PointerGrabRule::Look{foreground, shown, clip, cursor, now};
 }
 
@@ -135,11 +135,11 @@ void nudges_put_back_keep_the_lock() {
 void losing_the_foreground_lets_go() {
     PointerGrabRule rule;
     check(rule.grab_for(look(false, kWindowClip, kMiddle, 0)).kind == Kind::Lock, "locked");
-    const PointerGrab grab = rule.grab_for(look(false, kWindowClip, kMiddle, 10, 0));
-    check(grab.kind == Kind::None && grab.window == 0, "another application's window in front: nothing is held");
+    const PointerGrab grab = rule.grab_for(look(false, kWindowClip, kMiddle, 10, rwin::WindowId{}));
+    check(grab.kind == Kind::None && grab.window.none(), "another application's window in front: nothing is held");
     std::uint64_t now = 20;
     mouse_look(rule, now, 3);
-    static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now, 0x700)));
+    static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now, rwin::WindowId{0x700, 2})));
     check(!rule.warping(), "what was seen of one window is forgotten when another is in front");
 }
 

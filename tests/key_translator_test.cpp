@@ -23,7 +23,7 @@ using rwin::KeyStroke;
 using rwin::host::KeyTranslator;
 using rwin::host::windows_scan_code;
 
-constexpr std::uint64_t kWindow = 0x500c4;
+constexpr rwin::WindowId kWindow{0x500c4, 1};
 constexpr std::uint32_t kXkb = 8;
 
 // Every key a PC keyboard has where Windows' set 1 puts it; spot checks

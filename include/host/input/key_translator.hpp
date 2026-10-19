@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proto/key_stroke.hpp"
+#include "proto/window_id.hpp"
 
 #include <QStringView>
 
@@ -23,8 +24,7 @@ class KeyTranslator {
 public:
     explicit KeyTranslator(QStringView platform_name);
 
-    [[nodiscard]] std::optional<KeyStroke> stroke_for(const QKeyEvent& event,
-                                                      std::uint64_t window,
+    [[nodiscard]] std::optional<KeyStroke> stroke_for(const QKeyEvent& event, WindowId window,
                                                       bool pressed) const;
 
     // The native scan code this platform reports for the key Linux numbers

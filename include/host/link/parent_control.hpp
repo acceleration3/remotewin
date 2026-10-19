@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QObject>
 #include <QSocketNotifier>
+#include <QString>
 #include <cstdint>
 
 namespace rwin::host {
@@ -15,6 +16,9 @@ public:
     ParentControl(int command_fd, int status_fd, QObject* parent = nullptr);
     void report_listening(std::uint16_t port);
     void report_ready();
+    // The application is known by this AppUserModelID; the manager groups
+    // its mirrors by it.
+    void report_app(const QString& aumid);
 
 Q_SIGNALS:
     void raise_requested();

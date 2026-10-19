@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Every running mirror's windows, three ways, side by side.
 
-  guest   the window list the guest half last sent, topmost first: owner,
-          styles, rectangle, state (what Windows says)
+  guest   every window the guest half has told of, topmost first: owner,
+          styles, rectangle, state (what Windows says), and whether it is
+          the mirrored application's
   mirror  each mirror's own idea of the window: the kind of Qt window it
           is, its transient parent, the state it believes it is in, and
           what holds the pointer and keyboard in that process
@@ -12,7 +13,8 @@
 
 Then the disagreements between them, each on one line. Toplevels are
 matched to KWin by the handle tag in their title; popups, which have no
-title, by process and size.
+title, by process and size. Windows are named "hwnd:serial", as the
+logs name them.
 
   tools/window_states.py            # every mirror
   tools/window_states.py --json     # the three views as JSON
@@ -113,8 +115,13 @@ def kwin(pids):
     return [json.loads(l) for l in lines if l != "done"]
 
 
+# A window's tag is its WindowId's key: hwnd in the high 32 bits, serial
+# in the low, two bits a character.
+TAG_DIGITS = 32
+
+
 def handle_of_tag(tag):
-    if len(tag) != 17 or tag[0] != MARKER:
+    if len(tag) != TAG_DIGITS + 1 or tag[0] != MARKER:
         return None
     value = 0
     for char in tag[1:]:
@@ -122,6 +129,15 @@ def handle_of_tag(tag):
             return None
         value = (value << 2) | DIGITS.index(char)
     return value
+
+
+def key_of(name):
+    hwnd, serial = name.split(":")
+    return (int(hwnd, 16) << 32) | int(serial)
+
+
+def name_of(key):
+    return f"{hex(key >> 32)}:{key & 0xFFFFFFFF}"
 
 
 def match_kwin(report, windows):
@@ -137,7 +153,7 @@ def match_kwin(report, windows):
         if h is not None:
             by_handle[h] = w
     for entry in report["windows"]:
-        handle = int(entry["handle"], 16)
+        handle = key_of(entry["handle"])
         mirror = entry["mirror"]
         if handle in by_handle or mirror is None:
             continue
@@ -163,17 +179,22 @@ def compare(report, kwin_windows):
     lines, issues = [], []
     guest_order = []
     for entry in report["windows"]:
-        h = int(entry["handle"], 16)
+        h = key_of(entry["handle"])
         g, m, k = entry["guest"], entry["mirror"], by_handle.get(h)
+        if not g["belongs"] and m is None:
+            continue
         guest_order.append(h)
         flags = [f for f in ("owned", "stands_alone", "activates", "topmost", "disabled", "tool_window",
-                             "minimized", "maximized", "foreground") if g.get(f)]
-        lines.append(f"{entry['handle']} '{g['title']}' [{g['class'][:40]}]")
-        lines.append(f"    guest   owner={g['owner']} rect={g['rect']} style={g['style']} ex={g['ex_style']}"
-                     f" {' '.join(flags)}")
+                             "in_taskbar", "hidden", "minimized", "maximized", "active") if g.get(f)]
+        lines.append(f"{entry['handle']} '{g['title']}' [{g['class'][:40]}] pid={g['pid']} app={g['aumid']}")
+        lines.append(f"    guest   owner={g['owner']} anchor={g['anchor']} rect={g['rect']} style={g['style']}"
+                     f" ex={g['ex_style']} {' '.join(flags)}")
+        if not g["belongs"]:
+            issues.append(f"{entry['handle']}: not the application's, and mirrored")
         if m is None:
             lines.append("    mirror  none")
-            issues.append(f"{entry['handle']}: the guest lists it and there is no mirror")
+            if not g["hidden"]:
+                issues.append(f"{entry['handle']}: the guest shows it and there is no mirror")
         else:
             mflags = [f for f in ("visible", "minimized", "qt_minimized", "maximized", "active", "modal",
                                   "stays_on_top", "frameless", "shows_without_activating",
@@ -194,7 +215,7 @@ def compare(report, kwin_windows):
             kflags = [f for f in ("popup", "normal", "dialog", "utility", "minimized", "active", "keep_above",
                                   "hidden", "skip_taskbar") if k.get(f)]
             lines.append(f"    kwin    z={k['z']} layer={k['layer']} geometry={[round(v) for v in k['geometry']]}"
-                         f" transient_for={hex(parent) if parent else k['transient_for']} {' '.join(kflags)}"
+                         f" transient_for={name_of(parent) if parent else k['transient_for']} {' '.join(kflags)}"
                          f"{'' if k['wants_input'] else ' no-focus'}")
         if m is not None:
             if g["owned"] and not g["stands_alone"] and m["kind"] != "popup" and m["popup_of"] is None:
@@ -215,20 +236,20 @@ def compare(report, kwin_windows):
             if k["minimized"] != (m["minimized"] or m["qt_minimized"]):
                 issues.append(f"{entry['handle']}: KWin minimised={k['minimized']}, the mirror thinks "
                               f"{m['minimized'] or m['qt_minimized']}")
-            if g["owner"] != "0x0" and not k["transient_for"]:
+            if g["owned"] and not k["transient_for"]:
                 issues.append(f"{entry['handle']}: owned by {g['owner']} in the guest, transient for nothing "
                               "in KWin")
     # Stacking: the guest's order of the windows KWin has, against KWin's.
     shown = [h for h in guest_order if h in by_handle and not by_handle[h]["minimized"]]
     kwin_order = sorted(shown, key=lambda h: -by_handle[h]["z"])
     if shown != kwin_order:
-        issues.append("stacking differs: guest top→bottom " + " ".join(hex(h) for h in shown)
-                      + " | KWin top→bottom " + " ".join(hex(h) for h in kwin_order))
+        issues.append("stacking differs: guest top→bottom " + " ".join(name_of(h) for h in shown)
+                      + " | KWin top→bottom " + " ".join(name_of(h) for h in kwin_order))
     for w in unmatched:
         issues.append(f"KWin window {w['id']} {[round(v) for v in w['geometry']]} matches no guest window")
     for stray in report["strays"]:
         if stray["visible"]:
-            issues.append(f"{stray['handle']}: a visible mirror of a window the guest no longer lists")
+            issues.append(f"{stray['handle']}: a visible mirror of a window the guest has said is gone")
     grabs = {k: report[k] for k in ("active_popup", "mouse_grabber", "keyboard_grabber", "active_window",
                                      "focus_widget")}
     if grabs["active_popup"]:

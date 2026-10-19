@@ -3,6 +3,7 @@
 #include "logging/logger.hpp"
 #include "proto/cursor_picture.hpp"
 
+#include <algorithm>
 #include <utility>
 
 namespace rwin::host {
@@ -28,12 +29,34 @@ void EmulatedCursor::remember(const CursorPicture& picture) {
     }
     RWIN_DEBUG("cursor", "remembered {:#x} {} ({} picture(s), {}x{})", picture.id, name_of(picture.system),
                look.frames.size(), look.frames.front().image.width(), look.frames.front().image.height());
-    looks_.insert_or_assign(picture.id, std::move(look));
+    if (!looks_.contains(picture.id)) make_room();
+    looks_.insert_or_assign(picture.id, Kept{std::move(look), ++shows_});
+}
+
+// A picture is sent as it is about to be shown: it counts as shown then.
+// The one worn now stays whatever else arrives: every mirror holds it.
+void EmulatedCursor::make_room() {
+    if (looks_.size() < kCapacity) return;
+    const auto oldest = std::min_element(looks_.begin(), looks_.end(), [this](const auto& a, const auto& b) {
+        if (a.first == worn_) return false;
+        if (b.first == worn_) return true;
+        return a.second.shown < b.second.shown;
+    });
+    RWIN_DEBUG("cursor", "let go of {:#x}, shown longest ago", oldest->first);
+    looks_.erase(oldest);
+}
+
+const CursorLook* EmulatedCursor::show(std::uint64_t id) {
+    const auto found = looks_.find(id);
+    if (found == looks_.end()) return nullptr;
+    found->second.shown = ++shows_;
+    worn_ = id;
+    return &found->second.look;
 }
 
 const CursorLook* EmulatedCursor::find(std::uint64_t id) const {
     const auto found = looks_.find(id);
-    return found == looks_.end() ? nullptr : &found->second;
+    return found == looks_.end() ? nullptr : &found->second.look;
 }
 
 }  // namespace rwin::host

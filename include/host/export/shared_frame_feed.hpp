@@ -9,6 +9,7 @@
 #include "host/latency/guest_clock.hpp"
 #include "host/latency/latency_log.hpp"
 #include "logging/frame_timing.hpp"
+#include "proto/window_id.hpp"
 
 #include <QObject>
 
@@ -18,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 
 class QSocketNotifier;
 
@@ -39,9 +41,10 @@ class SlotLease;
 //
 // The guest is told at its hello whether to send frames this way
 // (FrameRoute): only when the export socket answers and its GPU is the one
-// windows here are drawn on. Anything that goes wrong after - the
-// connection lost, a surface not exported, a frame that cannot be imported
-// - tells it to send pixels instead, for good: a mirror that shows frames
+// windows here are drawn on. A window whose surfaces cannot be exported or
+// drawn here has its frames sent as pixels from then on (WindowPixels),
+// and the others keep theirs; only the export connection itself failing
+// sends every window back to pixels, for good: a mirror that shows frames
 // as pixels is a mirror, and one that waits on a broken path is not.
 //
 // Nothing is copied here and no pixel is touched; what crosses this class
@@ -66,6 +69,9 @@ public:
     // Something here cannot draw the frames from the GPU (``why``): they
     // come as pixels from here on.
     void give_up(const std::string& why);
+    // ``window``'s frames cannot be drawn from the GPU (``why``): its own
+    // come as pixels from here on.
+    void pixels_for(WindowId window, const std::string& why);
 
     // A frame from here reached the screen (GpuPicture::frame_timed): said
     // in the log with the rest (LatencyLog), and, while this application is
@@ -73,7 +79,7 @@ public:
     void shown(const FrameStamps& stamps);
 
 Q_SIGNALS:
-    void frame_ready(quint64 window, const rwin::host::SharedFrame& frame);
+    void frame_ready(rwin::WindowId window, const rwin::host::SharedFrame& frame);
 
 private:
     struct Asked {
@@ -82,7 +88,7 @@ private:
         std::uint64_t tag;
     };
     struct PendingFrame {
-        quint64 window;
+        WindowId window;
         std::uint32_t ring;
         std::uint32_t slot;
         std::uint64_t order;
@@ -94,7 +100,7 @@ private:
     void offer();
     void take_ring(const SlotRing& ring);
     void take_frame(const FrameInSlot& frame);
-    void drop_window(quint64 window);
+    void drop_window(WindowId window);
     void read_answers();
     void take_answer(ExportSocket::Received received);
     void exported(const ExportAnswer& answer, UniqueFd dma_buf);
@@ -104,7 +110,9 @@ private:
     // Sent, and its answer awaited in order; nothing once given up.
     std::optional<std::uint64_t> ask(ExportRequest::Operation operation, std::uint64_t surface);
     std::optional<std::uint64_t> ask(const ExportRequest& request);
-    [[nodiscard]] WindowRing* ring_of(quint64 window, std::uint32_t ring);
+    [[nodiscard]] WindowRing* ring_of(WindowId window, std::uint32_t ring);
+    // The window whose ring ``surface`` is one of.
+    [[nodiscard]] std::optional<WindowId> window_of(std::uint64_t surface) const;
 
     GuestLink& link_;
     std::optional<ExportSocket> socket_;
@@ -112,7 +120,11 @@ private:
     // Answers come in the order requests went, on the one connection.
     std::deque<Asked> asked_;
     std::map<std::uint64_t, PendingFrame> syncing_;
-    std::map<quint64, WindowRing> rings_;
+    // By WindowId::key.
+    std::map<std::uint64_t, WindowRing> rings_;
+    // Sent to pixels alone (pixels_for): a ring still on its way for one is
+    // not taken.
+    std::unordered_set<WindowId> pixels_only_;
     std::uint64_t next_tag_ = 0;
     // How often a surface's export has found nothing yet, by surface.
     std::map<std::uint64_t, int> export_asks_;

@@ -6,6 +6,7 @@
 #include "conform/wait_until.hpp"
 #include "host/export/shared_frame_feed.hpp"
 #include "host/link/guest_link.hpp"
+#include "host/mirror/mirror_scope.hpp"
 #include "host/mirror/mirror_session.hpp"
 #include "logging/logger.hpp"
 
@@ -51,6 +52,8 @@ struct Options {
     std::uint16_t agent_port = 0;
     QString probe_exe;
     QString probe_log;
+    QString guest_exe;
+    QString guest_log;
     bool launch = true;
     int tolerance = 0;
 };
@@ -76,13 +79,20 @@ std::optional<Options> parse(QApplication& app) {
     const QCommandLineOption probe_log{QStringLiteral("probe-log"), QStringLiteral("Where the probe logs, in the guest."),
                                        QStringLiteral("path"),
                                        QStringLiteral("C:\\ProgramData\\LSW\\remotewin-probe.log")};
+    const QCommandLineOption guest_exe{QStringLiteral("guest-exe"),
+                                       QStringLiteral("The mirror's guest half, as the guest names it; the "
+                                                      "agent's own when not given."),
+                                       QStringLiteral("path")};
+    const QCommandLineOption guest_log{QStringLiteral("guest-log"),
+                                       QStringLiteral("Where the guest half logs, in the guest."),
+                                       QStringLiteral("path")};
     const QCommandLineOption no_launch{QStringLiteral("no-launch"),
                                        QStringLiteral("Do not launch the probe; wait for one started by hand "
                                                       "(the port is logged).")};
     const QCommandLineOption tolerance{QStringLiteral("tolerance"),
                                        QStringLiteral("Largest channel difference that still matches."),
                                        QStringLiteral("0-255"), QStringLiteral("8")};
-    parser.addOptions({scenarios, filter, out, agent, probe_exe, probe_log, no_launch, tolerance});
+    parser.addOptions({scenarios, filter, out, agent, probe_exe, probe_log, guest_exe, guest_log, no_launch, tolerance});
     parser.process(app);
 
     Options options;
@@ -98,6 +108,8 @@ std::optional<Options> parse(QApplication& app) {
     options.agent_port = static_cast<std::uint16_t>(endpoint[1].toUShort());
     options.probe_exe = parser.value(probe_exe);
     options.probe_log = parser.value(probe_log);
+    options.guest_exe = parser.value(guest_exe);
+    options.guest_log = parser.value(guest_log);
     options.launch = !parser.isSet(no_launch);
     options.tolerance = parser.value(tolerance).toInt();
     return options;
@@ -132,12 +144,12 @@ std::optional<rwin::ProbeHello> bring_up_probe(rwin::conform::GuestAgent& agent,
 
 // The mirror's guest half, started in the probe's session, dialled in.
 bool bring_up_mirror(rwin::conform::GuestAgent& agent, rwin::host::GuestLink& link,
-                     std::uint16_t port, std::uint32_t process_id) {
+                     const rwin::conform::GuestAgent::MirrorStart& start) {
     bool connected = false;
     const QMetaObject::Connection watching =
         QObject::connect(&link, &rwin::host::GuestLink::connected, [&] { connected = true; });
     QString error;
-    const bool started = agent.start_window_mirror(port, process_id, error).has_value();
+    const bool started = agent.start_window_mirror(start, error).has_value();
     if (!started) RWIN_ERROR("conform", "the mirror's guest half did not start: {}", error.toStdString());
     const bool dialled = started && rwin::conform::wait_until([&] { return connected; }, kMirrorTimeout);
     QObject::disconnect(watching);
@@ -239,8 +251,11 @@ int main(int argc, char** argv) {
     // Never opened: the harness compares pixels it reads off the mirror,
     // and the frames it judges come as pixels.
     rwin::host::SharedFrameFeed frames{link};
-    rwin::host::MirrorSession mirrors{link, frames, hello->process_id, QString()};
-    if (!bring_up_mirror(agent, link, mirror_port, hello->process_id)) return EXIT_FAILURE;
+    rwin::host::MirrorSession mirrors{
+        link, frames, rwin::host::MirrorScope{rwin::host::MirrorScope::Launch{hello->process_id, {}, {}, false}}};
+    if (!bring_up_mirror(agent, link, {mirror_port, hello->process_id, options->guest_exe, options->guest_log})) {
+        return EXIT_FAILURE;
+    }
     bool lost = false;
     QObject::connect(&link, &rwin::host::GuestLink::disconnected, [&] { lost = true; });
     QObject::connect(&probe, &rwin::conform::ProbeLink::lost, [&] { lost = true; });
@@ -259,7 +274,7 @@ int main(int argc, char** argv) {
         RWIN_ERROR("conform", "{}", error.toStdString());
         return EXIT_FAILURE;
     }
-    rwin::conform::ScenarioRunner runner{probe, mirrors, link,
+    rwin::conform::ScenarioRunner runner{probe, mirrors,
                                          {backdrop, work_area, options->tolerance, hello->drop_shadows, overlay}};
     for (const rwin::conform::Scenario& scenario : book->scenarios()) {
         if (lost) break;

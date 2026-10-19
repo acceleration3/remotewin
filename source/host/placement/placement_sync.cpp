@@ -1,10 +1,12 @@
 #include "host/placement/placement_sync.hpp"
 
 #include "host/link/guest_link.hpp"
+#include "host/link/guest_window.hpp"
 #include "host/mirror/mirror_state.hpp"
 #include "host/mirror/mirror_window.hpp"
 #include "host/mirror/pixel_mapping.hpp"
 #include "logging/logger.hpp"
+#include "proto/rect.hpp"
 
 #include <algorithm>
 #include <QGuiApplication>
@@ -35,13 +37,16 @@ std::optional<ScreenMapping> PlacementSync::guest_screen() const {
     return kwin_.output_named(primary != nullptr ? primary->name() : QString());
 }
 
-QString PlacementSync::tag_for(std::uint64_t window) const {
-    return active() ? KWinPlacement::tag_for(window) : QString();
+QString PlacementSync::tag_for(WindowId window) const {
+    return active() ? KWinPlacement::tag_for(window.key()) : QString();
 }
 
-void PlacementSync::follow_guest(MirrorWindow& mirror, QRect guest, bool placeable) {
-    Tracked& tracked = tracked_[mirror.handle()];
+void PlacementSync::follow_guest(MirrorWindow& mirror, const GuestWindow& window, bool placeable) {
+    const QRect guest(window.picture_origin(), window.picture_size());
+    Tracked& tracked = tracked_[mirror.window().key()];
     tracked.mirror = &mirror;
+    tracked.frame_size = window.frame().size();
+    tracked.picture_offset = window.picture_origin() - window.frame().topLeft();
     // The first surface is the one the first placement waits for.
     const bool remade = tracked.surface != 0 && tracked.surface != mirror.surface_generation();
     const bool moved_in_guest = remade || !tracked.asked.has_value() || guest.topLeft() != tracked.guest;
@@ -66,7 +71,7 @@ void PlacementSync::follow_guest(MirrorWindow& mirror, QRect guest, bool placeab
     // (PixelMapping): whole logical units, as the mirror sizes itself.
     const QRectF frame(screen->host_point(guest.topLeft()),
                        QSizeF(PixelMapping{screen->scale()}.logical_size(guest.size())));
-    RWIN_DEBUG("placement", "{:#x} to {:.2f},{:.2f} {:.0f}x{:.0f} (surface {}{})", mirror.handle(), frame.x(),
+    RWIN_DEBUG("placement", "{} to {:.2f},{:.2f} {:.0f}x{:.0f} (surface {}{})", mirror.window(), frame.x(),
                frame.y(), frame.width(), frame.height(), tracked.surface, remade ? ", new" : "");
     tracked.asked = frame.topLeft();
     tracked.asked_size = frame.size();
@@ -76,26 +81,26 @@ void PlacementSync::follow_guest(MirrorWindow& mirror, QRect guest, bool placeab
     tracked.placed_once = false;
     tracked.put_back = false;
     ++tracked.requests;
-    kwin_.place(mirror.handle(), frame);
+    kwin_.place(mirror.window().key(), frame);
 }
 
 void PlacementSync::keep_on_guest_screen(MirrorWindow& mirror) {
     if (!active()) return;
-    Tracked& tracked = tracked_[mirror.handle()];
+    Tracked& tracked = tracked_[mirror.window().key()];
     tracked.mirror = &mirror;
     if (tracked.on_guest_screen == mirror.surface_generation()) return;
     const QScreen* primary = QGuiApplication::primaryScreen();
     if (primary == nullptr) return;
     tracked.on_guest_screen = mirror.surface_generation();
     tracked.pending = true;
-    RWIN_DEBUG("placement", "{:#x} maximised on the guest's screen, {}", mirror.handle(), primary->name().toStdString());
-    kwin_.send_to_output(mirror.handle(), primary->name());
+    RWIN_DEBUG("placement", "{} maximised on the guest's screen, {}", mirror.window(), primary->name().toStdString());
+    kwin_.send_to_output(mirror.window().key(), primary->name());
 }
 
-void PlacementSync::forget(std::uint64_t window) { tracked_.remove(window); }
+void PlacementSync::forget(WindowId window) { tracked_.remove(window.key()); }
 
-void PlacementSync::placed(std::uint64_t window, QPointF frame_corner, qint64 round_trip_ms) {
-    const auto it = tracked_.find(window);
+void PlacementSync::placed(std::uint64_t key, QPointF frame_corner, qint64 round_trip_ms) {
+    const auto it = tracked_.find(key);
     if (it == tracked_.end()) return;
     it->pending = false;
     it->placed_once = true;
@@ -106,15 +111,16 @@ void PlacementSync::placed(std::uint64_t window, QPointF frame_corner, qint64 ro
     it->reported = frame;
 }
 
-void PlacementSync::not_placed(std::uint64_t window) {
-    const auto it = tracked_.find(window);
+void PlacementSync::not_placed(std::uint64_t key) {
+    const auto it = tracked_.find(key);
     if (it != tracked_.end()) it->pending = false;
 }
 
 // Not while a placement of this side's is under way: the compositor's own
 // first place for a new window comes before it, and is nobody's choice.
-void PlacementSync::moved(std::uint64_t window, QRectF frame) {
-    const auto it = tracked_.find(window);
+void PlacementSync::moved(std::uint64_t key, QRectF frame) {
+    const WindowId window = WindowId::of_key(key);
+    const auto it = tracked_.find(key);
     if (it == tracked_.end()) return;
     it->reported = frame;
     if (it->mirror.isNull()) return;
@@ -123,7 +129,7 @@ void PlacementSync::moved(std::uint64_t window, QRectF frame) {
     // windows and its waiting for more. It is there now.
     if (it->pending && it->asked.has_value() && !it->placed_once) {
         it->placed_once = true;
-        kwin_.place(window, QRectF(*it->asked, it->asked_size));
+        kwin_.place(key, QRectF(*it->asked, it->asked_size));
         return;
     }
     if (it->pending || !it->placeable) return;
@@ -132,28 +138,31 @@ void PlacementSync::moved(std::uint64_t window, QRectF frame) {
     const QPoint guest = screen->guest_point(frame.topLeft());
     if (it->asked.has_value() && !it->put_back && it->since_placed.isValid()
         && !it->since_placed.hasExpired(kCompositorAfterPlacementMs) && guest != screen->guest_point(*it->asked)) {
-        RWIN_INFO("placement", "{:#x} put at {:.2f},{:.2f} by KWin as it was placed; put back", window, frame.x(),
+        RWIN_INFO("placement", "{} put at {:.2f},{:.2f} by KWin as it was placed; put back", window, frame.x(),
                   frame.y());
         it->put_back = true;
-        kwin_.place(window, QRectF(*it->asked, it->asked_size));
+        kwin_.place(key, QRectF(*it->asked, it->asked_size));
         return;
     }
     if (guest == it->guest || guest == it->awaiting_guest) return;
     if (std::find(it->recently_asked.begin(), it->recently_asked.end(), guest) != it->recently_asked.end()) {
-        RWIN_DEBUG("placement", "{:#x} reported at {},{}, where it was put a moment ago; not sent back", window,
+        RWIN_DEBUG("placement", "{} reported at {},{}, where it was put a moment ago; not sent back", window,
                    guest.x(), guest.y());
         return;
     }
+    if (it->frame_size.isEmpty()) return;
     it->moved_guest_to = guest;
     it->awaiting_guest = guest;
     ++it->guest_moves;
-    RWIN_DEBUG("placement", "{:#x} put at {:.2f},{:.2f} here; guest window to {},{}", window, frame.x(),
+    RWIN_DEBUG("placement", "{} put at {:.2f},{:.2f} here; guest window to {},{}", window, frame.x(),
                frame.y(), guest.x(), guest.y());
-    link_.send_move(window, guest.x(), guest.y());
+    const QPoint corner = guest - it->picture_offset;
+    link_.send_window_move(window, Rect{corner.x(), corner.y(), static_cast<std::uint32_t>(it->frame_size.width()),
+                                        static_cast<std::uint32_t>(it->frame_size.height())});
 }
 
-void PlacementSync::describe(std::uint64_t window, MirrorState& state) const {
-    const auto it = tracked_.constFind(window);
+void PlacementSync::describe(WindowId window, MirrorState& state) const {
+    const auto it = tracked_.constFind(window.key());
     if (it == tracked_.cend()) return;
     state.placement_asked = it->asked;
     state.placement_requests = it->requests;

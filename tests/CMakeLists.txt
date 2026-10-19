@@ -10,8 +10,9 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui)
 
 add_executable(rwin_win32_style_test
     win32_style_test.cpp
-    "${PROJECT_SOURCE_DIR}/source/host/chrome/win32_style.cpp")
-target_link_libraries(rwin_win32_style_test PRIVATE Qt6::Core)
+    "${PROJECT_SOURCE_DIR}/source/host/chrome/win32_style.cpp"
+    "${PROJECT_SOURCE_DIR}/source/host/link/guest_window.cpp")
+target_link_libraries(rwin_win32_style_test PRIVATE rwin::proto Qt6::Core)
 target_include_directories(rwin_win32_style_test PRIVATE "${RWIN_INCLUDE_DIR}")
 add_test(NAME rwin_win32_style_test COMMAND rwin_win32_style_test)
 
@@ -48,6 +49,32 @@ add_executable(rwin_latency_test
     "${PROJECT_SOURCE_DIR}/source/host/latency/latency_meter.cpp")
 target_include_directories(rwin_latency_test PRIVATE "${RWIN_INCLUDE_DIR}")
 add_test(NAME rwin_latency_test COMMAND rwin_latency_test)
+
+add_executable(rwin_guest_button_test
+    guest_button_test.cpp
+    "${PROJECT_SOURCE_DIR}/source/host/input/guest_button.cpp")
+target_link_libraries(rwin_guest_button_test PRIVATE rwin::proto Qt6::Core)
+target_include_directories(rwin_guest_button_test PRIVATE "${RWIN_INCLUDE_DIR}")
+add_test(NAME rwin_guest_button_test COMMAND rwin_guest_button_test)
+
+# Which guest windows are the application's, and the guest's windows as
+# this side keeps them.
+add_executable(rwin_mirror_scope_test
+    mirror_scope_test.cpp
+    "${PROJECT_SOURCE_DIR}/source/host/link/guest_window.cpp"
+    "${PROJECT_SOURCE_DIR}/source/host/link/guest_windows.cpp"
+    "${PROJECT_SOURCE_DIR}/source/host/mirror/mirror_scope.cpp")
+target_link_libraries(rwin_mirror_scope_test PRIVATE rwin::proto Qt6::Core)
+target_include_directories(rwin_mirror_scope_test PRIVATE "${RWIN_INCLUDE_DIR}")
+add_test(NAME rwin_mirror_scope_test COMMAND rwin_mirror_scope_test)
+
+# The guest's cursors kept, bounded by the ones shown longest ago.
+add_executable(rwin_emulated_cursor_test
+    emulated_cursor_test.cpp
+    "${PROJECT_SOURCE_DIR}/source/host/cursor/emulated_cursor.cpp")
+target_link_libraries(rwin_emulated_cursor_test PRIVATE rwin::proto rwin::logging Qt6::Gui)
+target_include_directories(rwin_emulated_cursor_test PRIVATE "${RWIN_INCLUDE_DIR}")
+add_test(NAME rwin_emulated_cursor_test COMMAND rwin_emulated_cursor_test)
 
 add_executable(rwin_unit_padding_test
     unit_padding_test.cpp

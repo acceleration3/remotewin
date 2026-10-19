@@ -1,7 +1,9 @@
 #include "conform/run_report.hpp"
 
 #include "conform/scenario_outcome.hpp"
+#include "host/link/guest_window.hpp"
 #include "proto/system_cursor.hpp"
+#include "proto/window_fields.hpp"
 
 #include <QDateTime>
 #include <QDir>
@@ -143,8 +145,8 @@ QJsonValue pointer_json(const std::optional<ScenarioOutcome::Pointer>& pointer) 
 
 QJsonObject mirror_json(const host::MirrorState& mirror) {
     return QJsonObject{
-        {QStringLiteral("popup_of"), hex(mirror.popup_of)},
-        {QStringLiteral("attached_to"), hex(mirror.attached_to)},
+        {QStringLiteral("popup_of"), hex(mirror.popup_of.hwnd)},
+        {QStringLiteral("attached_to"), hex(mirror.attached_to.hwnd)},
         {QStringLiteral("modal"), mirror.modal},
         {QStringLiteral("activation_requests"), static_cast<int>(mirror.activation_requests)},
         {QStringLiteral("alerts"), static_cast<int>(mirror.alerts)},
@@ -198,22 +200,22 @@ QJsonObject mirror_json(const host::MirrorState& mirror) {
     };
 }
 
-QJsonObject reported_json(const host::GuestWindowInfo& window) {
+QJsonObject reported_json(const host::GuestWindow& window) {
+    const WindowFields& fields = window.fields();
     return QJsonObject{
-        {QStringLiteral("owner"), hex(window.owner)},
-        {QStringLiteral("rect"), rect_json(window.x, window.y, static_cast<int>(window.width),
-                                           static_cast<int>(window.height))},
-        {QStringLiteral("style"), hex(window.style)},
-        {QStringLiteral("ex_style"), hex(window.extended_style)},
-        {QStringLiteral("class_style"), hex(window.class_style)},
-        {QStringLiteral("minimized"), window.minimized},
-        {QStringLiteral("maximized"), window.maximized},
-        {QStringLiteral("dwm_frame"), window.dwm_frame},
-        {QStringLiteral("foreground"), window.foreground},
-        {QStringLiteral("layered_flags"), static_cast<int>(window.layered_flags)},
-        {QStringLiteral("layered_alpha"), window.layered_alpha},
-        {QStringLiteral("band"), static_cast<int>(window.band)},
-        {QStringLiteral("region_rects"), static_cast<int>(window.region.size())},
+        {QStringLiteral("owner"), hex(fields.owner.hwnd)},
+        {QStringLiteral("frame"), rect_json(window.frame())},
+        {QStringLiteral("rect"), rect_json(QRect(window.picture_origin(), window.picture_size()))},
+        {QStringLiteral("style"), hex(fields.style.style)},
+        {QStringLiteral("ex_style"), hex(fields.style.extended)},
+        {QStringLiteral("class_style"), hex(fields.style.class_style)},
+        {QStringLiteral("show"), static_cast<int>(fields.show)},
+        {QStringLiteral("taskbar"), static_cast<int>(fields.taskbar)},
+        {QStringLiteral("frame_bits"), static_cast<int>(fields.frame)},
+        {QStringLiteral("layered_flags"), static_cast<int>(fields.layering.flags)},
+        {QStringLiteral("layered_alpha"), fields.layering.alpha},
+        {QStringLiteral("band"), static_cast<int>(fields.band)},
+        {QStringLiteral("region_rects"), static_cast<int>(fields.geometry.region.size())},
     };
 }
 
@@ -368,8 +370,8 @@ QString state_line(const ScenarioOutcome::Window& window) {
         if (mirror.maximized) seen << QStringLiteral("maximized");
         if (mirror.active) seen << QStringLiteral("active");
         seen << (mirror.forwards_input ? QStringLiteral("takes input") : QStringLiteral("takes no input"));
-        if (mirror.popup_of != 0) seen << QStringLiteral("popup of %1").arg(hex(mirror.popup_of));
-        if (mirror.attached_to != 0) seen << QStringLiteral("attached to %1").arg(hex(mirror.attached_to));
+        if (!mirror.popup_of.none()) seen << QStringLiteral("popup of %1").arg(hex(mirror.popup_of.hwnd));
+        if (!mirror.attached_to.none()) seen << QStringLiteral("attached to %1").arg(hex(mirror.attached_to.hwnd));
         if (mirror.modal) seen << QStringLiteral("modal");
         seen << QStringLiteral("%1 activation requests, %2 alerts").arg(mirror.activation_requests).arg(mirror.alerts);
         if (mirror.compositor_frame.has_value()) {

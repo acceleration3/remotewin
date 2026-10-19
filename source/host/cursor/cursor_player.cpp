@@ -20,7 +20,7 @@ const CursorLook* CursorPlayer::look() const {
 }
 
 void CursorPlayer::show(const GuestCursor& cursor) {
-    const CursorLook* look = cursor.shown ? looks_.find(cursor.id) : nullptr;
+    const CursorLook* look = cursor.shown ? looks_.show(cursor.id) : nullptr;
     if (cursor.shown && look == nullptr) {
         RWIN_DEBUG("cursor", "cursor {:#x} named before it arrived", cursor.id);
         return;

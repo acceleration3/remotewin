@@ -6,6 +6,7 @@
 
 namespace rwin {
 struct KeyStroke;
+struct WindowId;
 }
 
 namespace rwin::host {
@@ -22,7 +23,7 @@ public:
     void note(const KeyStroke& stroke);
     // A release of every key still held, sent for ``window``; none are held
     // after.
-    void release_all(GuestLink& link, std::uint64_t window);
+    void release_all(GuestLink& link, WindowId window);
 
 private:
     // One bit per key: the set 1 code below kExtendedSlot, an E0 one above.

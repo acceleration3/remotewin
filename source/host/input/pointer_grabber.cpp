@@ -51,7 +51,7 @@ void PointerGrabber::motion_while_held(QPointF unaccelerated) {
 
 void PointerGrabber::follow(const PointerGrab& grab, MirrorWindow* mirror, QPoint guest_origin) {
     if (grab == grab_ && mirror == mirror_.data() && guest_origin == origin_) return;
-    RWIN_INFO("pointer", "guest wants {} for {:#x}", kind_name(grab.kind), grab.window);
+    RWIN_INFO("pointer", "guest wants {} for {}", kind_name(grab.kind), grab.window);
     const bool new_pattern = grab.kind != grab_.kind || grab.window != grab_.window;
     let_go();
     grab_ = grab;
@@ -90,7 +90,7 @@ void PointerGrabber::hold() {
     wl_pointer* pointer = PointerGlobals::pointer();
     unavailable_ = why_unavailable(surface, pointer);
     if (!unavailable_.isEmpty()) {
-        RWIN_INFO("pointer", "cannot {} the pointer on {:#x}: {}", kind_name(grab_.kind), grab_.window,
+        RWIN_INFO("pointer", "cannot {} the pointer on {}: {}", kind_name(grab_.kind), grab_.window,
                   unavailable_.toStdString());
         return;
     }
@@ -106,7 +106,7 @@ void PointerGrabber::hold() {
         }
     }
     const QRect box = asked_region_.boundingRect();
-    RWIN_INFO("pointer", "asked the compositor to {} the pointer on {:#x} ({},{} {}x{})", kind_name(grab_.kind),
+    RWIN_INFO("pointer", "asked the compositor to {} the pointer on {} ({},{} {}x{})", kind_name(grab_.kind),
               grab_.window, box.x(), box.y(), box.width(), box.height());
 }
 
@@ -132,7 +132,7 @@ QString PointerGrabber::why_unavailable(wl_surface* surface, wl_pointer* pointer
 
 void PointerGrabber::let_go() {
     if (lock_ == nullptr && confinement_ == nullptr) return;
-    RWIN_INFO("pointer", "let go of the pointer on {:#x}", grab_.window);
+    RWIN_INFO("pointer", "let go of the pointer on {}", grab_.window);
     lock_.reset();
     confinement_.reset();
     owed_ = QPointF();
@@ -205,7 +205,7 @@ bool PointerGrabber::eventFilter(QObject* watched, QEvent* event) {
     return QObject::eventFilter(watched, event);
 }
 
-void PointerGrabber::describe(std::uint64_t window, MirrorState& state) const {
+void PointerGrabber::describe(WindowId window, MirrorState& state) const {
     if (window != grab_.window || grab_.kind == PointerGrab::Kind::None) return;
     MirrorState::PointerHold hold;
     hold.wanted = grab_.kind;

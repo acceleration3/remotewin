@@ -1,9 +1,13 @@
 #include "host/mirror/window_report.hpp"
 
 #include "host/chrome/win32_style.hpp"
+#include "host/link/guest_window.hpp"
+#include "host/link/guest_windows.hpp"
 #include "host/mirror/mirror_session.hpp"
 #include "host/mirror/mirror_window.hpp"
 #include "logging/logger.hpp"
+#include "proto/window_fields.hpp"
+#include "proto/window_id.hpp"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -13,8 +17,11 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRect>
 #include <QWidget>
 #include <QWindow>
+
+#include <format>
 
 namespace rwin::host {
 
@@ -26,8 +33,22 @@ QString hex(std::uint64_t value) {
     return QStringLiteral("0x%1").arg(value, 0, 16);
 }
 
-QJsonArray rect(int x, int y, int width, int height) {
-    return QJsonArray{x, y, width, height};
+// "0x30a2c:7", as the logs name it; null for none.
+QJsonValue name_of(WindowId window) {
+    if (window.none()) return QJsonValue::Null;
+    return QString::fromStdString(std::format("{}", window));
+}
+
+QJsonArray rect(QRect area) { return QJsonArray{area.x(), area.y(), area.width(), area.height()}; }
+
+QString show_name(WindowFields::Show show) {
+    switch (show) {
+        case WindowFields::Show::Hidden: return QStringLiteral("hidden");
+        case WindowFields::Show::Minimized: return QStringLiteral("minimized");
+        case WindowFields::Show::Maximized: return QStringLiteral("maximized");
+        case WindowFields::Show::Shown: return QStringLiteral("shown");
+    }
+    return QStringLiteral("unknown");
 }
 
 QString window_type(Qt::WindowFlags flags) {
@@ -45,26 +66,34 @@ QString window_type(Qt::WindowFlags flags) {
 // The guest window a widget mirrors: the mirror itself or the one it is in.
 QJsonValue handle_of(const QWidget* widget) {
     for (; widget != nullptr; widget = widget->parentWidget()) {
-        if (const auto* mirror = qobject_cast<const MirrorWindow*>(widget)) return hex(mirror->handle());
+        if (const auto* mirror = qobject_cast<const MirrorWindow*>(widget)) return name_of(mirror->window());
     }
     return QJsonValue::Null;
 }
 
-QJsonObject guest_of(const GuestWindowInfo& window) {
+QJsonObject guest_of(const GuestWindow& window, const MirrorSession& session) {
     const Win32Style style{window};
+    const WindowFields& fields = window.fields();
     return {
-        {QStringLiteral("owner"), hex(window.owner)},
-        {QStringLiteral("pid"), static_cast<qint64>(window.process_id)},
-        {QStringLiteral("rect"), rect(window.x, window.y, static_cast<int>(window.width),
-                                       static_cast<int>(window.height))},
-        {QStringLiteral("style"), hex(window.style)},
-        {QStringLiteral("ex_style"), hex(window.extended_style)},
-        {QStringLiteral("title"), window.title},
-        {QStringLiteral("class"), window.class_name},
-        {QStringLiteral("minimized"), window.minimized},
-        {QStringLiteral("maximized"), window.maximized},
-        {QStringLiteral("foreground"), window.foreground},
-        {QStringLiteral("band"), static_cast<qint64>(window.band)},
+        {QStringLiteral("owner"), name_of(fields.owner)},
+        {QStringLiteral("anchor"), name_of(window.anchor())},
+        {QStringLiteral("pid"), static_cast<qint64>(fields.app_id.process_id)},
+        {QStringLiteral("aumid"), QString::fromStdString(fields.app_id.aumid)},
+        {QStringLiteral("image"), QString::fromStdString(fields.app_id.image)},
+        {QStringLiteral("belongs"), session.belongs(window.id())},
+        {QStringLiteral("frame"), rect(window.frame())},
+        {QStringLiteral("rect"), rect(QRect(window.picture_origin(), window.picture_size()))},
+        {QStringLiteral("style"), hex(fields.style.style)},
+        {QStringLiteral("ex_style"), hex(fields.style.extended)},
+        {QStringLiteral("title"), window.title()},
+        {QStringLiteral("class"), window.class_name()},
+        {QStringLiteral("show"), show_name(fields.show)},
+        {QStringLiteral("hidden"), window.hidden()},
+        {QStringLiteral("minimized"), window.minimized()},
+        {QStringLiteral("maximized"), window.maximized()},
+        {QStringLiteral("active"), session.windows().order().active == window.id()},
+        {QStringLiteral("band"), static_cast<qint64>(fields.band)},
+        {QStringLiteral("in_taskbar"), style.in_taskbar()},
         {QStringLiteral("owned"), style.owned()},
         {QStringLiteral("stands_alone"), style.stands_alone()},
         {QStringLiteral("activates"), style.activates()},
@@ -85,9 +114,8 @@ QJsonObject mirror_of(const MirrorWindow& mirror, const MirrorState& state) {
     }
     return {
         {QStringLiteral("kind"), window_type(mirror.windowFlags())},
-        {QStringLiteral("popup_of"), state.popup_of == 0 ? QJsonValue::Null : QJsonValue(hex(state.popup_of))},
-        {QStringLiteral("attached_to"),
-         state.attached_to == 0 ? QJsonValue::Null : QJsonValue(hex(state.attached_to))},
+        {QStringLiteral("popup_of"), name_of(state.popup_of)},
+        {QStringLiteral("attached_to"), name_of(state.attached_to)},
         {QStringLiteral("transient_parent"), transient_handle},
         {QStringLiteral("modal"), state.modal},
         {QStringLiteral("stays_on_top"), state.flags.testFlag(Qt::WindowStaysOnTopHint)},
@@ -107,8 +135,7 @@ QJsonObject mirror_of(const MirrorWindow& mirror, const MirrorState& state) {
         {QStringLiteral("logical_size"), QJsonArray{state.logical_size.width(), state.logical_size.height()}},
         {QStringLiteral("device_pixel_ratio"), state.device_pixel_ratio},
         {QStringLiteral("guest_size"), QJsonArray{state.guest_size.width(), state.guest_size.height()}},
-        {QStringLiteral("picture"), rect(state.picture.x(), state.picture.y(), state.picture.width(),
-                                          state.picture.height())},
+        {QStringLiteral("picture"), rect(state.picture)},
         {QStringLiteral("frames_presented"), static_cast<qint64>(state.frames_presented)},
     };
 }
@@ -133,23 +160,21 @@ WindowReport::~WindowReport() {
 
 QString WindowReport::Describe() const {
     QJsonArray windows;
-    QList<std::uint64_t> listed;
-    for (const GuestWindowInfo& window : session_.listed()) {
-        listed.push_back(window.handle);
-        QJsonObject entry{{QStringLiteral("handle"), hex(window.handle)},
-                          {QStringLiteral("guest"), guest_of(window)}};
-        const MirrorWindow* mirror = session_.find(window.handle);
-        const std::optional<MirrorState> state = session_.state_of(window.handle);
+    for (const GuestWindow* window : session_.windows().stacked()) {
+        QJsonObject entry{{QStringLiteral("handle"), name_of(window->id())},
+                          {QStringLiteral("guest"), guest_of(*window, session_)}};
+        const MirrorWindow* mirror = session_.find(window->id());
+        const std::optional<MirrorState> state = session_.state_of(window->id());
         entry.insert(QStringLiteral("mirror"),
                      mirror != nullptr && state ? QJsonValue(mirror_of(*mirror, *state)) : QJsonValue::Null);
         windows.push_back(entry);
     }
-    // Mirrors of windows the guest no longer lists: what is left over.
+    // Mirrors of windows the guest no longer has: what is left over.
     QJsonArray strays;
     for (QWidget* widget : QApplication::allWidgets()) {
         const auto* mirror = qobject_cast<const MirrorWindow*>(widget);
-        if (mirror == nullptr || listed.contains(mirror->handle())) continue;
-        QJsonObject stray{{QStringLiteral("handle"), hex(mirror->handle())},
+        if (mirror == nullptr || session_.windows().find(mirror->window()) != nullptr) continue;
+        QJsonObject stray{{QStringLiteral("handle"), name_of(mirror->window())},
                           {QStringLiteral("visible"), mirror->isVisible()},
                           {QStringLiteral("kind"), window_type(mirror->windowFlags())}};
         strays.push_back(stray);

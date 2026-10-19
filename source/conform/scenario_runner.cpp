@@ -8,7 +8,8 @@
 #include "conform/wait_until.hpp"
 #include "host/chrome/win32_style.hpp"
 #include "host/input/key_translator.hpp"
-#include "host/link/guest_link.hpp"
+#include "host/link/guest_window.hpp"
+#include "host/link/guest_windows.hpp"
 #include "host/mirror/mirror_session.hpp"
 #include "host/mirror/mirror_window.hpp"
 #include "host/mirror/pixel_mapping.hpp"
@@ -39,8 +40,8 @@ namespace {
 using namespace std::chrono_literals;
 
 constexpr std::chrono::milliseconds kSettleTimeout = 15s;
-// Long enough for a frame or a window list from the guest to have
-// arrived if one were coming: the guest half looks thirty times a second.
+// Long enough for a frame or a window change from the guest to have
+// arrived if one were coming.
 constexpr std::chrono::milliseconds kQuiet = 700ms;
 // A window that must not be mirrored is given this long to be mirrored
 // anyway.
@@ -175,15 +176,12 @@ QString step_label(const Scenario::Step& step) {
 
 }  // namespace
 
-ScenarioRunner::ScenarioRunner(ProbeLink& probe, host::MirrorSession& mirrors, host::GuestLink& link,
-                               Settings settings)
-    : probe_(probe), mirrors_(mirrors), settings_(std::move(settings)) {
-    QObject::connect(&link, &host::GuestLink::windows_listed, &link,
-                     [this](const QList<host::GuestWindowInfo>& windows, bool, QSize) {
-                         for (const host::GuestWindowInfo& window : windows) {
-                             reported_.insert(window.handle, window);
-                         }
-                     });
+ScenarioRunner::ScenarioRunner(ProbeLink& probe, host::MirrorSession& mirrors, Settings settings)
+    : probe_(probe), mirrors_(mirrors), settings_(std::move(settings)) {}
+
+WindowId ScenarioRunner::id_of(std::uint64_t handle) const {
+    const host::GuestWindow* window = mirrors_.windows().find_hwnd(static_cast<std::uint32_t>(handle));
+    return window == nullptr ? WindowId{} : window->id();
 }
 
 ScenarioOutcome ScenarioRunner::run(const Scenario& scenario) {
@@ -312,7 +310,7 @@ bool ScenarioRunner::settle(const ScenarioOutcome& outcome) {
         [&] {
             for (const ScenarioOutcome::Window& window : outcome.windows) {
                 if (!window.truth->shown) continue;
-                const host::MirrorWindow* mirror = mirrors_.find(window.handle);
+                const host::MirrorWindow* mirror = mirrors_.find(id_of(window.handle));
                 if (mirror == nullptr) return false;
                 if (on_screen(*window.truth) && mirror->state().frames_presented == 0) return false;
             }
@@ -331,12 +329,12 @@ bool ScenarioRunner::settle(const ScenarioOutcome& outcome) {
 QList<qint64> ScenarioRunner::signature(const ScenarioOutcome& outcome) const {
     QList<qint64> signature;
     for (const ScenarioOutcome::Window& window : outcome.windows) {
-        const host::MirrorWindow* mirror = mirrors_.find(window.handle);
+        const host::MirrorWindow* mirror = mirrors_.find(id_of(window.handle));
         if (mirror == nullptr) {
             signature.push_back(-1);
             continue;
         }
-        const host::MirrorState state = *mirrors_.state_of(window.handle);
+        const host::MirrorState state = *mirrors_.state_of(id_of(window.handle));
         // Where the compositor says it put the window, and how many
         // placements were asked for: a placement still under way is a
         // mirror that has not settled.
@@ -413,7 +411,7 @@ void ScenarioRunner::lay_host_scene(ScenarioOutcome& outcome) {
     for (ScenarioOutcome::Window* window : order) {
         window->resampled = false;
         if (!on_screen(*window->truth)) continue;
-        host::MirrorWindow* mirror = mirrors_.find(window->handle);
+        host::MirrorWindow* mirror = mirrors_.find(id_of(window->handle));
         if (mirror == nullptr) continue;
         window->resampled = !scene.add(*mirror, mirror->state(), rect_of(window->truth->visible));
     }
@@ -457,21 +455,25 @@ void ScenarioRunner::check_properties(ScenarioOutcome& outcome) {
                                       owner_made ? owner->truth : std::optional<WindowTruth>{},
                                       window.casts_shadow, settings_.drop_shadows,
                                       mirrors_.guest_screen()};
-        const host::MirrorWindow* mirror = mirrors_.find(window.handle);
+        // A window Windows hides keeps its mirror, hidden, until it is
+        // destroyed: hidden is not gone (RAIL's ShowState 0).
+        const host::MirrorWindow* found = mirrors_.find(id_of(window.handle));
+        const host::MirrorWindow* mirror = found != nullptr && !found->isHidden() ? found : nullptr;
         const auto yes_no = [](bool value) { return value ? QStringLiteral("yes") : QStringLiteral("no"); };
         window.checks.push_back(Expectation::Check{
             QStringLiteral("mirrored"),
-            QStringLiteral("a window Windows shows has a mirror; one it does not show has none"),
+            QStringLiteral("a window Windows shows has a shown mirror; one it does not show has none"),
             yes_no(expectation.wants_mirror()), yes_no(mirror != nullptr),
             expectation.wants_mirror() == (mirror != nullptr)});
-        if (const auto reported = reported_.constFind(window.handle); reported != reported_.cend()) {
+        window.reported.reset();
+        if (const host::GuestWindow* reported = mirrors_.windows().find_hwnd(static_cast<std::uint32_t>(window.handle))) {
             window.reported = *reported;
         }
         window.mirror.reset();
         if (mirror == nullptr || !window.truth->exists) continue;
-        window.mirror = mirrors_.state_of(window.handle);
+        window.mirror = mirrors_.state_of(id_of(window.handle));
         std::optional<host::MirrorState> owner_state;
-        if (owner_made) owner_state = mirrors_.state_of(owner->handle);
+        if (owner_made) owner_state = mirrors_.state_of(id_of(owner->handle));
         std::vector<Expectation::Check> checks =
             expectation.against(*window.mirror, owner_state.has_value() ? &*owner_state : nullptr);
         window.checks.insert(window.checks.end(), std::make_move_iterator(checks.begin()),
@@ -495,10 +497,10 @@ void ScenarioRunner::check_pointer(ScenarioOutcome& outcome) {
     const auto foreground = std::find_if(outcome.windows.begin(), outcome.windows.end(), [](const auto& candidate) {
         return candidate.truth.has_value() && candidate.truth->exists && candidate.truth->foreground;
     });
-    const std::optional<host::MirrorState> pointer_mirror = mirrors_.state_of(window.handle);
+    const std::optional<host::MirrorState> pointer_mirror = mirrors_.state_of(id_of(window.handle));
     if (pointer_mirror.has_value() && window.truth.has_value()) {
         const std::optional<host::MirrorState> foreground_mirror =
-            foreground == outcome.windows.end() ? std::nullopt : mirrors_.state_of(foreground->handle);
+            foreground == outcome.windows.end() ? std::nullopt : mirrors_.state_of(id_of(foreground->handle));
         const PointerExpectation expectation{PointerExpectation::Sides{
             *truth, *window.truth, foreground == outcome.windows.end() ? nullptr : &*foreground->truth, *pointer_mirror,
             foreground_mirror.has_value() ? &*foreground_mirror : nullptr, held_before_, let_go_,
@@ -533,7 +535,7 @@ void ScenarioRunner::put_step(const Scenario::Step& step, ScenarioOutcome& outco
                               std::vector<ScenarioOutcome::Input>& checks) {
     const QString label = step_label(step);
     const ScenarioOutcome::Window& window = outcome.windows[static_cast<std::size_t>(step.window)];
-    host::MirrorWindow* mirror = mirrors_.find(window.handle);
+    host::MirrorWindow* mirror = mirrors_.find(id_of(window.handle));
     if (mirror == nullptr || mirror->windowHandle() == nullptr) {
         checks.push_back({label, {QStringLiteral("a mirror to put input into"), QStringLiteral("none"), false}});
         return;
@@ -679,7 +681,7 @@ InputExpectation::Check ScenarioRunner::move_on_host(const Scenario::Step& step,
     const QString source = QStringLiteral(
         "for (const w of workspace.windowList()) { if ((w.captionNormal || '').indexOf('%1') < 0) continue;"
         " const g = w.frameGeometry; w.frameGeometry = {x: %2, y: %3, width: g.width, height: g.height}; }")
-        .arg(host::KWinPlacement::tag_for(window.handle), QString::number(to.x(), 'g', 17),
+        .arg(host::KWinPlacement::tag_for(id_of(window.handle).key()), QString::number(to.x(), 'g', 17),
              QString::number(to.y(), 'g', 17));
     const host::KWinScript script{QStringLiteral("remotewin-conform-move-%1").arg(++timestamp_), source};
     if (!script.running()) return InputExpectation::Check{expected, script.error(), false};
@@ -702,7 +704,7 @@ InputExpectation::Check ScenarioRunner::move_on_host(const Scenario::Step& step,
 // moving (wl_keyboard leave and enter), a key chord, a click.
 void ScenarioRunner::as_user_here(const Scenario::Step& step, ScenarioOutcome& outcome, ScenarioOutcome::Stage& stage) {
     const ScenarioOutcome::Window& window = outcome.windows[static_cast<std::size_t>(step.window)];
-    host::MirrorWindow* mirror = mirrors_.find(window.handle);
+    host::MirrorWindow* mirror = mirrors_.find(id_of(window.handle));
     QWindow* surface = mirror == nullptr ? nullptr : mirror->windowHandle();
     if (surface == nullptr) {
         stage.problems.push_back(QStringLiteral("%1: w%2 has no mirror").arg(step_label(step)).arg(step.window));
@@ -817,14 +819,14 @@ void ScenarioRunner::restore(ScenarioOutcome& outcome, const ScenarioOutcome::St
 // that is the case.
 std::optional<host::MirrorState> ScenarioRunner::brought_forward(const std::optional<WindowTruth>& clicked) const {
     if (!clicked.has_value() || clicked->enabled || clicked->enabled_popup == 0) return std::nullopt;
-    const host::MirrorWindow* popup = mirrors_.find(clicked->enabled_popup);
+    const host::MirrorWindow* popup = mirrors_.find(id_of(clicked->enabled_popup));
     if (popup == nullptr) return std::nullopt;
     return popup->state();
 }
 
 InputExpectation::Check ScenarioRunner::forward_check(const host::MirrorState& before, const WindowTruth& clicked,
                                                       const ScenarioOutcome& outcome) const {
-    const host::MirrorWindow* popup = mirrors_.find(clicked.enabled_popup);
+    const host::MirrorWindow* popup = mirrors_.find(id_of(clicked.enabled_popup));
     const auto index = std::find_if(outcome.windows.begin(), outcome.windows.end(),
                                     [&](const auto& window) { return window.handle == clicked.enabled_popup; });
     const QString name = index == outcome.windows.end() ? QStringLiteral("its enabled popup")
@@ -987,7 +989,7 @@ void ScenarioRunner::put_motion(const Scenario::Step& step, const ScenarioOutcom
         return;
     }
     const auto moved = [&] {
-        const std::optional<host::MirrorState> state = mirrors_.state_of(window.handle);
+        const std::optional<host::MirrorState> state = mirrors_.state_of(id_of(window.handle));
         return state.has_value() && state->pointer_hold.has_value() ? state->pointer_hold->moved : QPoint();
     };
     const QPoint moved_before = moved();
@@ -1018,7 +1020,7 @@ void ScenarioRunner::tear_down(ScenarioOutcome& outcome) {
     const bool gone = wait_until(
         [&] {
             return std::none_of(outcome.windows.begin(), outcome.windows.end(),
-                                [&](const auto& window) { return mirrors_.find(window.handle) != nullptr; });
+                                [&](const auto& window) { return mirrors_.find(id_of(window.handle)) != nullptr; });
         },
         kTearDownTimeout);
     if (!gone) {

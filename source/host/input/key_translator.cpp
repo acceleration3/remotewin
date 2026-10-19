@@ -50,8 +50,7 @@ std::uint32_t KeyTranslator::native_scan_code(std::uint32_t evdev_code) const no
     return evdev_offset_.has_value() ? evdev_code + *evdev_offset_ : 0;
 }
 
-std::optional<KeyStroke> KeyTranslator::stroke_for(const QKeyEvent& event, std::uint64_t window,
-                                                   bool pressed) const {
+std::optional<KeyStroke> KeyTranslator::stroke_for(const QKeyEvent& event, WindowId window, bool pressed) const {
     KeyStroke stroke;
     stroke.window = window;
     stroke.pressed = pressed;
