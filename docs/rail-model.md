@@ -1,6 +1,7 @@
 # remotewin and RAIL: the model to copy
 
-Written 2026-10-19. This is research and a design, and no code changed. It
+Written 2026-10-19 as research and a design; wire 6 has since been built
+from it (§7 says what was built and where it departs from §4 and §5). It
 redesigns remotewin's guest-host protocol and the guest half's window
 decisions after Microsoft's RemoteApp protocol, RAIL (MS-RDPERP).
 
@@ -10,7 +11,8 @@ decisions after Microsoft's RemoteApp protocol, RAIL (MS-RDPERP).
 - §3 maps both onto remotewin's current wire.
 - §4 proposes wire 6, a clean break.
 - §5 lists the guest-half changes that produce it.
-- §6 is open questions.
+- §6 is the open questions, and what became of each.
+- §7 is wire 6 as built.
 
 Marks used throughout:
 
@@ -485,7 +487,12 @@ is true unless both of these hold:
   `Microsoft.Windows.ShellManagedWindowAsNormalWindow` property;
 - its `IApplicationView` (from `CLSID_ImmersiveShell` →
   `SID_ApplicationViewManager` → `GetViewForHwnd`) says
-  `GetShowInSwitchers` = false, or it has no view.
+  `GetShowInSwitchers` = false, or it has no view. The service id asked
+  for is `IApplicationViewCollection`'s IID,
+  1841c6d7-4f9d-42c0-af41-8747538f10e5; `GetViewForHwnd` is its vtable
+  slot 6 (offset 0x30), and `GetShowInSwitchers` the view's slot 27
+  (offset 0xd8). IsShellManagedWindow is user32 ordinal 2574,
+  `int (HWND)`, looked up once.
 
 The result reaches the client in two ways:
 
@@ -607,7 +614,9 @@ nothing.
 **Opt-out.** Processes named under
 `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\Compatibility\LocalMoveSizeIgnoreList`
 never get local move/size [R `RailWindowManager::CacheIgnoreList`
-@14005feec, `IsInMoveSizeIgnoreList` @1400607b0].
+@14005feec, `IsInMoveSizeIgnoreList` @1400607b0]. Only the value names
+count, not their data; each is compared, case and all, with the base file
+name of the window's process image.
 
 **V2: the client drives the move.** In RemoteApp V2 the client announces
 a move/size it is driving. The server then:
@@ -622,6 +631,43 @@ a move/size it is driving. The server then:
 `OnClientWindowAction`, `CPrivilegedPresentationOperations::ApplyWindowAction`
 @140034fc0 in rdpinit.] The application thus sees the brackets of a
 move/size loop without Windows running one.
+
+**How V2 keeps Windows' loop from running** [R win32kfull 10.0.26100.8036]:
+
+- The decision is not in `xxxMoveSize` but one level up, in
+  `xxxSysCommand` @1402b5464. For SC_SIZE and SC_MOVE it first asks
+  `DelegateMoveSizeToShell` @1402b4e84; when that answers yes,
+  `xxxMoveSize` is never called. No WM_ENTERSIZEMOVE, WM_MOVING,
+  WM_SIZING, WM_EXITSIZEMOVE, event 0x19 or 0x0A/0x0B is raised by the
+  kernel in that path; rdpshell posts the two brackets itself, and nothing
+  synthesizes WM_MOVING or WM_SIZING.
+- `DelegateMoveSizeToShell` delegates kinds 1–9 when the window's
+  shell-window-management bits allow it (tagWND+0x184: bit 2 move, bit 4
+  size). It then sends DWM an async *move/size intercepted* notification
+  with the kind and cursor point, posts the window a WM_LBUTTONUP and
+  forces the capture away.
+- The bits are set by `NtUserEnableWindowShellWindowManagementBehavior`
+  @140294700, which refuses (ERROR_ACCESS_DENIED) any caller that is
+  neither the registered ShellWindowManagement thread nor granted IAM
+  access (`IAMThreadAccessGranted`) - the session shell's key.
+  `NtUserApplyWindowAction` @140292770, which applies the client's
+  intermediate rectangles, has the same gate and wants a per-monitor-v2
+  caller.
+- rdpinit reaches both through `IRemoteAppPrivilegedOperationBroker2`
+  (82ec76cd-…), made by the immersive shell's `RemoteAppBrokerFactory`
+  (SID 8982be9d-1779-4400-a6ab-c69244842534, broker IID
+  f9dbd15e-c7b9-4992-9ebe-b4fb20bc4235), which lives in **twinui.dll**,
+  not twinui.pcshell.dll. `RemoteAppBrokerFactory::CreateInstance`
+  @1802c5de0 hands the broker only to a caller whose process UI context is
+  `PROCESS_UICONTEXT_IMMERSIVE_BROKER`; anyone else gets E_ACCESSDENIED.
+  The broker's `ApplyWindowAction` (slot 0x30) and
+  `EnableWindowShellWindowManagementBehavior` (slot 0x28) forward to the
+  shell's privileged presentation and windowing operations.
+
+So V2's client-driven move/size is the session shell's privilege. An
+ordinary process - remotewin's guest half, medium or high integrity, with
+or without UIAccess - can neither obtain the broker nor set the bits
+itself (§6.5).
 
 ### 2.6 Activation, foreground, and the races (f)
 
@@ -642,7 +688,11 @@ move/size loop without Windows running one.
     `RegisterHotKey`; release any held Shift, Alt or Ctrl with SendInput;
     send the hotkey; press the modifiers again; wait for WM_HOTKEY. That
     input makes the thread the last one with input, which grants
-    foreground rights, and it then calls `SetForegroundWindow`.
+    foreground rights, and it then calls `SetForegroundWindow`. The window
+    is "ForegroundHotKeyWindow"; the hotkey has no modifiers and VK 0xB9,
+    a key no keyboard has, the next lower one tried when it is taken, 20
+    tries (`RegisterHotKey` @14007a018); the keys go in one `SendInput`
+    each; the wait is a 1 s `SetTimer` in a message loop.
 - **The marker case.** For `Enabled` = 0 the server also calls
   `AllowSetForegroundWindow` for the marker's process [R
   `ProtectMarkerWindowAgainstSetForegroundWindow` @140079f48]. It then
@@ -655,9 +705,12 @@ move/size loop without Windows running one.
      ACTIVEWND at once [R `IsZOrderReadyToSend` @140080680].
   3. Otherwise it starts `CWindowActivationHelper`, a waitable-timer
      thread [R `WindowActivationHelperThreadMain` @140085cb4]. Each tick
-     recomputes. When the timer runs out (more than 0x140 ticks) it sends
-     the current order anyway and logs "the correct z-order was not sent"
-     [R `OnWindowActivationTimerElapsed` @140080990].
+     recomputes. The period starts at 10 ms and doubles each tick (10, 20,
+     40, 80, 160, 320 ms, about 630 ms in all); past 320 ms it sends the
+     current order anyway and logs "the correct z-order was not sent"
+     [R `CWindowActivationHelper::SetTimer` @140085a28,
+     `OnWindowActivationTimerElapsed` @140080990]. "Ready" is the target
+     first in the list, or the first entry without WS_EX_TOPMOST.
 
 **Foreground changes on the server** [R `OnHookEventForeground`
 @140071ac0, `HookZOrderSync::OnForegroundWindowChanged` @140080730]:
@@ -800,7 +853,10 @@ ghost windows.
   suggests.
 - **Clients with it.** The server sends the Cloak PDU (0x15).
 
-**Z-order sync.** The marker window lives in rdpinit (`CMarkerWindow`).
+**Z-order sync.** The marker window lives in rdpinit (`CMarkerWindow`,
+`Initialize` @14002ef50): a window titled "RemoteApp Marker Window",
+WS_POPUP | WS_VISIBLE, no extended style, 0×0, with the property
+`UIA_WindowVisibilityOverridden` = 2 to keep it out of UI Automation.
 §2.6 has the rules.
 
 **Snap** [R `WindowSnapArrangeOrder` @1400840a0 → shell helper
@@ -809,7 +865,12 @@ ghost windows.
 goes to the shell's privileged broker, which arranges the window so that
 unsnapping restores its size.
 
-### 2.11 Not resolved, and how to pin it down
+### 2.11 Not resolved in the first pass, and how it was pinned down
+
+The items below were open when this document was first written; the
+reversing done while building wire 6 settled them (§2.5 for the V2
+mechanism, §6 for each answer).
+
 
 - **The V2 wire format and window actions.** The decompilation shows the
   dispatch and the named-feature negotiation, not every field. The window
@@ -895,7 +956,8 @@ remotewin, not in RAIL).
 
 ## §4 Wire 6: proposed
 
-A clean break. Nothing from wire 5 needs to keep working.
+A clean break. Nothing from wire 5 needs to keep working. §7 says what
+was built and where it departs from this.
 
 ### 4.1 Principles
 
@@ -1321,53 +1383,202 @@ picture's content area into the reported position and size.
   receiving `WM_COPYDATA`. Explorer already owns that class in the guest,
   however (§6).
 
-## §6 Open questions
+## §6 Open questions, and what became of them
 
-1. **Event 0x19.** It is undocumented. It is raised in every
-   `xxxMoveSize` on this build, but its idChild meaning is taken from
-   rdpshell's mapping. It needs a probe check per edge, and a check on
-   Windows 10, if remotewin supports it.
-2. **The admission rule in a full shell.** The exclusion list in §5.2
-   needs a survey of the shell windows a Windows 11 desktop shows:
-   Explorer, Start, search, notification centre, widgets, the IME
-   candidate UI. RAIL never had to answer this.
-3. **Reporting every window in the session.** The guest would mirror the
-   user's other programs to whoever holds the link. That is acceptable for
-   R4's per-VM service. For per-app mirrors it argues for a host-side
-   filter (§5.2), or for keeping an opt-in App ID filter message.
-4. **Foreground rights.** The hotkey trick is what rdpshell falls back to
-   without UIAccess. It needs testing against the guest's foreground lock,
-   with the agent's session and integrity level. UIAccess would need a
-   signed binary in a secure location.
-5. **The V2 loop and docking applications.** V2-style client-driven moves
-   send `WM_ENTERSIZEMOVE`/`WM_EXITSIZEMOVE` but not `WM_MOVING`/`WM_SIZING`.
-   Applications that dock panels by watching those messages may need
-   them synthesized. Today's exception for owned windows keeping Windows'
-   loop exists for this reason. Pinning down how V2 avoids the kernel loop
-   (`DelegateMoveSizeToShell`, §2.11) would show whether Windows itself
-   synthesizes them.
-6. **The marker window.** It must never be captured, listed, or appear in
-   Alt+Tab, and it must accept foreground. RAIL's lives in rdpinit (the
-   shell). remotewin's would live in the guest half's process, which
-   changes whose process holds the foreground while no mirror is focused.
-7. **Coordinates.** RAIL works because server and client share one screen
-   layout. remotewin deliberately does not (R2). Popups by intent (the
-   POPUP field) and per-surface input cover the cases RAIL got from the
-   shared layout. Maximized-window clipping (§2.4) and min/max sizes still
-   reference guest monitors.
-8. **Icons and the tray against Explorer.** RAIL's tray works because
-   rdpinit *is* the shell. In LSW's guest, Explorer owns `Shell_TrayWnd`.
-   Collecting tray icons needs a different hook into it, or
-   `Shell_NotifyIcon` interception. RemoteApp V2's in-Explorer
-   `RdpShellExt.dll` is the model to read next.
-9. **The 256-window cap.** It is RAIL's. Keep it as a guard against
-   runaway applications, or not.
-10. **Resize margins.** Is the band inside or outside the window rect? In
-    Enhanced RemoteApp, rdpshell reports a sizable window's full rcWindow
-    and margins that lie inside it (§2.4), against [S 1.3.4]. Wire 6
-    avoids the question: GEOMETRY always carries the DWM frame, and
-    margins outside it. It is still worth confirming against mstsc or a
-    FreeRDP trace before copying any client behaviour.
+Each question as it was first asked, then what building wire 6 settled.
+"Live" means checked on the user's guest, Windows 11 build 26200.8037
+(25H2), with the guest half of wire 6 against a host on the wire.
+
+1. **Event 0x19.** *Asked:* its idChild meaning was taken from rdpshell's
+   mapping. *Settled:* `xxxMoveSize` raises it with its own operation code
+   as idChild (§2.5): 0 keyboard size, 1–8 the edges in WMSZ order, 9 move,
+   10 keyboard move; 0x80000004/5 are raised only towards a registered
+   shell window. Live: a caption drag on Notepad gave kind 9, a drag of its
+   right border kind 2. Windows 10 is not supported by remotewin and was
+   not checked.
+2. **The admission rule in a full shell.** *Settled by a survey of the
+   guest:* besides `Progman`, `WorkerW`, `Shell_TrayWnd` and
+   `Shell_SecondaryTrayWnd`, the visible top-level windows Explorer keeps
+   are tool windows of the shell's own process - `ThumbnailDeviceHelperWnd`,
+   `DummyDWMListenerWindow`, `EdgeUiInputTopWndClass`, and the snap bar
+   `XamlExplorerHostIslandWindow` Windows 11 shows at the top of the screen
+   during a drag. The rule is: a tool window of the process that owns
+   `GetShellWindow()`, unless it is a menu (`#32768`, which File Explorer
+   windows open in that same process), plus the four classes, plus
+   shell-managed windows the shell keeps out of the switchers (Start,
+   search, the notification centre). remotewin's own windows (class prefix
+   `rwin-`, any guest half's) are never admitted.
+3. **Reporting every window in the session.** *Decided:* the guest reports
+   the whole session, as RAIL does, and a per-application host filters
+   (`MirrorScope`): a window belongs when its process is the launched one,
+   its image is the launched program, its AppUserModelID is one already
+   claimed by such a window (or given with `--aumid`), or its owner or
+   popup anchor belongs. LSW's manager passes the launched pid, the
+   program's path and a Store application's AUMID, and groups mirrors by
+   the AUMIDs remotewin reports (`APP <aumid>` on stdout): a second mirror
+   of an AUMID another mirror shows is closed in favour of the first.
+   Left open: a launcher stub that hands over to a process of another
+   image and AUMID (an app execution alias, a broker) is not followed;
+   LSW passes `--aumid` for Store applications, which covers the alias
+   case it launches.
+4. **Foreground rights.** *Built:* the hotkey trick, as rdpshell does it
+   (§2.6), on the marker's thread, after a plain `SetForegroundWindow`
+   that is checked. Live: Activate after the marker held the foreground
+   brought Notepad back, confirmed by the next ZOrder.
+5. **The V2 loop and docking applications.** *Settled:* V2's client-driven
+   move/size is the session shell's privilege (§2.5): the broker is handed
+   only to the immersive broker process, and the kernel calls behind it
+   want the shell's IAM access. remotewin cannot use it. *Built instead:*
+   RAIL V1's detection with a different end. On event 0x19, for every
+   window, owned or not, the guest sends MinMax and MoveSizeStart; the
+   host starts its compositor's own move or edge resize and at once
+   forwards the button-up, which ends Windows' loop before it moved
+   anything; a resize then reaches the guest as WindowMove. The guest no
+   longer cancels anything (the WM_CANCELMODE trick is gone), and an owned
+   window is dragged by the compositor on any desktop, not only KWin.
+   What is lost: an application that docks panels by watching WM_MOVING
+   sees no move. Those keep Windows' loop through the same opt-out RAIL
+   has, `LocalMoveSizeIgnoreList`; the keyboard kinds keep it too.
+6. **The marker window.** *Built:* in the guest half's process, made as
+   rdpinit makes its own (§2.10) plus WS_EX_TOOLWINDOW, because this
+   desktop has Explorer's Alt+Tab. Several applications' mirrors share one
+   guest, each with its own guest half and marker, so `Activate` with
+   enabled 0 names the window the host's focus left, and the guest makes
+   its marker the foreground only while that window (or one of its
+   owner's family) still is: a deactivation that arrives after a press in
+   another application's mirror moved the foreground on is stale.
+7. **Coordinates.** As planned: geometry in guest physical pixels, input
+   per window in picture pixels. POPUP carries the anchor and the popup's
+   place relative to the anchor's frame; gravity and constraints are 0
+   until `TrackPopupMenu`'s intent can be read.
+8. **Icons and the tray against Explorer.** Open; nothing of `icons` or
+   `tray` is built.
+9. **The 256-window cap.** Kept, with one warning when it is reached.
+10. **Resize margins.** GEOMETRY carries the DWM frame, and margins outside
+    it; the host sizes its own resize band from them.
+
+Also settled while building:
+
+- **Activation timing** (§2.6): the 10–320 ms doubling backoff is copied
+  into `ZOrderReport`.
+- **Titles** are read with `InternalGetWindowText`, which never enters the
+  window's thread, rather than RAIL's 20 s `WM_GETTEXT`: a hung window
+  cannot stall the window thread.
+- **WindowMove** is applied with `SWP_ASYNCWINDOWPOS`, so a hung window
+  cannot stall it either.
+
+## §7 Wire 6 as built
+
+Built on branch `wire6`. Wire 5 is gone: no WireHello, WatchScope,
+WindowList, DragStarted, CloseWindow, MoveWindow, ResizeWindow or
+FocusWindow, and no code path for a version-5 peer.
+
+### 7.1 Where it departs from §4
+
+- **Features implemented** (`Hello::ours`, version 1 each): `windows`,
+  `input`, `frames.pixels`, `frames.shared`, `cursor`, `pointer.grab`,
+  `latency`, `movesize`, `appid`, `popup.intent`, `monitor`. Not built, and
+  their messages not defined: `icons`, `cloak` (the CLOAKED field is),
+  `snap`, `tray`, `exec`, `ime`, `power`, and DesktopLost, DisplayLayout,
+  MoveSizeEnterExit (§6.5 explains why the V2 handshake is not used).
+- **Strings** are UTF-8 with a u32 length, as §4.1 says; the probe channel,
+  which shares the reader, changed with it.
+- **STYLE** is masked as RAIL masks it plus WS_CAPTION, WS_EX_TRANSPARENT
+  and WS_EX_CONTEXTHELP, which the host's chrome reads; WS_EX_TOOLWINDOW is
+  forced on for a window the shell refuses a taskbar button
+  (`WindowFields::Style`). §4.2 had said unmasked.
+- **GEOMETRY.picture** is a rectangle relative to the frame, not an inset:
+  a trimmed capture (a WinUI menu's transparent margin) changes its size as
+  well as its corner. It is the frame itself unless the capture trims.
+- **TASKBAR** follows Explorer where it and rdpshell disagree: a window
+  that asks with WS_EX_APPWINDOW gets a button even as a tool window, and a
+  WS_EX_NOACTIVATE window that does not ask gets none. `kInSwitchers` is
+  set with the button: only the shell's own view refuses one without the
+  other, and that refusal clears both.
+- **ZOrder** names the marker as `{0,0}`.
+- **Activate** with enabled 0 names the window the host's focus left, and
+  is carried out only while that window (or its owner's family) is still
+  the guest's foreground (§6.6).
+- **SysParam**: guest to host, `WorkArea` (SPI_SETWORKAREA, at connect and
+  on WM_SETTINGCHANGE/WM_DISPLAYCHANGE); host to guest, `DragFullWindows`
+  on, once after the hello. Drop shadows are per window, in FRAME.
+- **Frames**: `WindowPixels{window}` (host to guest, id 27) sends one
+  window back to pixels; `FrameRoute{shared}` said again after a GPU
+  device reset makes every ring afresh and forgets the per-window
+  fallbacks. `SurfaceLost{window}` stops a window's frames without its
+  mirror going; the guest captures it again a second later by itself.
+- **Cursor ids** are the handle and a hash of the pictures together; the
+  guest keeps the last 64 sent, the host the last 128 shown, both least
+  recently shown first.
+- **PointerButton** numbers Back 3 and Forward 4 (XBUTTON1/2).
+  `PointerLeave` moves the guest's cursor to a corner of the work area no
+  reported window covers, when it is still over the window left.
+
+### 7.2 The guest half
+
+| Class | What it is |
+|---|---|
+| `WindowWatch` | The window thread: an STA apartment, rdpshell's eight WinEvent ranges out of context, the event queue, and the host's window commands, all in order |
+| `WindowTracker` | HWND → record, admission, serials, WindowNew/WindowChanged/WindowGone, the 256 cap, the full sync between SyncBegin and SyncEnd, a 1 s sweep for windows destroyed or re-owned or restyled without an event |
+| `WindowReader` | One window's fields as RAIL reads them (§2.1–§2.4), the admission rule (§6.2) |
+| `ZOrderReport` | ZOrder with rdpshell's readiness rule and 10–320 ms backoff |
+| `MoveSizeReport` | Event 0x19 and 0x0B → MinMax, MoveSizeStart, MoveSizeEnd; LocalMoveSizeIgnoreList |
+| `MarkerWindow` | The marker, and every foreground change, with the hotkey trick |
+| `AppIdResolver`, `ShellViews` | IApplicationResolver; IsShellManagedWindow and the application view's ShowInSwitchers |
+| `WindowDirectory` | WindowId ↔ HWND and the trimmed picture, shared with the input and capture threads |
+| `DesktopSettings` | Drop shadows and the work area, kept current |
+| `window_commands` | SysCommand, SysMenu and WindowMove, posted or asynchronous |
+
+Deleted: `LaunchScope`, `ApplicationProcess`, `ForegroundHandOff`,
+`WindowListWatcher`, `WindowEnumerator`, `WindowDragWatcher` (and its
+WM_CANCELMODE), `WindowFocus` (and the guards in `give_to`),
+`WindowMover`, `WindowResizer`, `WorkArea`, `ShadowSetting`. A window's
+frame is read again 60 ms after a location event: DWM moves the extended
+frame bounds after the event.
+
+### 7.3 The host half
+
+`GuestLink` speaks the hello and keeps the window registry
+(`GuestWindows`, records of `GuestWindow`), applying deltas and sweeping on
+SyncEnd. `MirrorScope` is the per-application filter (§6.3);
+`ActivationSync` is §5.5's rule (Activate only for focus without a press;
+enabled 0 after focus has left every mirror for 100 ms; a reported active
+window followed only above the marker and while a mirror has focus).
+`MirrorSession` opens a mirror for every belonging window that is not
+hidden, hides it while Windows hides the window, and finishes 5 s after
+its last window went. `MirrorWindow` sends SysCommand for close,
+maximise, restore and minimise, SysMenu from a right press on its bars,
+WindowMove for a resize, and takes Windows' move/size loop over with the
+compositor (§6.5); it re-applies its transient parent when a restyle
+remakes its surface, and the session places a remade surface again. In
+`--managed` mode the host prints `APP <aumid>` for each AppUserModelID it
+claims.
+
+### 7.4 Checked
+
+On the guest of §6 (build 26200), with both halves of wire 6:
+
+- the guest half alone, against a scripted host: deltas, the sync, the
+  marker taking the foreground and handing it back, SC_MAXIMIZE,
+  SC_RESTORE, SC_MINIMIZE, WindowMove, SC_CLOSE (Notepad hid, its owned
+  popup's owner became the hidden owner, both went), MoveSizeStart kinds
+  9 and 2 from a caption and a border press, a WinUI popup owned by
+  Notepad;
+- the conformance harness (docs/conformance.md), before it was ruled too
+  slow to run: 264 of 270 scenarios of the window, relationship, input,
+  placement and matrix sets passed. Of the six failures, `input-resize`
+  and `place-moved-by-guest` fail the same way on wire 5;
+  `mx-shell-013`…`016` (tool window with WS_EX_APPWINDOW) led to the
+  TASKBAR rule in §7.1 and were not run again; `mx-render-003-noredirection`
+  (a WS_EX_NOREDIRECTIONBITMAP window's mirror never asked to be active)
+  is open;
+- the managed host against an application launched through LSW's agent:
+  `APP` and `READY` reported, the mirror opened and activated the window in
+  the guest, and the session ended 5 s after the application was killed.
+
+Not checked live: a compositor other than KWin, Back and Forward, and the
+compositor taking over a drag (no pointer could be driven on the host
+desktop from here).
 
 ## Appendix: binaries, symbols, method
 

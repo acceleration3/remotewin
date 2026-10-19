@@ -96,18 +96,20 @@ layered window's alpha applied. Windows that leave a margin round
 themselves (menus, tooltips) still go as pixels: what they draw is found
 by looking at their pixels.
 
-Anything that goes wrong - no socket, another GPU, a texture the driver
-cannot share or name, a surface the device will not export, an import
-EGL refuses, the connection lost - sends the guest back to pixels for the
-rest of the session, with one line saying why. The conformance harness
-never opens the socket, and judges the pixel path.
+A failure of the connection to the GPU device - no socket, another GPU,
+the connection lost - sends the guest back to pixels for every window,
+with one line saying why. One window the host cannot draw this way (an
+import EGL refuses, a surface the device will not export) goes to pixels
+alone (`WindowPixels`), and a reset GPU device has every ring made afresh.
+The conformance harness never opens the socket, and judges the pixel path.
 
 ## Both halves from one build
 
-Each end's first message is a `WireHello` naming its wire version
-(`proto/wire_hello.hpp`), and nothing else is read until the other's
-matches. A host given a guest half of another build logs both versions and
-exits with status 3; a guest half given another host logs them and ends.
+Each end's first message is a `Hello` (`proto/hello.hpp`) naming its build
+and the features it speaks; a feature is active at the lower version when
+both list it, and every message belongs to one (docs/rail-model.md §4,
+§7). A peer that does not speak `windows` is refused: the host logs what
+it lacks and exits with status 3, a guest half logs it and ends.
 
 ## Building
 
