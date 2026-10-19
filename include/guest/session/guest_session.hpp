@@ -13,6 +13,7 @@
 #include "guest/cursor/cursor_decoder.hpp"
 #include "guest/cursor/cursor_watcher.hpp"
 #include "guest/cursor/sent_cursors.hpp"
+#include "guest/input/input_target.hpp"
 #include "guest/input/pointer_grab_watcher.hpp"
 #include "guest/session/outbox.hpp"
 #include "guest/windows/window_directory.hpp"
@@ -138,6 +139,8 @@ private:
     CursorDecoder cursor_pictures_;
     SentCursors sent_cursors_;
     PointerGrabWatcher grabs_;
+    // The reader's: the window a point is for, raised where it is not on top.
+    InputTarget target_;
     FrameDecoder decoder_;
     WindowDirectory directory_;
     FeatureSet features_;

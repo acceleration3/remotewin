@@ -9,8 +9,8 @@ void RelativePointer::Release::operator()(zwp_relative_pointer_v1* relative) con
     zwp_relative_pointer_v1_destroy(relative);
 }
 
-RelativePointer::RelativePointer(zwp_relative_pointer_manager_v1* manager, wl_pointer* pointer, QObject* parent)
-    : QObject(parent), relative_(zwp_relative_pointer_manager_v1_get_relative_pointer(manager, pointer)) {
+RelativePointer::RelativePointer(zwp_relative_pointer_manager_v1* manager, wl_pointer* pointer, Moved moved)
+    : moved_(std::move(moved)), relative_(zwp_relative_pointer_manager_v1_get_relative_pointer(manager, pointer)) {
     static constexpr zwp_relative_pointer_v1_listener kListener{&RelativePointer::motion};
     zwp_relative_pointer_v1_add_listener(relative_.get(), &kListener, this);
 }
@@ -21,8 +21,8 @@ void RelativePointer::motion(void* self, zwp_relative_pointer_v1* /*relative*/, 
                              std::uint32_t /*time_low*/, std::int32_t dx, std::int32_t dy,
                              std::int32_t dx_unaccelerated, std::int32_t dy_unaccelerated) {
     auto* pointer = static_cast<RelativePointer*>(self);
-    Q_EMIT pointer->moved(QPointF(wl_fixed_to_double(dx_unaccelerated), wl_fixed_to_double(dy_unaccelerated)));
-    Q_EMIT pointer->moved_by(QPointF(wl_fixed_to_double(dx), wl_fixed_to_double(dy)));
+    pointer->moved_(PointF{wl_fixed_to_double(dx_unaccelerated), wl_fixed_to_double(dy_unaccelerated)},
+                    PointF{wl_fixed_to_double(dx), wl_fixed_to_double(dy)});
 }
 
 }  // namespace rwin::host

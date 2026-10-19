@@ -211,6 +211,9 @@ void GuestSession::handle(MessageReader& message) {
             monitor_ = std::make_unique<MonitorCapture>(graphics_, frames_);
             monitor_tiles_ = ChangedTiles{};
             return;
+        case MessageId::PopupDismiss:
+            if (const std::optional<WindowId> popup = WindowId::read(message)) windows_->dismiss(*popup);
+            return;
         case MessageId::SysCommand:
             if (const std::optional<SysCommand> command = SysCommand::read(message)) windows_->ask(*command);
             return;
@@ -328,6 +331,7 @@ bool GuestSession::handle_input(MessageReader& message) {
                 move_pointer_on_screen(at->x, at->y);
                 grabs_.put_at(at->x, at->y);
                 if (at->button != PointerAt::kNoButton) {
+                    target_.pressed(at->pressed);
                     press_pointer_on_screen(at->x, at->y, static_cast<PointerButton::Button>(at->button), at->pressed);
                 }
             }
@@ -369,6 +373,7 @@ void GuestSession::move_pointer(const PointerMove& move) {
     // What became of the last move is weighed before this one is made: the
     // evidence of mouse look (PointerGrabRule).
     report_grab();
+    target_.raise(surface->handle(), surface->screen_x(move.x + into_x), surface->screen_y(move.y + into_y), false);
     if (const auto at = move_pointer_to(*surface, move.x + into_x, move.y + into_y)) {
         grabs_.put_at(at->first, at->second);
     }
@@ -388,7 +393,12 @@ void GuestSession::press_button(const PointerButton& press) {
     std::int32_t into_x = 0;
     std::int32_t into_y = 0;
     const std::optional<WindowSurface> surface = surface_of(press.window, into_x, into_y);
-    if (surface.has_value()) rwin::guest::press_pointer(*surface, press.x + into_x, press.y + into_y, press.button, press.pressed);
+    if (!surface.has_value()) return;
+    if (press.pressed) {
+        target_.raise(surface->handle(), surface->screen_x(press.x + into_x), surface->screen_y(press.y + into_y), true);
+    }
+    target_.pressed(press.pressed);
+    rwin::guest::press_pointer(*surface, press.x + into_x, press.y + into_y, press.button, press.pressed);
 }
 
 void GuestSession::turn_wheel_over(const PointerWheel& wheel) {
@@ -405,7 +415,9 @@ void GuestSession::turn_wheel_over(const PointerWheel& wheel) {
     std::int32_t into_x = 0;
     std::int32_t into_y = 0;
     const std::optional<WindowSurface> surface = surface_of(wheel.window, into_x, into_y);
-    if (surface.has_value()) turn_wheel(*surface, wheel.x + into_x, wheel.y + into_y, wheel.dx, wheel.dy);
+    if (!surface.has_value()) return;
+    target_.raise(surface->handle(), surface->screen_x(wheel.x + into_x), surface->screen_y(wheel.y + into_y), true);
+    turn_wheel(*surface, wheel.x + into_x, wheel.y + into_y, wheel.dx, wheel.dy);
 }
 
 // The pointer left the mirror, and the guest's cursor is still over the

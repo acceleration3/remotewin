@@ -1,7 +1,5 @@
 #pragma once
 
-#include <Qt>
-
 #include <cstdint>
 
 namespace rwin::host {
@@ -14,7 +12,7 @@ class GuestWindow;
 // Nothing here decides what a window is. Each question is one word — a
 // style bit, a class bit, a DWM attribute, the z-band — and the one thing
 // Windows says that word does; the mirror then does that same thing with
-// what Qt and the compositor offer. A window the guest gave WS_THICKFRAME
+// what the compositor offers. A window the guest gave WS_THICKFRAME
 // can be resized, one given WS_EX_TOPMOST stays on top, one given
 // WS_DISABLED takes no input. Two answers are Windows' own, worked out in
 // the guest and carried as they came: whether the taskbar gives the window
@@ -172,14 +170,6 @@ public:
 
     // Whether the taskbar gives it a button of its own.
     [[nodiscard]] constexpr bool in_taskbar() const noexcept { return words_.taskbar_button; }
-
-    // The Qt hints those behaviours are, for whichever surface kind the
-    // mirror is. Frameless always: the guest's own chrome is in the
-    // pixels, and a second title bar would be absurd.
-    [[nodiscard]] Qt::WindowFlags hints() const noexcept;
-
-    // The kind of toplevel: one with a taskbar entry, or one without.
-    [[nodiscard]] Qt::WindowType toplevel_type() const noexcept;
 
 private:
     [[nodiscard]] constexpr bool has(std::uint32_t bit) const noexcept {

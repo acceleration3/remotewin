@@ -1,9 +1,10 @@
 #pragma once
 
-#include <QRegion>
+#include "host/geometry/box.hpp"
 
 #include <memory>
 
+struct wl_compositor;
 struct wl_pointer;
 struct wl_surface;
 struct zwp_confined_pointer_v1;
@@ -16,9 +17,9 @@ namespace rwin::host {
 // ClipCursor, on this side. Asked once (oneshot), like LockedPointer.
 class ConfinedPointer {
 public:
-    // ``region`` in the surface's logical units; empty is the whole surface.
-    ConfinedPointer(zwp_pointer_constraints_v1* constraints, wl_surface* surface, wl_pointer* pointer,
-                    const QRegion& region);
+    // ``area`` in the surface's logical units.
+    ConfinedPointer(wl_compositor* compositor, zwp_pointer_constraints_v1* constraints, wl_surface* surface,
+                    wl_pointer* pointer, const Box& area);
 
     ConfinedPointer(const ConfinedPointer&) = delete;
     ConfinedPointer& operator=(const ConfinedPointer&) = delete;

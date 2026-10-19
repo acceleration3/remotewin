@@ -32,6 +32,7 @@ add_library(rwin_proto STATIC
     sys_param.cpp
     system_cursor.cpp
     window_fields.cpp
+    window_icon.cpp
     window_id.cpp
     window_move.cpp
     z_order.cpp

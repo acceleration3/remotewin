@@ -61,7 +61,7 @@ rwin::host::FrameStamps frame(std::int64_t composed, std::int64_t received, std:
     rwin::host::FrameStamps stamps;
     stamps.note(Stage::Composed, composed);
     stamps.note(Stage::Received, received);
-    stamps.note(Stage::Drawn, drawn);
+    stamps.note(Stage::Acquired, drawn);
     return stamps;
 }
 
@@ -77,7 +77,7 @@ void each_stage_is_timed_from_the_one_before() {
     const auto received = meter.to(Stage::Received);
     check(received.has_value() && received->median == 3'000'000, "received is timed from composed");
     check(received.has_value() && received->p95 == 30'000'000, "the slow frames are the 95th percentile");
-    const auto drawn = meter.to(Stage::Drawn);
+    const auto drawn = meter.to(Stage::Acquired);
     check(drawn.has_value() && drawn->median == 1'000'000, "drawn is timed from received, the stage seen before it");
     check(!meter.to(Stage::Copied).has_value(), "a stage never seen has no spread");
     const auto whole = meter.whole();
@@ -123,7 +123,7 @@ public:
             if (timed_ && light - blank_ > lock_.ahead() + kHostPeriod / 2) ++seen.late;
             rwin::host::FrameStamps stamps;
             stamps.note(Stage::Composed, blank_);
-            stamps.note(Stage::Swapped, blank_ + pipeline);
+            stamps.note(Stage::Committed, blank_ + pipeline);
             stamps.note(Stage::Presented, light);
             stamps.refresh_ns = kHostPeriod;
             const auto timing = lock_.take(stamps, light);
@@ -177,7 +177,7 @@ void a_fast_output_gives_the_guest_the_whole_number_of_its_periods_nearest_sixty
     for (int frame = 0; frame < 200 && !timing.has_value(); ++frame) {
         rwin::host::FrameStamps stamps;
         stamps.note(Stage::Composed, 1'000'000'000 + frame * 16'000'000);
-        stamps.note(Stage::Swapped, 1'004'000'000 + frame * 16'000'000);
+        stamps.note(Stage::Committed, 1'004'000'000 + frame * 16'000'000);
         stamps.note(Stage::Presented, 1'008'000'000 + frame * 16'000'000);
         stamps.refresh_ns = 2'777'778;   // 360 Hz
         timing = lock.take(stamps, stamps.of(Stage::Presented));
@@ -188,7 +188,7 @@ void a_fast_output_gives_the_guest_the_whole_number_of_its_periods_nearest_sixty
 rwin::host::FrameStamps shown(std::int64_t composed, std::int64_t pipeline) {
     rwin::host::FrameStamps stamps;
     stamps.note(Stage::Composed, composed);
-    stamps.note(Stage::Swapped, composed + pipeline);
+    stamps.note(Stage::Committed, composed + pipeline);
     stamps.note(Stage::Presented, light_for(composed + pipeline));
     stamps.refresh_ns = kHostPeriod;
     return stamps;

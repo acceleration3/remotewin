@@ -1,20 +1,20 @@
 #pragma once
 
-#include <QObject>
-#include <QTimer>
+#include "host/loop/event_loop.hpp"
+#include "host/loop/signal.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace rwin::host {
 
 // The steps of an animated cursor, each shown for its own time, round and
 // round: what Windows does with an .ani cursor's rate chunk.
-class CursorAnimation : public QObject {
-    Q_OBJECT
+class CursorAnimation {
 public:
-    explicit CursorAnimation(QObject* parent = nullptr);
+    explicit CursorAnimation(EventLoop& loop);
 
     // From the first step; fewer than two is a still cursor, and stops it.
     void play(std::vector<int> delays_ms);
@@ -24,8 +24,7 @@ public:
     // count goes up.
     [[nodiscard]] std::uint64_t steps_taken() const noexcept { return taken_; }
 
-Q_SIGNALS:
-    void stepped(std::size_t step);
+    Signal<std::size_t> stepped;
 
 private:
     void advance();
@@ -33,7 +32,7 @@ private:
     // A step of no time is shown for a jiffy, as Windows shows it.
     static constexpr int kShortestMs = 16;
 
-    QTimer timer_;
+    std::unique_ptr<EventLoop::Timer> timer_;
     std::vector<int> delays_;
     std::size_t step_ = 0;
     std::uint64_t taken_ = 0;

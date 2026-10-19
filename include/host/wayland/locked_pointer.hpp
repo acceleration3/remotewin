@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QPointF>
+#include "host/geometry/point_f.hpp"
 
 #include <memory>
 #include <optional>
@@ -24,7 +24,7 @@ public:
     // ``hint`` is where the pointer is to be when it is let go, in the
     // surface's logical units.
     LockedPointer(zwp_pointer_constraints_v1* constraints, wl_surface* surface, wl_pointer* pointer,
-                  std::optional<QPointF> hint);
+                  std::optional<PointF> hint);
 
     LockedPointer(const LockedPointer&) = delete;
     LockedPointer& operator=(const LockedPointer&) = delete;

@@ -16,11 +16,9 @@ void EmulatedCursor::remember(const CursorPicture& picture) {
     look.frames.reserve(picture.frames.size());
     for (const CursorPicture::Frame& frame : picture.frames) {
         if (frame.width == 0 || frame.height == 0) continue;
-        // Copied: the bytes belong to the message.
-        const QImage image(frame.bgra.data(), static_cast<int>(frame.width), static_cast<int>(frame.height),
-                           static_cast<int>(frame.width * 4), QImage::Format_ARGB32);
-        look.frames.push_back(CursorLook::Frame{image.copy(),
-                                                QPoint(static_cast<int>(frame.hotspot_x), static_cast<int>(frame.hotspot_y)),
+        look.frames.push_back(CursorLook::Frame{Size{static_cast<int>(frame.width), static_cast<int>(frame.height)},
+                                                frame.bgra,
+                                                Point{static_cast<int>(frame.hotspot_x), static_cast<int>(frame.hotspot_y)},
                                                 static_cast<int>(frame.delay_ms)});
     }
     if (look.frames.empty()) {
@@ -28,7 +26,7 @@ void EmulatedCursor::remember(const CursorPicture& picture) {
         return;
     }
     RWIN_DEBUG("cursor", "remembered {:#x} {} ({} picture(s), {}x{})", picture.id, name_of(picture.system),
-               look.frames.size(), look.frames.front().image.width(), look.frames.front().image.height());
+               look.frames.size(), look.frames.front().size.width, look.frames.front().size.height);
     if (!looks_.contains(picture.id)) make_room();
     looks_.insert_or_assign(picture.id, Kept{std::move(look), ++shows_});
 }

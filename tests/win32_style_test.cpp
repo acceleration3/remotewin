@@ -29,11 +29,8 @@ void plain_words_are_a_plain_toplevel() {
     check(style.closable(), "no CS_NOCLOSE: closable");
     check(!style.topmost(), "desktop band, no WS_EX_TOPMOST: not topmost");
     check(!style.in_taskbar(), "no taskbar button said: off the taskbar");
-    check(style.toplevel_type() == Qt::Tool, "off the taskbar is Qt::Tool");
     check(style.opacity() == 255, "no LWA_ALPHA: opaque");
     check(!style.color_keyed(), "no LWA_COLORKEY: not keyed");
-    check((style.hints() & Qt::FramelessWindowHint) != 0, "always frameless");
-    check((style.hints() & Qt::NoDropShadowWindowHint) != 0, "unshaded: no shadow");
 }
 
 void window_style_bits() {
@@ -47,27 +44,22 @@ void window_style_bits() {
           "WS_DISABLED: no input");
     const Win32Style boxes{Words{.style = Win32Style::kWsSysMenu | Win32Style::kWsMinimizeBox
                                           | Win32Style::kWsMaximizeBox}};
-    check((boxes.hints() & Qt::WindowCloseButtonHint) != 0, "WS_SYSMENU: close button");
-    check((boxes.hints() & Qt::WindowMinimizeButtonHint) != 0, "WS_MINIMIZEBOX");
-    check((boxes.hints() & Qt::WindowMaximizeButtonHint) != 0, "WS_MAXIMIZEBOX");
+    check(boxes.has_system_menu() && boxes.has_minimize_box() && boxes.has_maximize_box(),
+          "WS_SYSMENU, WS_MINIMIZEBOX, WS_MAXIMIZEBOX");
 }
 
 void extended_style_bits() {
     const Win32Style pinned{Words{.extended_style = Win32Style::kWsExTopMost}};
     check(pinned.topmost(), "WS_EX_TOPMOST: topmost");
-    check((pinned.hints() & Qt::WindowStaysOnTopHint) != 0, "topmost stays on top");
 
     const Win32Style quiet{Words{.extended_style = Win32Style::kWsExNoActivate}};
     check(!quiet.activates(), "WS_EX_NOACTIVATE: does not activate");
-    check((quiet.hints() & Qt::WindowDoesNotAcceptFocus) != 0, "and takes no focus");
     check(Win32Style{Words{.extended_style = Win32Style::kWsExToolWindow}}.tool_window(),
           "WS_EX_TOOLWINDOW: a tool window");
 
     const Win32Style see_through{Words{.extended_style = Win32Style::kWsExLayered
                                                           | Win32Style::kWsExTransparent}};
     check(see_through.click_through(), "WS_EX_LAYERED | WS_EX_TRANSPARENT: click-through");
-    check((see_through.hints() & Qt::WindowTransparentForInput) != 0,
-          "click-through is transparent for input");
     check(!Win32Style{Words{.extended_style = Win32Style::kWsExTransparent}}.click_through(),
           "WS_EX_TRANSPARENT alone is a paint order, not a hole");
 }
@@ -76,7 +68,6 @@ void extended_style_bits() {
 void the_taskbar_is_the_guests_to_say() {
     const Win32Style button{Words{.owned = true, .taskbar_button = true}};
     check(button.in_taskbar(), "a button said: on the taskbar, owned or not");
-    check(button.toplevel_type() == Qt::Window, "a taskbar window is Qt::Window");
     check(!Win32Style{Words{.extended_style = Win32Style::kWsExAppWindow}}.in_taskbar(),
           "WS_EX_APPWINDOW without the guest's button is no button");
 }
@@ -86,7 +77,6 @@ void class_style_bits() {
     const Win32Style stuck{Words{.style = Win32Style::kWsSysMenu,
                                  .class_style = Win32Style::kCsNoClose}};
     check(!stuck.closable(), "CS_NOCLOSE: not closable");
-    check((stuck.hints() & Qt::WindowCloseButtonHint) == 0, "and no close button");
 }
 
 // Windows' answer, from the guest: CS_DROPSHADOW, DWM's frame and the
@@ -94,7 +84,6 @@ void class_style_bits() {
 void shading_is_the_guests_to_say() {
     const Win32Style shaded{Words{.shaded = true}};
     check(shaded.casts_shadow(), "shaded: casts a shadow");
-    check((shaded.hints() & Qt::NoDropShadowWindowHint) == 0, "shaded keeps its shadow");
     check(!Win32Style{Words{.class_style = Win32Style::kCsDropShadow}}.casts_shadow(),
           "CS_DROPSHADOW the guest did not shade is unshaded");
 }

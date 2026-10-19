@@ -20,6 +20,12 @@ void post_sys_command(void* window, SysCommand::Command command);
 // WM_POPUPSYSTEMMENU at a point of the screen.
 void post_system_menu(void* window, std::int32_t screen_x, std::int32_t screen_y);
 
+// A popup the host's compositor dismissed, closed: a menu as a press
+// outside it closes one - WM_CANCELMODE to the window whose menu it is,
+// which is EndMenu for a thread this one cannot call it on - a combo box's
+// list by the box, anything else by an Escape.
+void dismiss_popup(void* window);
+
 // The window's frame put at ``frame``, without activating it or changing
 // its place in the z-order. A new size is held to ``room``, the work area,
 // the window moved in by as much as it would hang past it. A minimised or

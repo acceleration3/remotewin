@@ -2,8 +2,6 @@
 
 #include "proto/slot_free.hpp"
 
-#include <QPointer>
-
 namespace rwin::host {
 
 class GuestLink;
@@ -13,7 +11,9 @@ class GuestLink;
 // or the frame dropped unseen - the slot is the guest's again (SlotFree).
 class SlotLease {
 public:
-    SlotLease(GuestLink& link, SlotFree slot) : link_(&link), slot_(slot) {}
+    // ``link`` outlives every lease: mirrors, whose buffers hold leases, go
+    // before the link does.
+    SlotLease(GuestLink& link, SlotFree slot) : link_(link), slot_(slot) {}
     ~SlotLease();
 
     SlotLease(const SlotLease&) = delete;
@@ -22,7 +22,7 @@ public:
     SlotLease& operator=(SlotLease&&) = delete;
 
 private:
-    QPointer<GuestLink> link_;
+    GuestLink& link_;
     SlotFree slot_;
 };
 

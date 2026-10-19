@@ -9,8 +9,8 @@
 
 namespace rwin::host {
 
-CursorPlayer::CursorPlayer(QObject* parent) : QObject(parent) {
-    connect(&animation_, &CursorAnimation::stepped, this, &CursorPlayer::step_to);
+CursorPlayer::CursorPlayer(EventLoop& loop) : animation_(loop) {
+    animation_.stepped.connect([this](std::size_t step) { step_to(step); });
 }
 
 void CursorPlayer::remember(const CursorPicture& picture) { looks_.remember(picture); }
@@ -32,12 +32,12 @@ void CursorPlayer::show(const GuestCursor& cursor) {
         for (const CursorLook::Frame& frame : look->frames) delays.push_back(frame.delay_ms);
     }
     animation_.play(std::move(delays));
-    Q_EMIT worn(look, 0);
+    worn(look, 0);
 }
 
 void CursorPlayer::step_to(std::size_t step) {
     const CursorLook* shown = look();
-    if (shown != nullptr) Q_EMIT worn(shown, step);
+    if (shown != nullptr) worn(shown, step);
 }
 
 }  // namespace rwin::host

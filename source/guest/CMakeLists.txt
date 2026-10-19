@@ -19,6 +19,7 @@ add_executable(remotewin-guest
     cursor/sent_cursors.cpp
     input/key_input.cpp
     input/pointer_grab_watcher.cpp
+    input/input_target.cpp
     input/pointer_input.cpp
     session/guest_session.cpp
     session/multimedia_thread.cpp
@@ -35,6 +36,8 @@ add_executable(remotewin-guest
     windows/window_directory.cpp
     windows/window_reader.cpp
     windows/window_surface.cpp
+    windows/popup_intent.cpp
+    windows/window_icons.cpp
     windows/window_tracker.cpp
     windows/window_watch.cpp
     windows/z_order_report.cpp

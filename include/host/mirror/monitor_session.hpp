@@ -1,59 +1,95 @@
 #pragma once
 
 #include "host/cursor/cursor_player.hpp"
-#include "host/cursor/pixel_cursor.hpp"
-#include "host/mirror/monitor_window.hpp"
-#include "host/wayland/pointer_globals.hpp"
-#include "proto/window_id.hpp"
+#include "host/geometry/size.hpp"
+#include "host/input/held_keys.hpp"
+#include "host/loop/signal.hpp"
+#include "host/wayland/backdrop.hpp"
+#include "host/wayland/mirror_surface.hpp"
+#include "host/wayland/surface_input.hpp"
+#include "host/wayland/surface_kit.hpp"
+#include "host/wayland/toplevel_configure.hpp"
+#include "host/wayland/toplevel_events.hpp"
+#include "host/wayland/toplevel_role.hpp"
 
-#include <QImage>
-#include <QObject>
-#include <QPoint>
-#include <QSize>
-#include <QString>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
 namespace rwin::host {
 
+class Activation;
 class GuestLink;
 class SharedFrameFeed;
-struct SharedFrame;
+struct CursorLook;
 
-// The guest's whole primary monitor, mirrored as one window for as long as
-// that window is open (WatchMonitor): its pixels, its cursor, and the
-// pointer and keys put back into it.
+// The guest's whole primary monitor, mirrored as one window of this desktop
+// for as long as that window is open (WatchMonitor): its pixels, its
+// cursor, and the pointer and keys put back into it.
 //
-// The pointer is not held, locked or confined here whatever the guest's
-// applications ask: the window is the user's way into the whole guest, and
-// it lets go of the pointer as any window does.
-class MonitorSession : public QObject {
-    Q_OBJECT
+// An ordinary window - decorated by the compositor, resizable, its own
+// title - and the guest's screen does not follow its size: the guest's
+// screen is what it is. The picture is one guest pixel to one device pixel
+// when the window is that size, and fitted - scaled, over black bars -
+// when it is not, so the whole screen is always in view. The pointer is
+// not held, locked or confined here whatever the guest's applications ask:
+// the window is the user's way into the whole guest.
+class MonitorSession final : public SurfaceInput, public ToplevelEvents {
 public:
-    // ``frames`` hands on the frames that stay on the GPU, when it was
-    // opened: the window draws those as well as frames of pixels.
-    MonitorSession(GuestLink& link, SharedFrameFeed& frames, const QString& title,
-                   QObject* parent = nullptr, QWidget* view_parent = nullptr);
-    // A child view for an embedded preview; otherwise an ordinary desktop window.
-    [[nodiscard]] MonitorWindow& view() noexcept { return window_; }
-    void raise();
+    MonitorSession(const SurfaceKit& kit, GuestLink& link, SharedFrameFeed& frames, Activation& activation,
+                   const std::string& title, const std::string& app_id, std::string token);
+    ~MonitorSession();
 
-Q_SIGNALS:
+    MonitorSession(const MonitorSession&) = delete;
+    MonitorSession& operator=(const MonitorSession&) = delete;
+    MonitorSession(MonitorSession&&) = delete;
+    MonitorSession& operator=(MonitorSession&&) = delete;
+
+    void raise(const std::string& token);
+
     // The window was closed, or the guest can no longer capture its monitor.
-    void finished();
-    void ready();
+    Signal<> finished;
+    Signal<> ready;
 
 private:
-    void show_frame(WindowId window, const QImage& pixels);
-    void show_patch(WindowId window, QSize picture, QPoint at, const QImage& pixels);
-    void show_shared_frame(WindowId window, const SharedFrame& frame);
-    void surface_lost(WindowId window);
-    void note_ready();
+    // SurfaceInput.
+    void pointer_entered(PointF at) override;
+    void pointer_moved(PointF at) override;
+    void pointer_left() override;
+    void button(std::uint32_t code, bool pressed) override;
+    void wheel(Wheel turned) override;
+    void keyboard_entered() override;
+    void keyboard_left() override;
+    void key(const KeyPress& press) override;
+    // ToplevelEvents.
+    void configured(const ToplevelConfigure& configure) override;
+    void close_requested() override;
 
+    void show_pixels(const PixelsView& pixels);
+    void patch(Size picture, Point at, const PixelsView& pixels);
+    void fit();
+    void wear_cursor();
+    void note_ready();
+    [[nodiscard]] std::optional<Point> picture_point(PointF at) const;
+
+    SurfaceKit kit_;
     GuestLink& link_;
-    // Bound before anything that sizes the cursor.
-    PointerGlobals pointer_globals_;
-    PixelCursor pixel_cursor_{pointer_globals_};
+    SharedFrameFeed& frames_;
+    Activation& activation_;
     CursorPlayer cursor_;
-    MonitorWindow window_;
+    MirrorSurface surface_;
+    ToplevelRole toplevel_;
+    std::unique_ptr<Backdrop> backdrop_;
+    ToplevelConfigure configure_;
+    HeldKeys held_keys_;
+    // The guest's screen as last whole, kept here: a patch is part of it.
+    std::vector<std::uint8_t> canvas_;
+    Size canvas_size_;
+    std::optional<PointF> pointer_;
+    std::string token_;
     bool ready_ = false;
 };
 

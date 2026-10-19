@@ -1475,10 +1475,11 @@ FocusWindow, and no code path for a version-5 peer.
 
 ### 7.1 Where it departs from §4
 
-- **Features implemented** (`Hello::ours`, version 1 each): `windows`,
-  `input`, `frames.pixels`, `frames.shared`, `cursor`, `pointer.grab`,
-  `latency`, `movesize`, `appid`, `popup.intent`, `monitor`. Not built, and
-  their messages not defined: `icons`, `cloak` (the CLOAKED field is),
+- **Features implemented** (`Hello::ours`, version 1 each unless said):
+  `windows`, `input`, `frames.pixels`, `frames.shared`, `cursor`,
+  `pointer.grab`, `latency`, `movesize`, `appid`, `popup.intent` (version
+  2, §7.5), `monitor`, `icons` (§7.5). Not built, and their messages not
+  defined: `cloak` (the CLOAKED field is),
   `snap`, `tray`, `exec`, `ime`, `power`, and DesktopLost, DisplayLayout,
   MoveSizeEnterExit (§6.5 explains why the V2 handshake is not used).
 - **Strings** are UTF-8 with a u32 length, as §4.1 says; the probe channel,
@@ -1500,7 +1501,8 @@ FocusWindow, and no code path for a version-5 peer.
   is carried out only while that window (or its owner's family) is still
   the guest's foreground (§6.6).
 - **SysParam**: guest to host, `WorkArea` (SPI_SETWORKAREA, at connect and
-  on WM_SETTINGCHANGE/WM_DISPLAYCHANGE); host to guest, `DragFullWindows`
+  on WM_SETTINGCHANGE/WM_DISPLAYCHANGE) and `Monitor` (0xF001, the primary
+  monitor's whole rectangle, with it: what a fullscreen window covers); host to guest, `DragFullWindows`
   on, once after the hello. Drop shadows are per window, in FRAME.
 - **Frames**: `WindowPixels{window}` (host to guest, id 27) sends one
   window back to pixels; `FrameRoute{shared}` said again after a GPU
@@ -1552,7 +1554,8 @@ WindowMove for a resize, and takes Windows' move/size loop over with the
 compositor (§6.5); it re-applies its transient parent when a restyle
 remakes its surface, and the session places a remade surface again. In
 `--managed` mode the host prints `APP <aumid>` for each AppUserModelID it
-claims.
+claims. (That was the Qt host; §7.6 is the one that replaced it, with
+`WindowMirror` in `MirrorWindow`'s place.)
 
 ### 7.4 Checked
 
@@ -1579,6 +1582,96 @@ On the guest of §6 (build 26200), with both halves of wire 6:
 Not checked live: a compositor other than KWin, Back and Forward, and the
 compositor taking over a drag (no pointer could be driven on the host
 desktop from here).
+
+### 7.5 Popups by intent, their dismissal, and icons
+
+Built on branch `native`, with the host of §7.6.
+
+**POPUP** (field 12, feature `popup.intent` version 2) says what a popup
+was meant to do, not only where Windows put it:
+
+| Part | Type | Meaning |
+|---|---|---|
+| anchor | WindowId | the window it opens from (none for a window that is no popup) |
+| kind | u8 | 0 exact, 1 menu bar menu, 2 submenu, 3 combo list, 4 context menu, 5 tooltip |
+| placed | Rect | where Windows put it, on the anchor window's picture |
+| opens_from | Rect | the rectangle it opens from, on the anchor's picture: the menu bar item, the parent item, the combo box, the cursor at the press (1x1), or `placed`'s corner for exact |
+| edge | u8 | xdg_positioner's anchor edge (its numbering) |
+| gravity | u8 | xdg_positioner's gravity |
+| adjust | u8 | xdg_positioner's constraint adjustment (slide x 1, slide y 2, flip x 4, flip y 8) |
+
+`PopupIntent` reads it as the popup is shown: a `#32768` menu whose owner
+has a menu bar item open (`GetMenuBarInfo`) is a menu bar menu; one opened
+from another menu's item (the other `#32768` of the thread, `MN_GETHMENU`,
+`GetMenuItemRect` of its highlighted item) a submenu, flipped to open left
+in a right-to-left window; a `ComboLBox` belongs to the combo box
+`GetComboBoxInfo` names it for; any other menu is a context menu at the
+cursor as it was when the popup was shown; `tooltips_class32` is a tooltip
+below the cursor; anything else is exact. The host turns it into an
+`xdg_positioner` (review-and-redesign.md, Part 4).
+
+**PopupDismiss** (host to guest, id 28, a WindowId): the compositor
+dismissed a grabbing popup, and the guest closes it as its kind closes:
+WM_CANCELMODE to the owner of a `#32768` menu (which ends the whole menu
+loop), CB_SHOWDROPDOWN FALSE to a combo box, Escape otherwise.
+
+**WindowIcon** (guest to host, id 71, feature `icons`): a window id, the
+size (0 small, 1 big), width and height (each at most 256) and straight
+BGRA rows. The guest asks WM_GETICON (ICON_BIG, then ICON_SMALL2, with a
+50 ms SendMessageTimeout), then the class's icons, when a window is
+admitted and on each sweep, and sends a picture only when the handle
+changed; the host keeps the last per window for a mirror made later.
+
+**Input targets.** Every pointer message names its window already (§4.4).
+The guest now raises that window to the top of its own z-order without
+activating it (`SetWindowPos(HWND_TOP, SWP_NOACTIVATE)`) when another
+window is at the point - before a press or a wheel turn, and asynchronously
+before a move, never while a button is held - so input injected at the
+window's own point reaches it whatever covers it in the guest.
+
+### 7.6 The host half, native
+
+The Qt host of §7.3 is replaced by a libwayland-client one with no Qt
+(review-and-redesign.md, Part 4, for the protocols and the decisions).
+What does what:
+
+| Class | What it is |
+|---|---|
+| `PollLoop`, `EventLoop`, `Signal`, `Deferred` | the loop over the Wayland fd, sockets and timers; callbacks |
+| `GuestLink`, `GuestWindows`, `ParentControl` | the wire, the window registry, `--managed`'s stdin and stdout (`RAISE [token]`) |
+| `Globals`, `WaylandDisplay`, `Seat`, `PointerEvents`, `KeyboardEvents` | the registry, required and optional globals; pointer frames, value120, xkb keys and repeat |
+| `MirrorSurface`, `ToplevelRole`, `PopupRole`, `SubsurfaceRole`, `Backdrop` | one surface and its role; the picture one to one, letterboxed when the compositor sizes it otherwise |
+| `DmabufBuffers`, `ShmBuffers`, `CompositorGpu`, `DrmSyncDevice`, `SyncTimeline`, `PresentationTimes` | frames on the GPU or as pixels, explicit sync, presentation stamps |
+| `PointerCursor`, `CursorPlayer` | cursor shapes, or a picture on a cursor surface, animated |
+| `PointerGrabber`, `LockedPointer`, `ConfinedPointer`, `RelativePointer`, `ShortcutsInhibitor` | the guest's pointer grab, and Ctrl+Alt+G out of it |
+| `Activation`, `ToplevelIcon` | xdg-activation tokens; the window's icon |
+| `MirrorRole`, `PopupLayout`, `PopupStack` | what a window becomes; a popup's positioner; popups torn down top first |
+| `WindowMirror`, `MirrorSession`, `ActivationSync`, `MonitorSession` | one guest window; one application; focus; the `--desktop` mirror |
+| `BusConnection`, `KWinScript`, `KWinPlacement`, `PlacementSync`, `WindowReport` | sd-bus; first placement through KWin; `Describe` |
+
+### 7.7 Checked, native
+
+On KDE Plasma 6 (Wayland, fractional scale 1.2, AMD), against a test
+program in the guest, both halves of this branch:
+
+- frames as dma-bufs with explicit sync on the compositor's render node,
+  no GL ("the compositor composes on 0000:03:00.0", "explicit sync on
+  /dev/dri/renderD128", "frames stay on the GPU"); and as `wl_shm` pixels
+  without the export socket;
+- a menu bar menu (kind 1, anchor on the item, edge 6 gravity 8 adjust
+  0xb), a submenu (kind 2, edge 7, adjust 0x7) whose item was chosen in
+  the guest, a combo list (kind 3), a context menu at the cursor (kind 4,
+  adjust 0xf), a tooltip below the cursor (kind 5, offset 10,17), all
+  placed by the compositor;
+- the compositor dismissing a grabbing menu, and the guest closing it;
+- icons (40x40 for the test program) worn through
+  `xdg_toplevel_icon_v1`; first placement through KWin at the guest's
+  position; SIGTERM unloading the KWin scripts.
+
+Not checked live: keyboard input (it would have taken the user's focus),
+cursor shapes, pointer lock and confinement, fullscreen, move/resize from
+the guest, the `--desktop` mirror, activation by token, and compositors
+other than KWin.
 
 ## Appendix: binaries, symbols, method
 

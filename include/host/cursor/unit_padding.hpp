@@ -1,7 +1,7 @@
 #pragma once
 
-#include <QPoint>
-#include <QSize>
+#include "host/geometry/point.hpp"
+#include "host/geometry/size.hpp"
 
 #include <optional>
 
@@ -14,16 +14,16 @@ namespace rwin::host {
 // pointer is.
 struct UnitPadding {
     // Where the picture goes in the padded one.
-    QPoint offset;
-    QSize padded;
-    QSize logical;
-    QPoint logical_hotspot;
+    Point offset;
+    Size padded;
+    Size logical;
+    Point logical_hotspot;
 
     [[nodiscard]] bool operator==(const UnitPadding&) const noexcept = default;
 };
 
 // Nothing for a ratio that is no small fraction (a compositor's are 120ths
 // at most) or whose numerator would pad a cursor by more than it is wide.
-[[nodiscard]] std::optional<UnitPadding> unit_padding(QSize picture, QPoint hotspot, double ratio);
+[[nodiscard]] std::optional<UnitPadding> unit_padding(Size picture, Point hotspot, double ratio);
 
 }  // namespace rwin::host

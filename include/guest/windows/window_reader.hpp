@@ -1,7 +1,9 @@
 #pragma once
 
+#include "guest/windows/popup_intent.hpp"
 #include "proto/window_fields.hpp"
 
+#include <optional>
 #include <string>
 
 namespace rwin::guest {
@@ -28,8 +30,8 @@ public:
         // invisible, empty, or minimised to nothing.
         void* owner = nullptr;
         bool hidden_owner = false;
-        // For a window nothing owns that Windows places against another:
-        // that window, with POPUP.rect already relative to its frame.
+        // The window it opens against (PopupIntent), with POPUP's
+        // rectangles already relative to that window's frame.
         void* anchor = nullptr;
     };
 
@@ -50,7 +52,9 @@ public:
     // and keeps out of the switchers - nor one of remotewin's.
     [[nodiscard]] bool admissible(void* window) const;
 
-    [[nodiscard]] Reading read(void* window, WindowId id) const;
+    // ``opened_at``: where the pointer was when the window was first seen
+    // shown, which a context menu or a tooltip opened from.
+    [[nodiscard]] Reading read(void* window, WindowId id, std::optional<PopupIntent::Point> opened_at) const;
     [[nodiscard]] WindowFields::AppId read_app_id(void* window) const;
 
 private:
@@ -61,7 +65,6 @@ private:
     [[nodiscard]] std::uint8_t taskbar_of(void* window, std::uint32_t extended, bool& refused) const;
     [[nodiscard]] std::uint8_t frame_of(void* window, std::uint32_t style, std::uint32_t class_style) const;
     void read_owner(void* window, Reading& into) const;
-    void read_anchor(void* window, Reading& into) const;
 
     const WindowDirectory& directory_;
     const AppIdResolver& app_ids_;

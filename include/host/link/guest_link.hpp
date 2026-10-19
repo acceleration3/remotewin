@@ -1,6 +1,13 @@
 #pragma once
 
+#include "host/export/unique_fd.hpp"
+#include "host/geometry/box.hpp"
+#include "host/geometry/point.hpp"
+#include "host/geometry/size.hpp"
 #include "host/link/guest_windows.hpp"
+#include "host/link/pixels_view.hpp"
+#include "host/loop/event_loop.hpp"
+#include "host/loop/signal.hpp"
 #include "proto/clock_echo.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/feature_set.hpp"
@@ -14,18 +21,13 @@
 #include "proto/rect.hpp"
 #include "proto/slot_ring.hpp"
 #include "proto/sys_command.hpp"
+#include "proto/window_icon.hpp"
 #include "proto/window_id.hpp"
 #include "proto/z_order.hpp"
 
-#include <QHostAddress>
-#include <QImage>
-#include <QObject>
-#include <QPoint>
-#include <QRect>
-#include <QSize>
-#include <QString>
-
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -37,9 +39,6 @@ struct PointerWheel;
 struct SlotFree;
 struct SysParam;
 }  // namespace rwin
-
-class QTcpServer;
-class QTcpSocket;
 
 namespace rwin::host {
 
@@ -58,13 +57,22 @@ namespace rwin::host {
 // What the guest says about its windows is kept here (windows()), because
 // a change to a window is read over what was known of it; the signals say
 // what changed once it is kept.
-class GuestLink : public QObject {
-    Q_OBJECT
+class GuestLink {
 public:
-    explicit GuestLink(QObject* parent = nullptr);
+    explicit GuestLink(EventLoop& loop);
+    ~GuestLink();
 
-    [[nodiscard]] bool listen(std::uint16_t port, const QHostAddress& address = QHostAddress::AnyIPv4);
-    [[nodiscard]] std::uint16_t port() const;
+    GuestLink(const GuestLink&) = delete;
+    GuestLink& operator=(const GuestLink&) = delete;
+    GuestLink(GuestLink&&) = delete;
+    GuestLink& operator=(GuestLink&&) = delete;
+
+    // On the loopback only, or on every IPv4 address: QEMU's user
+    // networking forwards a guest's connection to 10.0.2.2 onto the
+    // host's IPv4 loopback, and a v6-only bind refuses it with no hint as
+    // to why. Port 0 is any free one (port()).
+    [[nodiscard]] bool listen(std::uint16_t port, bool loopback_only);
+    [[nodiscard]] std::uint16_t port() const noexcept { return port_; }
 
     [[nodiscard]] const FeatureSet& features() const noexcept { return features_; }
     [[nodiscard]] const GuestWindows& windows() const noexcept { return windows_; }
@@ -80,8 +88,9 @@ public:
     // The window's frame, on the guest's screen.
     void send_window_move(WindowId window, const Rect& frame);
     void send_sys_param(const SysParam& param);
-    void send_pointer_move(WindowId window, std::int32_t x, std::int32_t y);
-    void send_pointer_button(WindowId window, std::int32_t x, std::int32_t y, std::uint8_t button, bool pressed);
+    // At a point of ``window``'s picture.
+    void send_pointer_move(WindowId window, Point at);
+    void send_pointer_button(WindowId window, Point at, std::uint8_t button, bool pressed);
     // The held pointer's own motion, in counts.
     void send_pointer_delta(WindowId window, std::int32_t dx, std::int32_t dy);
     void send_pointer_wheel(const PointerWheel& wheel);
@@ -90,6 +99,8 @@ public:
     // the guest's.
     void send_pointer_leave(WindowId window);
     void send_key(const KeyStroke& stroke);
+    // The compositor dismissed the popup that mirrors ``window``.
+    void send_popup_dismiss(WindowId window);
     // Whether the guest is to keep its frames on the GPU (FrameRoute).
     void send_route(bool shared_surfaces);
     // One window's frames as pixels from here on (WindowPixels).
@@ -98,55 +109,61 @@ public:
     // This side's clock now, for the guest to answer (ClockEcho).
     void send_clock_probe();
 
-Q_SIGNALS:
     // A guest dialled in and speaks what a mirror needs (features()).
-    void connected();
+    Signal<> connected;
     // A guest dialled in that speaks too little of this wire, or another
-    // wire: ``reason`` says what it lacks. It has been disconnected.
-    void mismatched(const QString& reason);
-    void disconnected();
+    // wire: the reason says what it lacks. It has been disconnected.
+    Signal<const std::string&> mismatched;
+    Signal<> disconnected;
 
     // The guest is saying every window afresh; at its end, every window it
     // did not say again has been said gone.
-    void sync_began();
-    void sync_ended();
-    void window_new(rwin::WindowId window);
-    // ``mask``: the WindowFields that changed.
-    void window_changed(rwin::WindowId window, quint32 mask);
-    void window_gone(rwin::WindowId window);
-    void restacked(const rwin::ZOrder& order);
+    Signal<> sync_began;
+    Signal<> sync_ended;
+    Signal<WindowId> window_new;
+    // The WindowFields that changed.
+    Signal<WindowId, std::uint32_t> window_changed;
+    Signal<WindowId> window_gone;
+    Signal<const ZOrder&> restacked;
     // Windows' size limits for the window changed (GuestWindow::limits).
-    void window_limited(rwin::WindowId window);
-    void move_size_started(const rwin::MoveSizeStart& start);
-    void move_size_ended(const rwin::MoveSizeEnd& end);
-    // The work area of the guest's primary monitor, in its pixels.
-    void work_area_changed(QRect area);
+    Signal<WindowId> window_limited;
+    Signal<const MoveSizeStart&> move_size_started;
+    Signal<const MoveSizeEnd&> move_size_ended;
+    Signal<const WindowIcon&> window_icon;
+    // The work area of the guest's primary monitor, and the monitor whole,
+    // in its pixels.
+    Signal<const Box&> work_area_changed;
+    Signal<const Box&> monitor_changed;
 
-    void frame_arrived(rwin::WindowId window, const QImage& pixels);
-    // A part of ``window``'s picture, which is ``picture`` large, changed:
-    // ``pixels`` now go at ``at``.
-    void frame_patched(rwin::WindowId window, QSize picture, QPoint at, const QImage& pixels);
+    Signal<WindowId, const PixelsView&> frame_arrived;
+    // A part of ``window``'s picture, which is the size given, changed:
+    // the pixels now go at the point given.
+    Signal<WindowId, Size, Point, const PixelsView&> frame_patched;
+    // Every part of one FramePatch has been told: the picture is whole.
+    Signal<WindowId> frame_patches_done;
     // A window's frames are copied into this ring of shared surfaces from
     // here on (SlotRing).
-    void ring_announced(const rwin::SlotRing& ring);
+    Signal<const SlotRing&> ring_announced;
     // A window's newest frame is in a slot of its ring (FrameInSlot).
-    void frame_in_slot(const rwin::FrameInSlot& frame);
+    Signal<const FrameInSlot&> frame_in_slot;
     // A window's frames stopped, the window still there; they come again
     // by themselves.
-    void surface_lost(rwin::WindowId window);
-    void cursor_pictured(const rwin::CursorPicture& picture);
-    void cursor_changed(const rwin::GuestCursor& cursor);
-    void pointer_grabbed(const rwin::PointerGrab& grab);
-    // The guest answered a clock probe; ``heard`` is this side's clock
+    Signal<WindowId> surface_lost;
+    Signal<const CursorPicture&> cursor_pictured;
+    Signal<const GuestCursor&> cursor_changed;
+    Signal<const PointerGrab&> pointer_grabbed;
+    // The guest answered a clock probe; the second is this side's clock
     // (now_ns) as the answer was read.
-    void clock_echoed(const rwin::ClockEcho& echo, qint64 heard);
+    Signal<const ClockEcho&, std::int64_t> clock_echoed;
 
 private:
     void accept_guest();
-    void read_available();
+    void read_guest();
+    void write_pending();
+    void drop_guest();
     // The guest's first message, which has to be its hello.
     void greet(const std::uint8_t* payload, std::size_t size);
-    void refuse(const QString& reason);
+    void refuse(const std::string& reason);
     void dispatch(const std::uint8_t* payload, std::size_t size);
     // Each true when the message was one of its kind.
     [[nodiscard]] bool dispatch_windows(MessageReader& message);
@@ -159,13 +176,22 @@ private:
     void read_frame(MessageReader& message);
     void read_patch(MessageReader& message);
     void read_sys_param(MessageReader& message);
+    void read_icon(MessageReader& message);
     // Sent when ``feature`` is active on the link; otherwise said in the
     // log and dropped.
-    void send(std::string_view feature, std::vector<std::uint8_t> bytes);
+    void send(std::string_view feature, const std::vector<std::uint8_t>& bytes);
     void send_window(std::string_view feature, MessageId id, WindowId window);
+    void write_now(const std::uint8_t* bytes, std::size_t size);
 
-    QTcpServer* server_;
-    QTcpSocket* guest_ = nullptr;
+    EventLoop& loop_;
+    UniqueFd listener_;
+    std::unique_ptr<EventLoop::Watch> listening_;
+    std::uint16_t port_ = 0;
+    UniqueFd guest_;
+    std::unique_ptr<EventLoop::Watch> guest_watch_;
+    // What the socket would not take yet, in order.
+    std::vector<std::uint8_t> unsent_;
+    std::vector<std::uint8_t> chunk_;
     FrameDecoder decoder_;
     FeatureSet features_;
     GuestWindows windows_;

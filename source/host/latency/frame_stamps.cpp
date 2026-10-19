@@ -33,10 +33,10 @@ const char* to_string(FrameStamps::Stage stage) noexcept {
             return "ready";
         case FrameStamps::Stage::Shown:
             return "shown";
-        case FrameStamps::Stage::Drawn:
-            return "drawn";
-        case FrameStamps::Stage::Swapped:
-            return "swapped";
+        case FrameStamps::Stage::Acquired:
+            return "acquired";
+        case FrameStamps::Stage::Committed:
+            return "committed";
         case FrameStamps::Stage::Presented:
             return "presented";
     }

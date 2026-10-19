@@ -1,10 +1,9 @@
 #include "host/input/key_translator.hpp"
 #include "host/input/scan_code.hpp"
-
-#include <QGuiApplication>
-#include <QKeyEvent>
+#include "host/wayland/key_press.hpp"
 
 #include <linux/input-event-codes.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -20,11 +19,11 @@ void check(bool condition, const char* what) {
 }
 
 using rwin::KeyStroke;
-using rwin::host::KeyTranslator;
+using rwin::host::KeyPress;
+using rwin::host::stroke_for;
 using rwin::host::windows_scan_code;
 
 constexpr rwin::WindowId kWindow{0x500c4, 1};
-constexpr std::uint32_t kXkb = 8;
 
 // Every key a PC keyboard has where Windows' set 1 puts it; spot checks
 // of each part of the table, by the key's name on both sides.
@@ -67,53 +66,39 @@ void the_scan_code_table() {
           "codes no key has are no key");
 }
 
-QKeyEvent pressed(int key, std::uint32_t evdev, const QString& text,
-                  Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
-    return QKeyEvent(QEvent::KeyPress, key, modifiers, evdev == 0 ? 0 : evdev + kXkb, 0, 0, text);
+KeyPress pressed(std::uint32_t code, std::uint32_t keysym, std::uint32_t character, bool down = true) {
+    return KeyPress{code, down, false, keysym, character};
 }
 
 void a_physical_key_is_sent_as_its_place() {
-    const KeyTranslator wayland{u"wayland"};
-    const auto letter = wayland.stroke_for(pressed(Qt::Key_A, KEY_A, QStringLiteral("a")), kWindow, true);
-    check(letter.has_value() && letter->scan_code == 0x1E && letter->character == 0
-              && letter->virtual_key == 0 && letter->pressed && letter->window == kWindow,
+    const auto letter = stroke_for(pressed(KEY_A, XKB_KEY_a, 'a'), kWindow);
+    check(letter.has_value() && letter->scan_code == 0x1E && letter->character == 0 && letter->virtual_key == 0
+              && letter->pressed && letter->window == kWindow,
           "a letter is its scan code, not its character");
-    const auto shifted = wayland.stroke_for(
-        pressed(Qt::Key_Exclam, KEY_1, QStringLiteral("!"), Qt::ShiftModifier), kWindow, true);
+    const auto shifted = stroke_for(pressed(KEY_1, XKB_KEY_exclam, '!'), kWindow);
     check(shifted.has_value() && shifted->scan_code == 0x02 && shifted->character == 0,
           "Shift+1 is the 1 key: the guest's layout makes the '!'");
-    const auto shift = wayland.stroke_for(pressed(Qt::Key_Shift, KEY_RIGHTSHIFT, QString()), kWindow, false);
+    const auto shift = stroke_for(pressed(KEY_RIGHTSHIFT, XKB_KEY_Shift_R, 0, false), kWindow);
     check(shift.has_value() && shift->scan_code == 0x36 && !shift->pressed,
           "a modifier alone is a key too, and its release is one");
-    check(wayland.native_scan_code(KEY_A) == KEY_A + kXkb, "an XKB keycode is evdev's plus 8");
-    check(KeyTranslator{u"xcb"}.native_scan_code(KEY_A) == KEY_A + kXkb, "on X11 as well");
 }
 
-void text_without_a_key_is_sent_as_text() {
-    const KeyTranslator elsewhere{u"offscreen"};
-    check(elsewhere.native_scan_code(KEY_A) == 0, "a platform without XKB codes has none");
-    const auto typed = elsewhere.stroke_for(pressed(Qt::Key_A, 0, QStringLiteral("a")), kWindow, true);
-    check(typed.has_value() && typed->scan_code == 0 && typed->character == 'a',
-          "with no scan code, a letter is its character");
-    const auto arrow = elsewhere.stroke_for(pressed(Qt::Key_Left, 0, QString()), kWindow, true);
-    check(arrow.has_value() && arrow->virtual_key == 0x25 && arrow->character == 0,
-          "and a key with no character its virtual key");
-    check(!elsewhere.stroke_for(pressed(Qt::Key_F35, 0, QString()), kWindow, true).has_value(),
-          "a key with neither is nothing to send");
-    const KeyTranslator wayland{u"wayland"};
-    const auto composed = wayland.stroke_for(pressed(Qt::Key_unknown, 0, QStringLiteral("é")), kWindow, true);
+void a_key_without_a_scan_code_is_its_name_or_its_text() {
+    const auto pause = stroke_for(pressed(KEY_PAUSE, XKB_KEY_Pause, 0), kWindow);
+    check(pause.has_value() && pause->scan_code == 0 && pause->virtual_key == 0x13,
+          "Pause, whose E1 sequence no keystroke carries, is VK_PAUSE");
+    const auto composed = stroke_for(pressed(KEY_RESERVED, XKB_KEY_eacute, 0xE9), kWindow);
     check(composed.has_value() && composed->scan_code == 0 && composed->character == 0xE9,
-          "on Wayland, text with no keycode behind it is its character");
+          "text with no key behind it is its character");
+    check(!stroke_for(pressed(KEY_RESERVED, 0, 0), kWindow).has_value(), "a key with neither is nothing to send");
 }
 
 }  // namespace
 
-int main(int argc, char** argv) {
-    qputenv("QT_QPA_PLATFORM", "offscreen");
-    QGuiApplication app{argc, argv};
+int main() {
     the_scan_code_table();
     a_physical_key_is_sent_as_its_place();
-    text_without_a_key_is_sent_as_text();
+    a_key_without_a_scan_code_is_its_name_or_its_text();
 
     if (failures != 0) {
         std::printf("%d check(s) failed\n", failures);

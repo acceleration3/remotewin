@@ -1,5 +1,6 @@
 #pragma once
 
+#include "guest/windows/window_icons.hpp"
 #include "guest/windows/window_reader.hpp"
 #include "proto/sync_begin.hpp"
 #include "proto/window_fields.hpp"
@@ -37,8 +38,8 @@ public:
     // not a desktop.
     static constexpr std::size_t kMostWindows = 256;
 
-    // ``features`` decides which fields are said (APPID, POPUP) and whether
-    // a window's MinMax follows its WindowNew.
+    // ``features`` decides which fields are said (APPID, POPUP), whether a
+    // window's MinMax follows its WindowNew, and whether icons are sent.
     WindowTracker(WindowDirectory& directory, const WindowReader& reader, Outbox& outbox,
                   const FeatureSet& features);
 
@@ -65,6 +66,9 @@ private:
         WindowFields sent;
         // GW_OWNER as last read, before RAIL's normalising.
         void* owner = nullptr;
+        // Where the pointer was when the window was last seen to be shown:
+        // a context menu or a tooltip opened there (PopupIntent).
+        std::optional<PopupIntent::Point> opened_at;
     };
 
     // Admit at most this deep through owners and anchors that are not
@@ -76,6 +80,7 @@ private:
     [[nodiscard]] WindowFields fields_of(void* window, Record& record, const WindowFields::AppId& app);
     [[nodiscard]] WindowId owner_id(const WindowReader::Reading& reading);
     void send_new(const Record& record);
+    void look_at_icon(void* window, const Record& record);
 
     WindowDirectory& directory_;
     const WindowReader& reader_;
@@ -83,6 +88,8 @@ private:
     std::uint32_t fields_;
     bool says_min_max_;
     std::unordered_map<void*, Record> records_;
+    // None when the host does not speak icons.
+    std::optional<WindowIcons> icons_;
     std::uint32_t serial_ = 0;
     int admitting_ = 0;
     bool full_ = false;

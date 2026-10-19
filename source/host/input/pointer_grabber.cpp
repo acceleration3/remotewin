@@ -1,16 +1,14 @@
 #include "host/input/pointer_grabber.hpp"
 
+#include "host/geometry/box.hpp"
 #include "host/link/guest_link.hpp"
-#include "host/mirror/mirror_window.hpp"
-#include "host/wayland/confined_pointer.hpp"
-#include "host/wayland/locked_pointer.hpp"
-#include "host/wayland/pointer_globals.hpp"
-#include "host/wayland/relative_pointer.hpp"
+#include "host/mirror/window_mirror.hpp"
+#include "host/wayland/globals.hpp"
+#include "host/wayland/key_press.hpp"
+#include "host/wayland/seat.hpp"
 #include "logging/logger.hpp"
 
-#include <QEvent>
-#include <QKeyEvent>
-#include <QWindow>
+#include <linux/input-event-codes.h>
 
 #include <cmath>
 
@@ -20,114 +18,91 @@ namespace {
 
 const char* kind_name(PointerGrab::Kind kind) {
     switch (kind) {
-        case PointerGrab::Kind::Confine:
-            return "confine";
-        case PointerGrab::Kind::Lock:
-            return "lock";
-        case PointerGrab::Kind::None:
-            break;
+        case PointerGrab::Kind::Confine: return "confine";
+        case PointerGrab::Kind::Lock: return "lock";
+        case PointerGrab::Kind::None: break;
     }
     return "none";
 }
 
 }  // namespace
 
-PointerGrabber::PointerGrabber(GuestLink& link, const PointerGlobals& globals, QObject* parent)
-    : QObject(parent), link_(link), globals_(globals) {}
+PointerGrabber::PointerGrabber(GuestLink& link, const Globals& globals, Seat& seat)
+    : link_(link), globals_(globals), seat_(seat) {}
 
 PointerGrabber::~PointerGrabber() = default;
 
-bool PointerGrabber::wanted() const noexcept {
-    return grab_.kind != PointerGrab::Kind::None && !mirror_.isNull();
-}
+bool PointerGrabber::wanted() const noexcept { return grab_.kind != PointerGrab::Kind::None && mirror_ != nullptr; }
 
-bool PointerGrabber::locking() const noexcept { return lock_ != nullptr && !escaped_; }
-
-bool PointerGrabber::held() const noexcept { return locking() && lock_->engaged(); }
-
-void PointerGrabber::motion_while_held(QPointF unaccelerated) {
-    if (held()) take_motion(unaccelerated);
-}
-
-void PointerGrabber::follow(const PointerGrab& grab, MirrorWindow* mirror, QPoint guest_origin) {
-    if (grab == grab_ && mirror == mirror_.data() && guest_origin == origin_) return;
+void PointerGrabber::follow(const PointerGrab& grab, WindowMirror* mirror, Point guest_origin) {
+    if (grab == grab_ && mirror == mirror_ && guest_origin == origin_) return;
     RWIN_INFO("pointer", "guest wants {} for {}", kind_name(grab.kind), grab.window);
     const bool new_pattern = grab.kind != grab_.kind || grab.window != grab_.window;
     let_go();
     grab_ = grab;
     origin_ = guest_origin;
-    if (new_pattern) escaped_ = false;
-    watch(mirror);
-    if (wanted() && !escaped_) hold();
-}
-
-void PointerGrabber::watch(MirrorWindow* mirror) {
-    if (mirror_.data() == mirror) return;
-    if (!mirror_.isNull()) mirror_->removeEventFilter(this);
     mirror_ = mirror;
-    if (mirror != nullptr) mirror->installEventFilter(this);
+    if (new_pattern) escaped_ = false;
+    if (wanted() && !escaped_ && mirror_->surface() != nullptr && seat_.keyboard_focus() == mirror_->surface()) hold();
 }
 
-// The part of the guest's clip the mirror shows, rounded inward to whole
-// logical units: a pointer kept inside it is over guest pixels inside the
-// clip.
-QRegion PointerGrabber::confine_region() const {
-    const QRect picture(origin_, mirror_->guest_picture_size());
-    const QRect clip = QRect(grab_.area.left, grab_.area.top, grab_.area.width(), grab_.area.height()) & picture;
-    if (clip.isEmpty()) return {};
-    const QRect inside = mirror_->logical_rect_inside(clip.translated(-origin_));
-    return inside.isEmpty() ? QRegion() : QRegion(inside);
+void PointerGrabber::forget(const WindowMirror& mirror) {
+    if (&mirror != mirror_) return;
+    let_go();
+    mirror_ = nullptr;
 }
 
-std::optional<QPointF> PointerGrabber::lock_hint() const {
-    const QPoint at = QPoint(grab_.x, grab_.y) - origin_;
-    if (!QRect(QPoint(0, 0), mirror_->guest_picture_size()).contains(at)) return std::nullopt;
-    return mirror_->logical_point_of(at);
+void PointerGrabber::keyboard_moved() {
+    notice_compositor_let_go();
+    if (mirror_ == nullptr) return;
+    const bool focused = mirror_->surface() != nullptr && seat_.keyboard_focus() == mirror_->surface();
+    if (!focused) {
+        let_go();
+    } else if (wanted() && !escaped_ && lock_ == nullptr && confinement_ == nullptr) {
+        hold();
+    }
 }
 
 void PointerGrabber::hold() {
-    wl_surface* surface = PointerGlobals::surface_of(mirror_->windowHandle());
-    wl_pointer* pointer = PointerGlobals::pointer();
-    unavailable_ = why_unavailable(surface, pointer);
-    if (!unavailable_.isEmpty()) {
-        RWIN_INFO("pointer", "cannot {} the pointer on {}: {}", kind_name(grab_.kind), grab_.window,
-                  unavailable_.toStdString());
+    wl_surface* surface = mirror_->surface();
+    wl_pointer* pointer = seat_.pointer();
+    const char* unavailable = surface == nullptr || pointer == nullptr       ? "no surface or pointer"
+                              : globals_.pointer_constraints() == nullptr ? "the compositor has no pointer constraints"
+                              : grab_.kind == PointerGrab::Kind::Lock && globals_.relative_pointer() == nullptr
+                                  ? "the compositor has no relative pointer"
+                                  : nullptr;
+    if (unavailable != nullptr) {
+        RWIN_INFO("pointer", "cannot {} the pointer on {}: {}", kind_name(grab_.kind), grab_.window, unavailable);
         return;
     }
-    ++requests_;
-    lost_focus_ = false;
+    const ViewMapping view = mirror_->mapping();
     if (grab_.kind == PointerGrab::Kind::Confine) {
-        confinement_ = std::make_unique<ConfinedPointer>(globals_.constraints(), surface, pointer, asked_region_);
-    } else {
-        lock_ = std::make_unique<LockedPointer>(globals_.constraints(), surface, pointer, asked_hint_);
-        if (relative_ == nullptr) {
-            relative_ = std::make_unique<RelativePointer>(globals_.relative(), pointer);
-            connect(relative_.get(), &RelativePointer::moved, this, &PointerGrabber::motion_while_held);
+        // The part of the guest's clip the mirror shows, rounded inward: a
+        // pointer kept inside it is over guest pixels inside the clip.
+        const Box clip{grab_.area.left - origin_.x, grab_.area.top - origin_.y, grab_.area.width(), grab_.area.height()};
+        const Box inside = view.logical_box_inside(clip.intersected(Box::of(Point{}, mirror_->picture_size())));
+        if (inside.empty()) {
+            RWIN_INFO("pointer", "the clip of {} covers no whole unit of its mirror", grab_.window);
+            return;
         }
+        confinement_ = std::make_unique<ConfinedPointer>(globals_.compositor(), globals_.pointer_constraints(),
+                                                         surface, pointer, inside);
+        RWIN_INFO("pointer", "asked the compositor to confine the pointer on {} ({},{} {}x{})", grab_.window,
+                  inside.x, inside.y, inside.width, inside.height);
+        return;
     }
-    const QRect box = asked_region_.boundingRect();
-    RWIN_INFO("pointer", "asked the compositor to {} the pointer on {} ({},{} {}x{})", kind_name(grab_.kind),
-              grab_.window, box.x(), box.y(), box.width(), box.height());
-}
-
-// Also settles what would be asked. A lock without the relative pointer
-// would hold the pointer still and pass on nothing - a camera that cannot
-// turn - where positions at least move it until the pointer reaches the
-// edge of the desktop. An empty region is the whole surface to the
-// compositor, which is not the clip.
-QString PointerGrabber::why_unavailable(wl_surface* surface, wl_pointer* pointer) {
-    asked_region_ = QRegion();
-    asked_hint_.reset();
-    if (surface == nullptr || pointer == nullptr) return QStringLiteral("no Wayland surface or pointer");
-    if (globals_.constraints() == nullptr) return QStringLiteral("the compositor has no pointer constraints");
-    if (grab_.kind == PointerGrab::Kind::Lock) {
-        if (globals_.relative() == nullptr) return QStringLiteral("the compositor has no relative pointer");
-        asked_hint_ = lock_hint();
-        return {};
+    std::optional<PointF> hint;
+    const Point at{grab_.x - origin_.x, grab_.y - origin_.y};
+    if (Box::of(Point{}, mirror_->picture_size()).contains(at)) hint = view.logical_point(at);
+    lock_ = std::make_unique<LockedPointer>(globals_.pointer_constraints(), surface, pointer, hint);
+    if (relative_ == nullptr) {
+        relative_ = std::make_unique<RelativePointer>(globals_.relative_pointer(), pointer,
+                                                      [this](PointF unaccelerated, PointF) { moved(unaccelerated); });
     }
-    asked_region_ = confine_region();
-    if (asked_region_.isEmpty()) return QStringLiteral("the clip covers no whole unit of the mirror");
-    return {};
+    if (globals_.shortcuts_inhibit() != nullptr) {
+        inhibitor_ = std::make_unique<ShortcutsInhibitor>(globals_.shortcuts_inhibit(), surface, seat_.seat());
+    }
+    RWIN_INFO("pointer", "asked the compositor to lock the pointer on {}", grab_.window);
 }
 
 void PointerGrabber::let_go() {
@@ -135,7 +110,9 @@ void PointerGrabber::let_go() {
     RWIN_INFO("pointer", "let go of the pointer on {}", grab_.window);
     lock_.reset();
     confinement_.reset();
-    owed_ = QPointF();
+    inhibitor_.reset();
+    owed_x_ = 0.0;
+    owed_y_ = 0.0;
 }
 
 // The compositor ended a hold of its own accord while the mirror still has
@@ -144,84 +121,46 @@ void PointerGrabber::notice_compositor_let_go() {
     const bool over = (lock_ != nullptr && lock_->over()) || (confinement_ != nullptr && confinement_->over());
     if (!over) return;
     let_go();
-    if (!mirror_.isNull() && mirror_->isActiveWindow()) escaped_ = true;
+    if (mirror_ != nullptr && mirror_->surface() != nullptr && seat_.keyboard_focus() == mirror_->surface()) {
+        escaped_ = true;
+    }
 }
 
-void PointerGrabber::take_motion(QPointF unaccelerated) {
+void PointerGrabber::moved(PointF unaccelerated) {
     notice_compositor_let_go();
-    if (!locking()) return;
-    owed_ += unaccelerated;
-    const int dx = static_cast<int>(std::trunc(owed_.x()));
-    const int dy = static_cast<int>(std::trunc(owed_.y()));
+    if (lock_ == nullptr || !lock_->engaged() || escaped_) return;
+    owed_x_ += unaccelerated.x;
+    owed_y_ += unaccelerated.y;
+    const int dx = static_cast<int>(std::trunc(owed_x_));
+    const int dy = static_cast<int>(std::trunc(owed_y_));
     if (dx == 0 && dy == 0) return;
-    owed_ -= QPointF(dx, dy);
-    ++motions_;
-    moved_ += QPoint(dx, dy);
+    owed_x_ -= dx;
+    owed_y_ -= dy;
     link_.send_pointer_delta(grab_.window, dx, dy);
 }
 
-bool PointerGrabber::escape_pressed(const QEvent* event) const {
-    const auto* key = static_cast<const QKeyEvent*>(event);
-    const Qt::KeyboardModifiers chord = Qt::ControlModifier | Qt::AltModifier;
-    return key->key() == Qt::Key_G && (key->modifiers() & chord) == chord;
-}
-
-bool PointerGrabber::eventFilter(QObject* watched, QEvent* event) {
-    if (watched != mirror_.data()) return QObject::eventFilter(watched, event);
-    notice_compositor_let_go();
-    switch (event->type()) {
-        case QEvent::WindowDeactivate:
-            lost_focus_ = lock_ != nullptr || confinement_ != nullptr;
-            let_go();
-            break;
-        case QEvent::WindowActivate:
-            if (wanted() && !escaped_ && lock_ == nullptr && confinement_ == nullptr) hold();
-            break;
-        case QEvent::WinIdChange:
-            let_go();
-            if (wanted() && !escaped_ && mirror_->windowHandle() != nullptr) hold();
-            break;
-        case QEvent::KeyPress:
-            if (!wanted() || !escape_pressed(event)) break;
-            RWIN_INFO("pointer", "escape pressed: the pointer is let go until the mirror is clicked");
-            escaped_ = true;
-            swallow_escape_release_ = true;
-            let_go();
-            return true;
-        case QEvent::KeyRelease:
-            if (!swallow_escape_release_ || static_cast<QKeyEvent*>(event)->key() != Qt::Key_G) break;
-            swallow_escape_release_ = false;
-            return true;
-        case QEvent::MouseButtonPress:
-            if (!escaped_ || !wanted()) break;
-            escaped_ = false;
-            hold();
-            return true;
-        case QEvent::MouseMove:
-            return held();
-        default:
-            break;
+bool PointerGrabber::intercept(const KeyPress& press) {
+    if (swallow_escape_release_ && !press.pressed && press.code == KEY_G) {
+        swallow_escape_release_ = false;
+        return true;
     }
-    return QObject::eventFilter(watched, event);
+    if (!wanted() || !press.pressed || press.code != KEY_G || !seat_.control_alt()) return false;
+    RWIN_INFO("pointer", "escape pressed: the pointer is let go until the mirror is clicked");
+    escaped_ = true;
+    swallow_escape_release_ = true;
+    let_go();
+    return true;
 }
 
-void PointerGrabber::describe(WindowId window, MirrorState& state) const {
-    if (window != grab_.window || grab_.kind == PointerGrab::Kind::None) return;
-    MirrorState::PointerHold hold;
-    hold.wanted = grab_.kind;
-    hold.asked = lock_ != nullptr ? PointerGrab::Kind::Lock
-                 : confinement_ != nullptr ? PointerGrab::Kind::Confine
-                                           : PointerGrab::Kind::None;
-    hold.region = asked_region_;
-    hold.hint = asked_hint_;
-    hold.engaged = (lock_ != nullptr && lock_->engaged()) || (confinement_ != nullptr && confinement_->engaged());
-    hold.escaped = escaped_;
-    hold.lost_focus = lost_focus_;
-    hold.requests = requests_;
-    hold.motions = motions_;
-    hold.moved = moved_;
-    hold.unavailable = unavailable_;
-    state.pointer_hold = hold;
+bool PointerGrabber::intercept_press(const WindowMirror& mirror) {
+    if (!escaped_ || !wanted() || &mirror != mirror_) return false;
+    escaped_ = false;
+    hold();
+    return true;
+}
+
+bool PointerGrabber::locked_on(const WindowMirror& mirror) const {
+    return &mirror == mirror_ && lock_ != nullptr && lock_->engaged() && !escaped_;
 }
 
 }  // namespace rwin::host

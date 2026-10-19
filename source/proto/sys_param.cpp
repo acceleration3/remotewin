@@ -9,7 +9,8 @@ void SysParam::write(MessageWriter& out) const {
     out.put_u32(static_cast<std::uint32_t>(param));
     switch (param) {
         case Param::WorkArea:
-            work_area.write(out);
+        case Param::Monitor:
+            area.write(out);
             return;
         case Param::DragFullWindows:
             out.put_u8(enabled ? 1 : 0);
@@ -21,11 +22,11 @@ std::optional<SysParam> SysParam::read(MessageReader& in) {
     SysParam setting;
     const std::uint32_t param = in.u32();
     if (!in.ok()) return std::nullopt;
-    if (param == static_cast<std::uint32_t>(Param::WorkArea)) {
+    if (param == static_cast<std::uint32_t>(Param::WorkArea) || param == static_cast<std::uint32_t>(Param::Monitor)) {
         const std::optional<Rect> area = Rect::read(in);
         if (!area.has_value()) return std::nullopt;
-        setting.param = Param::WorkArea;
-        setting.work_area = *area;
+        setting.param = static_cast<Param>(param);
+        setting.area = *area;
         return setting;
     }
     if (param == static_cast<std::uint32_t>(Param::DragFullWindows)) {

@@ -135,6 +135,7 @@ void WindowWatch::ask(const SysCommand& request) { queue(request); }
 void WindowWatch::ask(const SysMenu& request) { queue(request); }
 void WindowWatch::ask(const WindowMove& request) { queue(request); }
 void WindowWatch::reread(WindowId window) { queue(window); }
+void WindowWatch::dismiss(WindowId popup) { queue(Dismissal{popup}); }
 
 void WindowWatch::queue(Request request) {
     {
@@ -297,6 +298,10 @@ void WindowWatch::carry_out(Parts& parts, const Request& request) {
     }
     if (const auto* move = std::get_if<WindowMove>(&request)) {
         if (void* window = directory_.handle_of(move->window)) place(window, move->frame, settings_.work_area());
+        return;
+    }
+    if (const auto* dismissal = std::get_if<Dismissal>(&request)) {
+        if (void* window = directory_.handle_of(dismissal->popup)) dismiss_popup(window);
     }
 }
 
@@ -330,6 +335,9 @@ void WindowWatch::say_work_area() {
     MessageWriter out{MessageId::GuestSysParam};
     SysParam{SysParam::Param::WorkArea, settings_.work_area(), false}.write(out);
     outbox_.send(out.take());
+    MessageWriter monitor{MessageId::GuestSysParam};
+    SysParam{SysParam::Param::Monitor, settings_.monitor(), false}.write(monitor);
+    outbox_.send(monitor.take());
 }
 
 }  // namespace rwin::guest

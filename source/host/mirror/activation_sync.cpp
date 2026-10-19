@@ -1,12 +1,9 @@
 #include "host/mirror/activation_sync.hpp"
 
 #include "host/link/guest_link.hpp"
-#include "host/mirror/mirror_window.hpp"
+#include "host/mirror/window_mirror.hpp"
+#include "host/wayland/seat.hpp"
 #include "logging/logger.hpp"
-
-#include <QApplication>
-#include <QGuiApplication>
-#include <QTimer>
 
 namespace rwin::host {
 
@@ -14,16 +11,13 @@ namespace {
 
 // Long enough for the compositor to have said where the focus went after
 // it left a surface: a leave and the next enter come within a frame or two.
-constexpr int kFocusSettleMs = 100;
+constexpr std::chrono::milliseconds kFocusSettle{100};
 
 }  // namespace
 
-ActivationSync::ActivationSync(GuestLink& link, QObject* parent)
-    : QObject(parent), link_(link), settle_(new QTimer(this)) {
-    settle_->setSingleShot(true);
-    settle_->setInterval(kFocusSettleMs);
-    connect(settle_, &QTimer::timeout, this, &ActivationSync::focus_left);
-    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &ActivationSync::application_state_changed);
+ActivationSync::ActivationSync(EventLoop& loop, GuestLink& link, Seat& seat)
+    : link_(link), seat_(seat), settle_(loop.timer([this] { focus_left(); })) {
+    seat_.keyboard_focus_changed.connect([this] { keyboard_moved(); });
 }
 
 void ActivationSync::focused(WindowId window, bool by_press) {
@@ -34,26 +28,27 @@ void ActivationSync::focused(WindowId window, bool by_press) {
     link_.send_activate(window, true);
 }
 
-void ActivationSync::follow(const ZOrder& order, MirrorWindow* active) {
+void ActivationSync::follow(const ZOrder& order, WindowMirror* active) {
     guest_active_ = order.active;
     if (active == nullptr || !order.above_marker(order.active)) return;
-    if (qobject_cast<MirrorWindow*>(QApplication::activeWindow()) == nullptr) {
+    if (seat_.keyboard_focus() == nullptr) {
         RWIN_DEBUG("focus", "the guest activated {} while the user is elsewhere; not followed", order.active);
         return;
     }
-    active->activate_for_guest();
+    if (active->window() == host_active_) return;
+    active->activate(std::string());
 }
 
-void ActivationSync::application_state_changed(Qt::ApplicationState state) {
-    if (state == Qt::ApplicationActive) {
+void ActivationSync::keyboard_moved() {
+    if (seat_.keyboard_focus() != nullptr) {
         settle_->stop();
     } else if (!host_active_.none()) {
-        settle_->start();
+        settle_->start(kFocusSettle, false);
     }
 }
 
 void ActivationSync::focus_left() {
-    if (QGuiApplication::applicationState() == Qt::ApplicationActive || host_active_.none()) return;
+    if (seat_.keyboard_focus() != nullptr || host_active_.none()) return;
     RWIN_DEBUG("focus", "focus left every mirror from {}; deactivating it in the guest", host_active_);
     link_.send_activate(host_active_, false);
     host_active_ = WindowId{};

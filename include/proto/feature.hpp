@@ -24,8 +24,10 @@ struct Feature {
     static constexpr std::string_view kMoveSize = "movesize";
     // The APPID window field.
     static constexpr std::string_view kAppId = "appid";
-    // The POPUP window field.
+    // The POPUP window field, and PopupDismiss.
     static constexpr std::string_view kPopupIntent = "popup.intent";
+    // WindowIcon.
+    static constexpr std::string_view kIcons = "icons";
     static constexpr std::string_view kMonitor = "monitor";
 
     // Longer names than this are not a peer naming features.

@@ -32,6 +32,18 @@ Rect read_work_area() {
                 static_cast<std::uint32_t>(area.bottom - area.top)};
 }
 
+Rect read_monitor() {
+    MONITORINFO monitor{};
+    monitor.cbSize = sizeof(monitor);
+    if (::GetMonitorInfoW(::MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &monitor) == FALSE) {
+        return Rect{0, 0, static_cast<std::uint32_t>(::GetSystemMetrics(SM_CXSCREEN)),
+                    static_cast<std::uint32_t>(::GetSystemMetrics(SM_CYSCREEN))};
+    }
+    const RECT& area = monitor.rcMonitor;
+    return Rect{area.left, area.top, static_cast<std::uint32_t>(area.right - area.left),
+                static_cast<std::uint32_t>(area.bottom - area.top)};
+}
+
 LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     if (message == WM_SETTINGCHANGE || message == WM_DISPLAYCHANGE) {
         if (auto* settings = reinterpret_cast<DesktopSettings*>(::GetWindowLongPtrW(window, GWLP_USERDATA))) {
@@ -44,7 +56,7 @@ LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
 }  // namespace
 
 DesktopSettings::DesktopSettings(const FrameSignal& changes)
-    : changes_(changes), drop_shadows_(read_drop_shadows()), work_area_(read_work_area()) {
+    : changes_(changes), drop_shadows_(read_drop_shadows()), work_area_(read_work_area()), monitor_(read_monitor()) {
     worker_ = std::thread([this] { listen(); });
 }
 
@@ -58,14 +70,21 @@ Rect DesktopSettings::work_area() const {
     return work_area_;
 }
 
+Rect DesktopSettings::monitor() const {
+    const std::lock_guard held{lock_};
+    return monitor_;
+}
+
 void DesktopSettings::reread() {
     const bool shadows = read_drop_shadows();
     const Rect area = read_work_area();
+    const Rect whole = read_monitor();
     bool moved = drop_shadows_.exchange(shadows) != shadows;
     {
         const std::lock_guard held{lock_};
-        moved = moved || !(work_area_ == area);
+        moved = moved || !(work_area_ == area) || !(monitor_ == whole);
         work_area_ = area;
+        monitor_ = whole;
     }
     if (!moved) return;
     RWIN_INFO("settings", "shadows under windows {}, work area {},{} {}x{}", shadows ? "on" : "off", area.x, area.y,

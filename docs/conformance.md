@@ -1,5 +1,11 @@
 # Conformance
 
+> **The harness is gone** (branch `native`, review-and-redesign.md Part 4):
+> it ran the Qt mirror in-process, and the host is now a Wayland client of
+> its own with no Qt. What follows is the design it had, kept for when it
+> is written again against `Describe` and the compositor's view. The probe
+> (`remotewin-probe`) remains.
+
 Does a mirror look and behave like the window it mirrors? The conformance
 harness answers that by asking Windows. A probe in the guest makes windows
 to a spec and reports what Windows made of them; the harness runs the

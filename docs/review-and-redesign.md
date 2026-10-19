@@ -279,3 +279,143 @@ Phases B and C are the heart of it: a remotewin that hands the compositor
 the buffers it captured and never needs to know where the compositor put
 a window. Capture stays in the guest; the device carries buffers and
 messages (phase E); planes are an optimisation, last.
+
+## Part 4 — R1 and R2 as built
+
+Built on branch `native`, R1 and the popup and input halves of R2
+together, since each needs the other: a positioner needs a native
+surface, and a native surface has nothing Qt guessed for it to place.
+
+### No Qt in remotewin
+
+The host half links no Qt at all. What Qt had been doing for it, and what
+does it now:
+
+| Qt's part | Now |
+|---|---|
+| the event loop (`QCoreApplication`, `QSocketNotifier`, `QTimer`) | `PollLoop`: poll(2) over the Wayland fd (`wl_display_prepare_read`/`read_events`, flushed before each wait), sockets, timers. The link code takes an `EventLoop` (watches and timers), so LSW's manager gives it its Qt loop (`QtEventLoop`, in LSW) for the preview |
+| signals and slots | `Signal<Args...>`, a list of `std::function`s, and `Deferred` for retries |
+| `QTcpServer`/`QTcpSocket`, `QLocalSocket` | POSIX sockets in `GuestLink` and `SharedFrameFeed` |
+| QtDBus (KWin's scripting, the placement callbacks, `Describe`) | sd-bus (libsystemd), driven from the loop by `BusConnection`. QtDBus was the last reason to keep QtCore; sd-bus is already on every systemd desktop |
+| `QJsonDocument` (`Describe`) | `JsonText`, a writer of the few shapes `Describe` has |
+| QtWaylandClient, the widget tree, QOpenGLWidget, the private cursor surface | libwayland-client directly, and the generated code of each protocol below |
+| `QKeyEvent` text and keysyms | xkbcommon on the compositor's keymap; key repeat timed here from `repeat_info` |
+
+Qt stays in the manager, where it draws UI. The code split in two
+libraries: `rwin_link` (the guest link, the export feed, latency, the
+cursor model, geometry; no Wayland, no Qt), which LSW's manager links for
+its desktop preview, and `rwin_host` (Wayland, sd-bus) for the executable.
+
+### Protocols
+
+Required — remotewin refuses to start without them: `wl_compositor` 4+,
+`wl_subcompositor`, `wl_shm`, `xdg_wm_base`, `wl_seat`, `wp_viewporter`.
+
+Optional — each used where offered, the line in the log at start says
+which the compositor has:
+
+| Protocol | For | Without it |
+|---|---|---|
+| `zwp_linux_dmabuf_v1` (v4 feedback) | guest frames as dma-bufs; the main device tells which GPU the compositor composes on | frames come as pixels in `wl_shm` buffers |
+| `wp_linux_drm_syncobj_manager_v1` | explicit sync: the guest's fence imported into an acquire point, the release point's eventfd returns the slot | the fence fd is waited on (POLLIN) before the attach; `wl_buffer.release` returns the slot |
+| `wp_fractional_scale_v1` | the surface's exact scale | the outputs' integer scale |
+| `wp_cursor_shape_v1` | guest cursors that are system shapes | every cursor a picture on a cursor surface, scaled with a viewport |
+| `zwp_pointer_constraints_v1`, `zwp_relative_pointer_v1` | guest ClipCursor and pointer lock | no confinement; the guest's cursor follows the absolute pointer |
+| `zwp_keyboard_shortcuts_inhibit_v1` | the compositor's shortcuts go to the guest while a window is fullscreen or the pointer locked | they stay the compositor's |
+| `xdg_activation_v1` | `XDG_ACTIVATION_TOKEN` and `RAISE <token>` | the manager raises through KWin's scripting |
+| `xdg_toplevel_icon_v1` | the guest window's own icon | the app id's .desktop entry's icon |
+| `zxdg_decoration_manager_v1` | client-side decoration asked for explicitly (the guest draws its own frame); the desktop mirror asks for server-side | the compositor's default |
+| `xdg_wm_dialog_v1` | modal dialogs said as modal | transient only |
+| `wp_presentation` (monotonic) | the `presented` latency stage | the stage is not measured |
+| `wp_alpha_modifier_v1` | a layered window's constant alpha | opaque |
+
+### Frames
+
+One `wl_surface` per guest window. A shared frame's slot becomes a
+`wl_buffer` through `zwp_linux_buffer_params_v1` (made asynchronously,
+kept per slot, evicted when the ring is remade); with explicit sync the
+guest's fence fd goes into a timeline syncobj on the compositor's render
+node and its point is the acquire point. A picture is shown one picture
+pixel to one device pixel: the logical size is the picture over the scale,
+rounded down, and the viewport's source crops to exactly that many device
+pixels; `damage_buffer` names what changed. A window the compositor makes
+larger than that (maximised, tiled, fullscreen) gets the picture centred
+over a black one-pixel subsurface scaled behind it (`Backdrop`). No host
+GL context exists anywhere. A layered window's constant alpha is the
+compositor's (`wp_alpha_modifier_v1`); a colour key and a window region
+are cut out of the pixels (`PictureCutout`), so a window with either
+goes as pixels.
+
+### Roles, popups and input
+
+`MirrorRole` decides, from the guest's fields, whether a window is an
+`xdg_toplevel` (with `set_parent` to its owner's mirror), an `xdg_popup`
+of the window it opens from, or a `wl_subsurface` of the one it is glued
+to (z_glue: Office's shadow windows). The guest sends a popup's intent
+(the POPUP field, rail-model.md §7.5): what kind it is and the rectangle
+on its anchor window it opens from. `PopupLayout` builds the positioner:
+
+| Kind | Anchor rectangle | Anchor edge, gravity | Adjust |
+|---|---|---|---|
+| menu bar menu | the menu bar item | bottom-left, bottom-right | slide x, slide y, flip y |
+| submenu | the parent item | top-right, bottom-right | slide x, slide y, flip x |
+| combo list | the combo box | bottom-left, bottom-right | slide x, slide y, flip y |
+| context menu | the cursor at the press | top-left, bottom-right | slide and flip both ways |
+| tooltip | the cursor, offset below it | top-left, bottom-right | slide x, slide y, flip y |
+| exact | the position Windows chose | top-left, bottom-right | slide x, slide y, flip y |
+
+Points are 1x1 rectangles (KWin refuses an empty anchor rectangle). No
+`resize` adjustment: a popup's size is the guest's, and a smaller surface
+would only crop it. Menus, combo lists and context menus grab with the
+serial of the press that opened them; when the compositor dismisses a
+grabbing popup the guest is told (PopupDismiss) and closes it the way that
+kind closes (WM_CANCELMODE to a menu's owner, CB_SHOWDROPDOWN to a combo,
+Escape otherwise) — 80 ms later, and not at all when the press that
+dismissed it landed on another of the application's surfaces, so that
+moving along a menu bar does not close the menu Windows is opening.
+
+Input is per surface: a point on a surface is the same point in its guest
+window, sent with the window's id, and the guest raises that window to the
+top of its own stacking order (`SetWindowPos(HWND_TOP, SWP_NOACTIVATE)`,
+`InputTarget`) when another window is at the point, before a press, a
+wheel turn or a move (not while a button is held), so the
+injected input reaches it however the guest's windows overlap. Wheel
+input groups by `wl_pointer.frame` and takes `axis_value120`; Back and
+Forward are buttons 3 and 4; leaving a surface sends PointerLeave. Keys
+are evdev codes made set-1 scancodes (`stroke_for`), with the
+compositor's modifiers and repeat.
+
+### Windows
+
+Close, minimise, maximise and restore are SysCommands; the compositor's
+minimise and maximise requests become them. A captionless window covering
+its monitor becomes `set_fullscreen`, with shortcuts inhibited. A guest
+move/size loop (MoveSizeStart) becomes `xdg_toplevel.move` or `.resize`
+with the press's serial. The guest sends each window's icon (WindowIcon:
+WM_GETICON, then the class icon, as BGRA, on every change of handle), and
+the toplevel wears it through `xdg_toplevel_icon_v1`. The KWin placement
+backend, the display lock, latency stamps, logging and the `--managed`
+stdin/stdout lines are as they were; KWin scripts are now started with
+`Scripting.start` (a script's id can be a live script's after an unload,
+so its object path is not reliably its own), and SIGTERM, SIGINT and
+SIGHUP end the loop so the scripts are unloaded and their files removed.
+
+### What went
+
+`MirrorWindow`, `GpuPicture`, `DrawPicture`, `MonitorWindow`,
+`PictureLayout`, `PixelMapping`, `PointerGlobals`,
+`CursorSurfaceViewport`, `PixelCursor`, `WornCursor`, `RenderingGpu`, the
+conformance harness (`remotewin-conform`, its scenarios and its tests: it
+drove Qt widgets in-process, and is to be written again against
+`Describe` and KWin's view when it is wanted), and LSW's
+`scripts/remotewin-conform.sh`. LSW's desktop preview draws the monitor's
+pixels itself, read-only, through `rwin_link`.
+
+### Left
+
+- The conformance harness, against the new host.
+- `xx_zones`, `xdg_toplevel_tag_v1`, `zwp_text_input_v3`, topmost
+  (no protocol for keep-above).
+- The desktop preview's frames on the GPU (it takes pixels).
+- Placement on desktops other than KDE needs nothing more for
+  correctness; a backend per desktop for first placement is optional.

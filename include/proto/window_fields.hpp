@@ -122,15 +122,44 @@ struct WindowFields {
         [[nodiscard]] bool operator==(const Layering&) const noexcept = default;
     };
 
-    // A window placed against another that does not own it: a menu against
-    // the window whose menu it is, a combo box's list against the window it
-    // drops from. ``rect`` is where the window sits, relative to the
-    // anchor's frame. ``anchor`` none: no such window.
+    // A window placed against another: a menu against the window whose menu
+    // bar it drops from or the menu it opens out of, a combo box's list
+    // against the box, a tooltip or a context menu against the window under
+    // the pointer, any other popup against its owner. ``placed`` is where
+    // Windows put it, relative to the anchor's frame. The rest is where it
+    // was meant to open before Windows flipped or slid it against a guest
+    // screen that is not the one it is shown on (R2, popups by intent): from
+    // ``opens_from`` on the anchor's frame, at its ``edge``, towards
+    // ``gravity``, giving way at a screen's edge as ``adjust`` allows. Edge,
+    // gravity and adjustment are xdg_positioner's own values, which are
+    // what a compositor places a popup by.
     struct Popup {
+        enum class Kind : std::uint8_t { Exact = 0, MenuBar = 1, Submenu = 2, Combo = 3, Context = 4, Tooltip = 5 };
+        // xdg_positioner.anchor, and .gravity, which numbers the same.
+        enum class Edge : std::uint8_t {
+            None = 0,
+            Top = 1,
+            Bottom = 2,
+            Left = 3,
+            Right = 4,
+            TopLeft = 5,
+            BottomLeft = 6,
+            TopRight = 7,
+            BottomRight = 8,
+        };
+        // xdg_positioner.constraint_adjustment.
+        static constexpr std::uint8_t kSlideX = 1;
+        static constexpr std::uint8_t kSlideY = 2;
+        static constexpr std::uint8_t kFlipX = 4;
+        static constexpr std::uint8_t kFlipY = 8;
+
         WindowId anchor;
-        Rect rect;
-        std::uint8_t gravity = 0;
-        std::uint8_t constraints = 0;
+        Kind kind = Kind::Exact;
+        Rect placed;
+        Rect opens_from;
+        Edge edge = Edge::None;
+        Edge gravity = Edge::None;
+        std::uint8_t adjust = 0;
 
         [[nodiscard]] bool operator==(const Popup&) const noexcept = default;
     };

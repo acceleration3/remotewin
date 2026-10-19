@@ -2,9 +2,9 @@
 
 #include "host/cursor/cursor_animation.hpp"
 #include "host/cursor/emulated_cursor.hpp"
+#include "host/loop/event_loop.hpp"
+#include "host/loop/signal.hpp"
 #include "proto/guest_cursor.hpp"
-
-#include <QObject>
 
 #include <cstddef>
 #include <cstdint>
@@ -22,12 +22,11 @@ struct CursorLook;
 // which animates its own - the step it is at, shown for its own time.
 //
 // The guest has one cursor at a time and does not say whose window it is
-// over, so every window wears what this says (``worn``); only the one under
+// over, so every mirror wears what this says (``worn``); only the one under
 // the pointer is showing a cursor at all.
-class CursorPlayer : public QObject {
-    Q_OBJECT
+class CursorPlayer {
 public:
-    explicit CursorPlayer(QObject* parent = nullptr);
+    explicit CursorPlayer(EventLoop& loop);
 
     void remember(const CursorPicture& picture);
     void show(const GuestCursor& cursor);
@@ -38,9 +37,8 @@ public:
     [[nodiscard]] std::size_t step() const noexcept { return animation_.step(); }
     [[nodiscard]] std::uint64_t steps_taken() const noexcept { return animation_.steps_taken(); }
 
-Q_SIGNALS:
-    // Wear ``look`` at ``step``; null is no cursor at all.
-    void worn(const rwin::host::CursorLook* look, std::size_t step);
+    // Wear the look at the step; null is no cursor at all.
+    Signal<const CursorLook*, std::size_t> worn;
 
 private:
     void step_to(std::size_t step);

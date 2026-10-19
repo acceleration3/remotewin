@@ -30,6 +30,7 @@
 #include "proto/sys_param.hpp"
 #include "proto/system_cursor.hpp"
 #include "proto/window_fields.hpp"
+#include "proto/window_icon.hpp"
 #include "proto/window_id.hpp"
 #include "proto/window_move.hpp"
 #include "proto/z_order.hpp"
@@ -519,7 +520,9 @@ rwin::WindowFields sample_fields() {
     fields.layering = {2, 128, 0x00FF00FF};
     fields.band = 1;
     fields.frame = rwin::WindowFields::kDwmFrame;
-    fields.popup = {rwin::WindowId{0x30, 2}, {5, 6, 0, 0}, 0, 0};
+    using Popup = rwin::WindowFields::Popup;
+    fields.popup = {rwin::WindowId{0x30, 2}, Popup::Kind::Submenu, {5, 6, 120, 300}, {0, 40, 200, 22},
+                    Popup::Edge::TopRight, Popup::Edge::BottomRight, Popup::kFlipX | Popup::kSlideY};
     fields.dpi = 120;
     fields.cloaked = true;
     return fields;
@@ -575,6 +578,62 @@ void a_changed_window_carries_only_what_changed() {
     reshaped.geometry.region.pop_back();
     check(reshaped.differences(now) == rwin::WindowFields::kGeometry, "a region alone is the whole geometry");
     check(now.differences(now) == 0, "nothing changed is an empty mask");
+}
+
+void a_popup_says_where_it_was_meant_to_open() {
+    using Popup = rwin::WindowFields::Popup;
+    rwin::WindowFields fields;
+    fields.popup = {rwin::WindowId{0x30, 2}, Popup::Kind::MenuBar, {10, 30, 100, 200}, {10, 8, 40, 22},
+                    Popup::Edge::BottomLeft, Popup::Edge::BottomRight, Popup::kFlipY | Popup::kSlideX};
+    rwin::MessageWriter pinned{rwin::MessageId::WindowChanged};
+    fields.write(pinned, rwin::WindowFields::kPopup);
+    std::vector<std::uint8_t> expected = bytes_of({0, 0, 0x10, 0, 0, 0, 0, 0x30, 0, 0, 0, 2, 1});
+    for (const std::uint32_t word : {10u, 30u, 100u, 200u, 10u, 8u, 40u, 22u}) {
+        const std::vector<std::uint8_t> bytes = bytes_of({0, 0, 0, static_cast<int>(word)});
+        expected.insert(expected.end(), bytes.begin(), bytes.end());
+    }
+    for (const int tail : {6, 8, 9}) expected.push_back(static_cast<std::uint8_t>(tail));
+    check(body_of(std::move(pinned)) == expected,
+          "mask, anchor id, kind u8, placed rect, opens-from rect, edge u8, gravity u8, adjustment u8");
+
+    rwin::MessageWriter strange{rwin::MessageId::WindowChanged};
+    strange.put_u32(rwin::WindowFields::kPopup);
+    rwin::WindowId{0x30, 2}.write(strange);
+    strange.put_u8(9);
+    for (int word = 0; word < 8; ++word) strange.put_u32(0);
+    for (int tail = 0; tail < 3; ++tail) strange.put_u8(0);
+    const std::vector<std::uint8_t> strange_bytes = strange.take();
+    rwin::FrameDecoder decoder;
+    decoder.feed(strange_bytes.data(), strange_bytes.size());
+    const std::uint8_t* payload = nullptr;
+    std::size_t size = 0;
+    check(decoder.next(&payload, &size), "a popup of no known kind frames");
+    rwin::MessageReader reader{payload, size};
+    rwin::WindowFields into;
+    std::uint32_t mask = 0;
+    check(!rwin::WindowFields::read(reader, into, mask), "and is refused");
+}
+
+void a_window_icon_crosses_whole() {
+    rwin::WindowIcon icon{rwin::WindowId{0x40, 3}, rwin::WindowIcon::Size::Big, 2, 1, {1, 2, 3, 4, 5, 6, 7, 8}};
+    rwin::MessageWriter writer{rwin::MessageId::WindowIcon};
+    icon.write(writer);
+    check(read_back<rwin::WindowIcon>(writer.take()) == icon, "a window icon reads back as written");
+    rwin::MessageWriter pinned{rwin::MessageId::WindowIcon};
+    icon.write(pinned);
+    check(body_of(std::move(pinned)) == bytes_of({0, 0, 0, 0x40, 0, 0, 0, 3, 1, 0, 2, 0, 1, 1, 2, 3, 4, 5, 6, 7, 8}),
+          "window, size u8, width u16, height u16, then BGRA");
+    rwin::MessageWriter huge{rwin::MessageId::WindowIcon};
+    rwin::WindowId{0x40, 3}.write(huge);
+    huge.put_u8(1);
+    huge.put_u16(rwin::WindowIcon::kMaxSide + 1);
+    huge.put_u16(1);
+    check(!read_back<rwin::WindowIcon>(huge.take()).has_value(), "an icon wider than any is refused");
+    rwin::WindowIcon cut = icon;
+    cut.bgra.pop_back();
+    rwin::MessageWriter short_one{rwin::MessageId::WindowIcon};
+    cut.write(short_one);
+    check(!read_back<rwin::WindowIcon>(short_one.take()).has_value(), "an icon cut short is refused");
 }
 
 void malformed_window_fields_are_refused() {
@@ -642,6 +701,11 @@ void the_desktop_messages_cross_whole() {
     rwin::SysParam{rwin::SysParam::Param::WorkArea, {0, 0, 0x0A00, 0x0570}, false}.write(area);
     check(body_of(std::move(area)) == bytes_of({0, 0, 0, 0x2F, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0A, 0, 0, 0, 0x05, 0x70}),
           "SPI_SETWORKAREA u32, then the rect");
+    rwin::MessageWriter monitor{rwin::MessageId::GuestSysParam};
+    const rwin::SysParam whole{rwin::SysParam::Param::Monitor, {0, 0, 2560, 1440}, false};
+    whole.write(monitor);
+    const std::vector<std::uint8_t> monitor_bytes = monitor.take();
+    check(read_back<rwin::SysParam>(monitor_bytes) == whole, "the guest's monitor reads back");
     rwin::MessageWriter drag{rwin::MessageId::HostSysParam};
     const rwin::SysParam full{rwin::SysParam::Param::DragFullWindows, {}, true};
     full.write(drag);
@@ -779,7 +843,7 @@ void each_end_has_its_own_ids() {
           rwin::MessageId::Unsubscribe, rwin::MessageId::ClockProbe, rwin::MessageId::WatchMonitor,
           rwin::MessageId::WindowPixels, rwin::MessageId::PointerMove, rwin::MessageId::PointerButton,
           rwin::MessageId::PointerWheel, rwin::MessageId::PointerDelta, rwin::MessageId::PointerAt,
-          rwin::MessageId::Key, rwin::MessageId::PointerLeave}) {
+          rwin::MessageId::Key, rwin::MessageId::PointerLeave, rwin::MessageId::PopupDismiss}) {
         check(static_cast<int>(host) >= 1 && static_cast<int>(host) < 64, "a host message is below 64");
     }
     for (const rwin::MessageId guest :
@@ -789,7 +853,7 @@ void each_end_has_its_own_ids() {
           rwin::MessageId::MoveSizeEnd, rwin::MessageId::GuestSysParam, rwin::MessageId::SlotRing,
           rwin::MessageId::FrameInSlot, rwin::MessageId::Frame, rwin::MessageId::FramePatch,
           rwin::MessageId::SurfaceLost, rwin::MessageId::CursorShape, rwin::MessageId::CursorChanged,
-          rwin::MessageId::PointerGrab, rwin::MessageId::ClockEcho}) {
+          rwin::MessageId::PointerGrab, rwin::MessageId::ClockEcho, rwin::MessageId::WindowIcon}) {
         check(static_cast<int>(guest) >= 64 && static_cast<int>(guest) < 128, "a guest message is from 64 to 127");
     }
 }
@@ -803,6 +867,8 @@ int main() {
     window_fields_cross_whole();
     a_changed_window_carries_only_what_changed();
     malformed_window_fields_are_refused();
+    a_popup_says_where_it_was_meant_to_open();
+    a_window_icon_crosses_whole();
     a_z_order_crosses_whole();
     the_desktop_messages_cross_whole();
     the_move_size_messages_cross_whole();

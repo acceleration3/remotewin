@@ -24,9 +24,16 @@
 #include "proto/window_fields.hpp"
 #include "proto/window_move.hpp"
 
-#include <QTcpServer>
-#include <QTcpSocket>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
+#include <array>
+#include <cerrno>
+#include <cstring>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -35,111 +42,194 @@ namespace rwin::host {
 
 namespace {
 
+// Read this much at a time; a frame of pixels takes many reads.
+constexpr std::size_t kChunk = 256 * 1024;
+constexpr int kBacklog = 4;
+
 bool valid_picture_size(std::uint32_t width, std::uint32_t height) {
     constexpr auto kLargestStride = static_cast<std::uint32_t>(std::numeric_limits<int>::max());
     return width != 0 && height != 0 && width <= kLargestStride / 4 && height <= kLargestStride;
 }
 
-}  // namespace
-
-GuestLink::GuestLink(QObject* parent) : QObject(parent), server_(new QTcpServer(this)) {
-    connect(server_, &QTcpServer::newConnection, this, &GuestLink::accept_guest);
+Box box_of(const Rect& rect) {
+    return Box{rect.x, rect.y, static_cast<int>(rect.width), static_cast<int>(rect.height)};
 }
 
-bool GuestLink::listen(std::uint16_t port, const QHostAddress& address) {
-    // AnyIPv4 rather than Any: QEMU's user networking forwards a guest's
-    // connection to 10.0.2.2 onto the host's IPv4 loopback, and a
-    // v6-only bind refuses it with no hint as to why.
-    if (!server_->listen(address, port)) {
-        RWIN_ERROR("link", "cannot listen on port {}: {}", port, server_->errorString().toStdString());
+}  // namespace
+
+GuestLink::GuestLink(EventLoop& loop) : loop_(loop), chunk_(kChunk) {}
+
+GuestLink::~GuestLink() = default;
+
+bool GuestLink::listen(std::uint16_t port, bool loopback_only) {
+    UniqueFd listener{::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0)};
+    if (!listener.valid()) {
+        RWIN_ERROR("link", "cannot make a socket: {}", std::strerror(errno));
         return false;
     }
-    RWIN_INFO("link", "listening on {}:{}", address.toString().toStdString(), server_->serverPort());
+    const int reuse = 1;
+    static_cast<void>(::setsockopt(listener.get(), SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)));
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(loopback_only ? INADDR_LOOPBACK : INADDR_ANY);
+    if (::bind(listener.get(), reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != 0
+        || ::listen(listener.get(), kBacklog) != 0) {
+        RWIN_ERROR("link", "cannot listen on port {}: {}", port, std::strerror(errno));
+        return false;
+    }
+    socklen_t length = sizeof(address);
+    if (::getsockname(listener.get(), reinterpret_cast<sockaddr*>(&address), &length) != 0) {
+        RWIN_ERROR("link", "cannot read the port listened on: {}", std::strerror(errno));
+        return false;
+    }
+    port_ = ntohs(address.sin_port);
+    listener_ = std::move(listener);
+    listening_ = loop_.watch(listener_.get(), POLLIN, [this](short) { accept_guest(); });
+    RWIN_INFO("link", "listening on {}:{}", loopback_only ? "127.0.0.1" : "0.0.0.0", port_);
     return true;
 }
 
-std::uint16_t GuestLink::port() const { return server_->serverPort(); }
-
 void GuestLink::accept_guest() {
-    QTcpSocket* incoming = server_->nextPendingConnection();
-    if (incoming == nullptr) return;
-    if (guest_ != nullptr) {
-        // One guest per link. A second dial-in is a stale process that
-        // has not noticed it was replaced.
+    sockaddr_in peer{};
+    socklen_t length = sizeof(peer);
+    UniqueFd incoming{::accept4(listener_.get(), reinterpret_cast<sockaddr*>(&peer), &length,
+                                SOCK_NONBLOCK | SOCK_CLOEXEC)};
+    if (!incoming.valid()) return;
+    if (guest_.valid()) {
+        // One guest per link. A second dial-in is a stale process that has
+        // not noticed it was replaced.
         RWIN_WARN("link", "a guest is already connected; refusing the second");
-        incoming->close();
-        incoming->deleteLater();
         return;
     }
-    guest_ = incoming;
+    const int no_delay = 1;
+    static_cast<void>(::setsockopt(incoming.get(), IPPROTO_TCP, TCP_NODELAY, &no_delay, sizeof(no_delay)));
+    guest_ = std::move(incoming);
     greeted_ = false;
     features_ = FeatureSet{};
     windows_ = GuestWindows{};
     decoder_ = FrameDecoder{};
-    guest_->setSocketOption(QAbstractSocket::LowDelayOption, 1);
-    connect(guest_, &QTcpSocket::readyRead, this, &GuestLink::read_available);
-    connect(guest_, &QTcpSocket::disconnected, this, [this] {
-        RWIN_INFO("link", "guest disconnected");
-        guest_->deleteLater();
-        guest_ = nullptr;
-        features_ = FeatureSet{};
-        Q_EMIT disconnected();
+    unsent_.clear();
+    guest_watch_ = loop_.watch(guest_.get(), POLLIN, [this](short events) {
+        if ((events & POLLOUT) != 0) write_pending();
+        if ((events & (POLLIN | POLLHUP | POLLERR)) != 0) read_guest();
     });
-    RWIN_INFO("link", "guest dialled in from {}", guest_->peerAddress().toString().toStdString());
+    std::array<char, INET_ADDRSTRLEN> from{};
+    ::inet_ntop(AF_INET, &peer.sin_addr, from.data(), from.size());
+    RWIN_INFO("link", "guest dialled in from {}", from.data());
     MessageWriter hello{MessageId::HostHello};
     Hello::ours().write(hello);
     const std::vector<std::uint8_t> bytes = hello.take();
-    guest_->write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size()));
+    write_now(bytes.data(), bytes.size());
+}
+
+void GuestLink::drop_guest() {
+    if (!guest_.valid()) return;
+    RWIN_INFO("link", "guest disconnected");
+    guest_watch_.reset();
+    guest_ = UniqueFd{};
+    features_ = FeatureSet{};
+    unsent_.clear();
+    disconnected();
+}
+
+void GuestLink::read_guest() {
+    while (guest_.valid()) {
+        const ssize_t got = ::read(guest_.get(), chunk_.data(), chunk_.size());
+        if (got == 0) {
+            drop_guest();
+            return;
+        }
+        if (got < 0) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) return;
+            RWIN_WARN("link", "reading the guest failed: {}", std::strerror(errno));
+            drop_guest();
+            return;
+        }
+        decoder_.feed(chunk_.data(), static_cast<std::size_t>(got));
+        const std::uint8_t* payload = nullptr;
+        std::size_t size = 0;
+        while (guest_.valid() && decoder_.next(&payload, &size)) {
+            if (greeted_) {
+                dispatch(payload, size);
+            } else {
+                greet(payload, size);
+            }
+        }
+        if (guest_.valid() && decoder_.overflowed()) {
+            RWIN_ERROR("link", "guest framing is broken; closing");
+            drop_guest();
+            return;
+        }
+    }
+}
+
+void GuestLink::write_now(const std::uint8_t* bytes, std::size_t size) {
+    if (!unsent_.empty()) {
+        unsent_.insert(unsent_.end(), bytes, bytes + size);
+        return;
+    }
+    while (size > 0) {
+        const ssize_t wrote = ::send(guest_.get(), bytes, size, MSG_NOSIGNAL);
+        if (wrote < 0) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            RWIN_WARN("link", "writing to the guest failed: {}", std::strerror(errno));
+            return;
+        }
+        bytes += wrote;
+        size -= static_cast<std::size_t>(wrote);
+    }
+    if (size == 0) return;
+    unsent_.assign(bytes, bytes + size);
+    guest_watch_->want(POLLIN | POLLOUT);
+}
+
+void GuestLink::write_pending() {
+    std::size_t sent = 0;
+    while (sent < unsent_.size()) {
+        const ssize_t wrote = ::send(guest_.get(), unsent_.data() + sent, unsent_.size() - sent, MSG_NOSIGNAL);
+        if (wrote < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        sent += static_cast<std::size_t>(wrote);
+    }
+    unsent_.erase(unsent_.begin(), unsent_.begin() + static_cast<std::ptrdiff_t>(sent));
+    if (unsent_.empty() && guest_watch_ != nullptr) guest_watch_->want(POLLIN);
 }
 
 void GuestLink::greet(const std::uint8_t* payload, std::size_t size) {
     MessageReader message{payload, size};
     if (message.id() != MessageId::GuestHello) {
-        refuse(QStringLiteral("the guest half's first message is %1, not its hello: it is from another "
-                              "build than this remotewin. Put the remotewin-guest.exe built with this "
-                              "remotewin in the guest")
-                   .arg(static_cast<int>(message.id())));
+        refuse("the guest half's first message is " + std::to_string(static_cast<int>(message.id()))
+               + ", not its hello: it is from another build than this remotewin. Put the remotewin-guest.exe "
+                 "built with this remotewin in the guest");
         return;
     }
     const std::optional<Hello> hello = Hello::read(message);
     if (!hello.has_value()) {
-        refuse(QStringLiteral("the guest half's hello is malformed: it is from another build than this "
-                              "remotewin. Put the remotewin-guest.exe built with this remotewin in the guest"));
+        refuse("the guest half's hello is malformed: it is from another build than this remotewin. Put the "
+               "remotewin-guest.exe built with this remotewin in the guest");
         return;
     }
     const FeatureSet features{Hello::ours().features, hello->features};
     if (const std::string refusal = features.refusal(); !refusal.empty()) {
-        refuse(QString::fromStdString(refusal));
+        refuse(refusal);
         return;
     }
     features_ = features;
     greeted_ = true;
     RWIN_INFO("link", "the guest half is '{}'; speaking {}", hello->build, features_.describe());
-    Q_EMIT connected();
+    connected();
 }
 
-void GuestLink::refuse(const QString& reason) {
-    RWIN_ERROR("link", "{}", reason.toStdString());
-    guest_->close();
-    Q_EMIT mismatched(reason);
-}
-
-void GuestLink::read_available() {
-    const QByteArray chunk = guest_->readAll();
-    decoder_.feed(reinterpret_cast<const std::uint8_t*>(chunk.constData()), static_cast<std::size_t>(chunk.size()));
-    const std::uint8_t* payload = nullptr;
-    std::size_t size = 0;
-    while (guest_ != nullptr && guest_->isOpen() && decoder_.next(&payload, &size)) {
-        if (greeted_) {
-            dispatch(payload, size);
-        } else {
-            greet(payload, size);
-        }
-    }
-    if (guest_ != nullptr && decoder_.overflowed()) {
-        RWIN_ERROR("link", "guest framing is broken; closing");
-        guest_->close();
-    }
+void GuestLink::refuse(const std::string& reason) {
+    RWIN_ERROR("link", "{}", reason);
+    guest_watch_.reset();
+    guest_ = UniqueFd{};
+    mismatched(reason);
 }
 
 void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
@@ -147,10 +237,14 @@ void GuestLink::dispatch(const std::uint8_t* payload, std::size_t size) {
     if (dispatch_windows(message) || dispatch_frames(message) || dispatch_pointer(message)) return;
     if (message.id() == MessageId::ClockEcho) {
         if (const std::optional<ClockEcho> echo = ClockEcho::read(message)) {
-            Q_EMIT clock_echoed(*echo, now_ns());
+            clock_echoed(*echo, now_ns());
         } else {
             RWIN_WARN("link", "malformed clock echo");
         }
+        return;
+    }
+    if (message.id() == MessageId::WindowIcon) {
+        read_icon(message);
         return;
     }
     RWIN_WARN("link", "unknown message id {}", static_cast<int>(message.id()));
@@ -163,7 +257,7 @@ bool GuestLink::dispatch_windows(MessageReader& message) {
                 RWIN_INFO("link", "the guest says every window afresh ({})",
                           begin->reason == SyncBegin::Reason::Connect ? "connect" : "resync");
                 windows_.begin_sync();
-                Q_EMIT sync_began();
+                sync_began();
             } else {
                 RWIN_WARN("link", "malformed sync begin");
             }
@@ -175,14 +269,14 @@ bool GuestLink::dispatch_windows(MessageReader& message) {
         case MessageId::ZOrder:
             if (std::optional<ZOrder> order = ZOrder::read(message)) {
                 windows_.restack(*order);
-                Q_EMIT restacked(*order);
+                restacked(*order);
             } else {
                 RWIN_WARN("link", "malformed z-order");
             }
             return true;
         case MessageId::MinMax:
             if (const std::optional<MinMax> limits = MinMax::read(message)) {
-                if (windows_.limit(*limits)) Q_EMIT window_limited(limits->window);
+                if (windows_.limit(*limits)) window_limited(limits->window);
             } else {
                 RWIN_WARN("link", "malformed min/max");
             }
@@ -198,7 +292,7 @@ bool GuestLink::dispatch_frames(MessageReader& message) {
         case MessageId::FramePatch: read_patch(message); return true;
         case MessageId::SlotRing:
             if (const std::optional<SlotRing> ring = SlotRing::read(message)) {
-                Q_EMIT ring_announced(*ring);
+                ring_announced(*ring);
             } else {
                 RWIN_WARN("link", "malformed slot ring");
             }
@@ -207,7 +301,7 @@ bool GuestLink::dispatch_frames(MessageReader& message) {
             if (const std::optional<FrameInSlot> frame = FrameInSlot::read(message)) {
                 RWIN_TRACE("link", "frame {} in slot {} of ring {}, copy {}", frame->window, frame->slot,
                            frame->ring, frame->copies);
-                Q_EMIT frame_in_slot(*frame);
+                frame_in_slot(*frame);
             } else {
                 RWIN_WARN("link", "malformed frame in slot");
             }
@@ -215,7 +309,7 @@ bool GuestLink::dispatch_frames(MessageReader& message) {
         case MessageId::SurfaceLost:
             if (const std::optional<SurfaceLost> lost = SurfaceLost::read(message)) {
                 RWIN_INFO("link", "the guest lost {}'s frames", lost->window);
-                Q_EMIT surface_lost(lost->window);
+                surface_lost(lost->window);
             } else {
                 RWIN_WARN("link", "malformed surface lost");
             }
@@ -230,31 +324,31 @@ bool GuestLink::dispatch_pointer(MessageReader& message) {
             if (const std::optional<MoveSizeStart> start = MoveSizeStart::read(message)) {
                 RWIN_INFO("link", "Windows began moving or sizing {} (kind {})", start->window,
                           static_cast<int>(start->kind));
-                Q_EMIT move_size_started(*start);
+                move_size_started(*start);
             } else {
                 RWIN_WARN("link", "malformed move/size start");
             }
             return true;
         case MessageId::MoveSizeEnd:
             if (const std::optional<MoveSizeEnd> end = MoveSizeEnd::read(message)) {
-                Q_EMIT move_size_ended(*end);
+                move_size_ended(*end);
             } else {
                 RWIN_WARN("link", "malformed move/size end");
             }
             return true;
         case MessageId::CursorShape:
             if (const std::optional<CursorPicture> picture = CursorPicture::read(message)) {
-                Q_EMIT cursor_pictured(*picture);
+                cursor_pictured(*picture);
             } else {
                 RWIN_WARN("link", "malformed cursor picture");
             }
             return true;
         case MessageId::CursorChanged:
-            if (const std::optional<GuestCursor> cursor = GuestCursor::read(message)) Q_EMIT cursor_changed(*cursor);
+            if (const std::optional<GuestCursor> cursor = GuestCursor::read(message)) cursor_changed(*cursor);
             return true;
         case MessageId::PointerGrab:
             if (const std::optional<PointerGrab> grab = PointerGrab::read(message)) {
-                Q_EMIT pointer_grabbed(*grab);
+                pointer_grabbed(*grab);
             } else {
                 RWIN_WARN("link", "malformed pointer grab");
             }
@@ -281,9 +375,9 @@ void GuestLink::read_window_new(MessageReader& message) {
                window.fields().geometry.frame.y, window.fields().geometry.frame.width,
                window.fields().geometry.frame.height);
     if (!told.known) {
-        Q_EMIT window_new(*id);
+        window_new(*id);
     } else if (told.changed != 0) {
-        Q_EMIT window_changed(*id, told.changed);
+        window_changed(*id, told.changed);
     }
 }
 
@@ -304,7 +398,7 @@ void GuestLink::read_window_changed(MessageReader& message) {
     }
     static_cast<void>(windows_.change(*id, std::move(fields)));
     RWIN_TRACE("link", "window {} changed {:#x}", *id, mask);
-    Q_EMIT window_changed(*id, mask);
+    window_changed(*id, mask);
 }
 
 void GuestLink::read_window_gone(MessageReader& message) {
@@ -315,27 +409,40 @@ void GuestLink::read_window_gone(MessageReader& message) {
     }
     if (!windows_.forget(*id)) return;
     RWIN_INFO("link", "guest says window {} is gone", *id);
-    Q_EMIT window_gone(*id);
+    window_gone(*id);
 }
 
 void GuestLink::read_sync_end() {
     for (const WindowId gone : windows_.end_sync()) {
         RWIN_INFO("link", "window {} was not said again; it is gone", gone);
-        Q_EMIT window_gone(gone);
+        window_gone(gone);
     }
     RWIN_INFO("link", "the guest has said its {} window(s)", windows_.size());
-    Q_EMIT sync_ended();
+    sync_ended();
 }
 
 void GuestLink::read_sys_param(MessageReader& message) {
     const std::optional<SysParam> param = SysParam::read(message);
-    if (!param.has_value() || param->param != SysParam::Param::WorkArea) {
+    if (!param.has_value() || param->param == SysParam::Param::DragFullWindows) {
         RWIN_WARN("link", "malformed or unknown guest setting");
         return;
     }
-    const Rect& area = param->work_area;
+    const Box area = box_of(param->area);
+    if (param->param == SysParam::Param::Monitor) {
+        RWIN_DEBUG("link", "guest monitor {},{} {}x{}", area.x, area.y, area.width, area.height);
+        monitor_changed(area);
+        return;
+    }
     RWIN_DEBUG("link", "guest work area {},{} {}x{}", area.x, area.y, area.width, area.height);
-    Q_EMIT work_area_changed(QRect(area.x, area.y, static_cast<int>(area.width), static_cast<int>(area.height)));
+    work_area_changed(area);
+}
+
+void GuestLink::read_icon(MessageReader& message) {
+    if (const std::optional<WindowIcon> icon = WindowIcon::read(message)) {
+        window_icon(*icon);
+    } else {
+        RWIN_WARN("link", "malformed window icon");
+    }
 }
 
 void GuestLink::read_frame(MessageReader& message) {
@@ -352,14 +459,8 @@ void GuestLink::read_frame(MessageReader& message) {
         return;
     }
     RWIN_TRACE("link", "frame {} {}x{}", *window, width, height);
-    // Copied out of the decoder's buffer, which the next read invalidates.
-    // Premultiplied, because that is how the compositor composed it: a
-    // window with rounded corners, a shadow, or one that is deliberately
-    // see-through arrives with the alpha that says so, and reading it as
-    // RGB32 would paint all of that black.
-    const QImage frame(pixels, static_cast<int>(width), static_cast<int>(height), static_cast<int>(width * 4),
-                       QImage::Format_ARGB32_Premultiplied);
-    Q_EMIT frame_arrived(*window, frame.copy());
+    frame_arrived(*window, PixelsView{pixels, static_cast<int>(width), static_cast<int>(height),
+                                      static_cast<int>(width * 4)});
 }
 
 void GuestLink::read_patch(MessageReader& message) {
@@ -372,9 +473,8 @@ void GuestLink::read_patch(MessageReader& message) {
         RWIN_WARN("link", "invalid patch picture size ({}x{})", width, height);
         return;
     }
-    const QSize picture(static_cast<int>(width), static_cast<int>(height));
+    const Size picture{static_cast<int>(width), static_cast<int>(height)};
     const std::uint32_t count = message.u32();
-    const QRect whole(QPoint(0, 0), picture);
     for (std::uint32_t i = 0; i < count && message.ok(); ++i) {
         const std::optional<PictureRect> rect = PictureRect::read(message);
         if (!rect.has_value()) break;
@@ -383,25 +483,24 @@ void GuestLink::read_patch(MessageReader& message) {
             RWIN_WARN("link", "patch {} of {} exceeds its picture", i, *window);
             return;
         }
-        const QRect where(static_cast<int>(rect->x), static_cast<int>(rect->y), static_cast<int>(rect->width),
-                          static_cast<int>(rect->height));
         const std::uint8_t* pixels = message.bytes(static_cast<std::size_t>(rect->width) * rect->height * 4);
-        if (pixels == nullptr || where.isEmpty() || !whole.contains(where)) {
-            RWIN_WARN("link", "patch {} of {} is outside its {}x{} picture or truncated", i, *window,
-                      picture.width(), picture.height());
+        if (pixels == nullptr) {
+            RWIN_WARN("link", "patch {} of {} is truncated", i, *window);
             return;
         }
-        // Copied out of the decoder's buffer; premultiplied, as a whole
-        // frame is.
-        const QImage patch(pixels, where.width(), where.height(), where.width() * 4,
-                           QImage::Format_ARGB32_Premultiplied);
-        Q_EMIT frame_patched(*window, picture, where.topLeft(), patch.copy());
+        frame_patched(*window, picture, Point{static_cast<int>(rect->x), static_cast<int>(rect->y)},
+                      PixelsView{pixels, static_cast<int>(rect->width), static_cast<int>(rect->height),
+                                 static_cast<int>(rect->width * 4)});
     }
-    if (!message.ok()) RWIN_WARN("link", "truncated frame patch for {}", *window);
+    if (!message.ok()) {
+        RWIN_WARN("link", "truncated frame patch for {}", *window);
+        return;
+    }
+    frame_patches_done(*window);
 }
 
-void GuestLink::send(std::string_view feature, std::vector<std::uint8_t> bytes) {
-    if (guest_ == nullptr) {
+void GuestLink::send(std::string_view feature, const std::vector<std::uint8_t>& bytes) {
+    if (!guest_.valid()) {
         RWIN_DEBUG("link", "dropping {} bytes: no guest connected", bytes.size());
         return;
     }
@@ -409,7 +508,7 @@ void GuestLink::send(std::string_view feature, std::vector<std::uint8_t> bytes) 
         RWIN_DEBUG("link", "dropping message {}: the guest does not speak {}", static_cast<int>(bytes[4]), feature);
         return;
     }
-    guest_->write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size()));
+    write_now(bytes.data(), bytes.size());
 }
 
 void GuestLink::send_window(std::string_view feature, MessageId id, WindowId window) {
@@ -454,16 +553,15 @@ void GuestLink::send_sys_param(const SysParam& param) {
     send(Feature::kWindows, out.take());
 }
 
-void GuestLink::send_pointer_move(WindowId window, std::int32_t x, std::int32_t y) {
+void GuestLink::send_pointer_move(WindowId window, Point at) {
     MessageWriter out{MessageId::PointerMove};
-    PointerMove{window, x, y}.write(out);
+    PointerMove{window, at.x, at.y}.write(out);
     send(Feature::kInput, out.take());
 }
 
-void GuestLink::send_pointer_button(WindowId window, std::int32_t x, std::int32_t y, std::uint8_t button,
-                                    bool pressed) {
+void GuestLink::send_pointer_button(WindowId window, Point at, std::uint8_t button, bool pressed) {
     MessageWriter out{MessageId::PointerButton};
-    PointerButton{window, x, y, static_cast<PointerButton::Button>(button), pressed}.write(out);
+    PointerButton{window, at.x, at.y, static_cast<PointerButton::Button>(button), pressed}.write(out);
     send(Feature::kInput, out.take());
 }
 
@@ -485,14 +583,16 @@ void GuestLink::send_pointer_at(const PointerAt& at) {
     send(Feature::kInput, out.take());
 }
 
-void GuestLink::send_pointer_leave(WindowId window) {
-    send_window(Feature::kInput, MessageId::PointerLeave, window);
-}
+void GuestLink::send_pointer_leave(WindowId window) { send_window(Feature::kInput, MessageId::PointerLeave, window); }
 
 void GuestLink::send_key(const KeyStroke& stroke) {
     MessageWriter out{MessageId::Key};
     stroke.write(out);
     send(Feature::kInput, out.take());
+}
+
+void GuestLink::send_popup_dismiss(WindowId window) {
+    send_window(Feature::kPopupIntent, MessageId::PopupDismiss, window);
 }
 
 void GuestLink::send_route(bool shared_surfaces) {

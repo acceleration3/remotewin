@@ -1,25 +1,32 @@
 #include "host/placement/kwin_placement.hpp"
 
+#include "host/dbus/bus_connection.hpp"
+#include "host/latency/frame_stamps.hpp"
 #include "logging/logger.hpp"
 
-#include <QCoreApplication>
-#include <QDBusConnection>
-#include <QDBusError>
-#include <QStringList>
-#include <QTimer>
+#include <systemd/sd-bus.h>
+
+#include <unistd.h>
 
 #include <algorithm>
 #include <array>
+#include <charconv>
+#include <format>
+#include <string>
 
 namespace rwin::host {
 
 namespace {
 
 constexpr const char* kPath = "/remotewin/placement";
+constexpr const char* kInterface = "org.remotewin.Placement";
 // Long enough for a window to be mapped after it was shown; a placement
 // still unanswered then is for a window KWin never had.
-constexpr qint64 kPlacementTimeoutMs = 3000;
-constexpr int kExpiryCheckMs = 500;
+constexpr std::int64_t kPlacementTimeoutNs = 3'000'000'000;
+constexpr std::chrono::milliseconds kExpiryCheck{500};
+constexpr std::chrono::milliseconds kRewatch{1000};
+constexpr int kMostWatchTries = 3;
+constexpr std::int64_t kNanosecondsPerMillisecond = 1'000'000;
 
 // INVISIBLE SEPARATOR, then the handle's low 32 bits two at a time as one
 // of four zero-width characters. KWin keeps them in a caption (measured:
@@ -31,224 +38,304 @@ constexpr int kDigitCount = 32;
 // Finds this process's windows by their tag, and reports where each is
 // put - not during a drag, which is reported once, where it ends.
 constexpr const char* kWatcher = R"JS(
-const service = "%1";
+const service = "{0}";
 const marker = String.fromCharCode(0x2063);
-function tagOf(w) {
+function tagOf(w) {{
     const caption = w.captionNormal || "";
     const at = caption.indexOf(marker);
     return at < 0 ? "" : caption.substring(at);
-}
-function report(w) {
+}}
+function report(w) {{
     const tag = tagOf(w);
     if (tag === "") return;
     const g = w.frameGeometry;
-    callDBus(service, "%2", "org.remotewin.Placement", "moved",
-             tag + " " + g.x + " " + g.y + " " + g.width + " " + g.height);
-}
-function watch(w) {
-    if (w.pid !== %3) return;
-    w.frameGeometryChanged.connect(function() { if (!w.move && !w.resize) report(w); });
-    w.interactiveMoveResizeFinished.connect(function() { report(w); });
-    w.captionChanged.connect(function() { report(w); });
+    callDBus(service, "{1}", "{2}", "moved", tag + " " + g.x + " " + g.y + " " + g.width + " " + g.height);
+}}
+function watch(w) {{
+    if (w.pid !== {3}) return;
+    w.frameGeometryChanged.connect(function() {{ if (!w.move && !w.resize) report(w); }});
+    w.interactiveMoveResizeFinished.connect(function() {{ report(w); }});
+    w.captionChanged.connect(function() {{ report(w); }});
     report(w);
-}
+}}
 workspace.windowList().forEach(watch);
 workspace.windowAdded.connect(watch);
-function outputs() {
-    callDBus(service, "%2", "org.remotewin.Placement", "outputs",
-             workspace.screens.map(function(s) {
+function outputs() {{
+    callDBus(service, "{1}", "{2}", "outputs",
+             workspace.screens.map(function(s) {{
                  return s.name + " " + s.geometry.x + " " + s.geometry.y + " " + s.devicePixelRatio;
-             }).join(";"));
-}
+             }}).join(";"));
+}}
 workspace.screensChanged.connect(outputs);
 outputs();
 )JS";
 
 // Puts one window's frame corner somewhere, now or as KWin maps it.
 constexpr const char* kPlacer = R"JS(
-const tag = "%1";
-function place(w) {
-    if (w.pid !== %2) return false;
+const tag = "{0}";
+function place(w) {{
+    if (w.pid !== {1}) return false;
     const caption = w.captionNormal || "";
     if (caption.indexOf(tag) < 0) return false;
-    w.frameGeometry = {x: %3, y: %4, width: %5, height: %6};
+    w.frameGeometry = {{x: {2}, y: {3}, width: {4}, height: {5}}};
     const now = w.frameGeometry;
-    callDBus("%7", "%8", "org.remotewin.Placement", "placed", tag + " " + now.x + " " + now.y);
+    callDBus("{6}", "{7}", "{8}", "placed", tag + " " + now.x + " " + now.y);
     return true;
-}
-if (!workspace.windowList().some(place)) {
-    const waiting = function(w) { if (place(w)) workspace.windowAdded.disconnect(waiting); };
+}}
+if (!workspace.windowList().some(place)) {{
+    const waiting = function(w) {{ if (place(w)) workspace.windowAdded.disconnect(waiting); }};
     workspace.windowAdded.connect(waiting);
-}
+}}
 )JS";
 
 // Sends one window to an output, now or as KWin maps it.
 constexpr const char* kSender = R"JS(
-const tag = "%1";
-function send(w) {
-    if (w.pid !== %2) return false;
+const tag = "{0}";
+function send(w) {{
+    if (w.pid !== {1}) return false;
     const caption = w.captionNormal || "";
     if (caption.indexOf(tag) < 0) return false;
-    const output = workspace.screens.find(function(s) { return s.name === "%3"; });
+    const output = workspace.screens.find(function(s) {{ return s.name === "{2}"; }});
     if (output && w.output !== output) workspace.sendClientToScreen(w, output);
     const now = w.frameGeometry;
-    callDBus("%4", "%5", "org.remotewin.Placement", "placed", tag + " " + now.x + " " + now.y);
+    callDBus("{3}", "{4}", "{5}", "placed", tag + " " + now.x + " " + now.y);
     return true;
-}
-if (!workspace.windowList().some(send)) {
-    const waiting = function(w) { if (send(w)) workspace.windowAdded.disconnect(waiting); };
+}}
+if (!workspace.windowList().some(send)) {{
+    const waiting = function(w) {{ if (send(w)) workspace.windowAdded.disconnect(waiting); }};
     workspace.windowAdded.connect(waiting);
-}
+}}
 )JS";
 
-QString js_string(const QString& text) {
-    QString out;
-    for (const QChar c : text) out += QStringLiteral("\\u%1").arg(static_cast<unsigned>(c.unicode()), 4, 16, QLatin1Char('0'));
+void append_utf8(std::string& out, char16_t code) {
+    out += static_cast<char>(0xE0 | (code >> 12));
+    out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+    out += static_cast<char>(0x80 | (code & 0x3F));
+}
+
+// A JavaScript string literal's body that is ``text``, every character
+// escaped: the tag's characters, and an output's name, whatever it is.
+std::string js_string(std::string_view text) {
+    std::string out;
+    for (std::size_t at = 0; at < text.size();) {
+        const auto lead = static_cast<unsigned char>(text[at]);
+        char32_t code = lead;
+        std::size_t length = 1;
+        if (lead >= 0xE0 && at + 2 < text.size()) {
+            code = ((lead & 0x0Fu) << 12) | ((static_cast<unsigned char>(text[at + 1]) & 0x3Fu) << 6)
+                   | (static_cast<unsigned char>(text[at + 2]) & 0x3Fu);
+            length = 3;
+        } else if (lead >= 0xC0 && at + 1 < text.size()) {
+            code = ((lead & 0x1Fu) << 6) | (static_cast<unsigned char>(text[at + 1]) & 0x3Fu);
+            length = 2;
+        }
+        out += std::format("\\u{:04x}", static_cast<unsigned>(code));
+        at += length;
+    }
     return out;
 }
 
-QString number(double value) { return QString::number(value, 'g', 17); }
+std::string number(double value) { return std::format("{}", value); }
+
+std::vector<std::string_view> words_of(std::string_view text, char separator) {
+    std::vector<std::string_view> words;
+    while (!text.empty()) {
+        const std::size_t end = text.find(separator);
+        if (end != 0) words.push_back(text.substr(0, end));
+        if (end == std::string_view::npos) break;
+        text.remove_prefix(end + 1);
+    }
+    return words;
+}
+
+double to_double(std::string_view text) {
+    double value = 0.0;
+    std::from_chars(text.data(), text.data() + text.size(), value);
+    return value;
+}
+
+int string_call(sd_bus_message* call, void* self, void (KWinPlacement::*method)(std::string_view)) {
+    const char* report = nullptr;
+    if (sd_bus_message_read(call, "s", &report) < 0 || report == nullptr) {
+        return sd_bus_reply_method_errorf(call, SD_BUS_ERROR_INVALID_ARGS, "a report is one string");
+    }
+    (static_cast<KWinPlacement*>(self)->*method)(report);
+    return sd_bus_reply_method_return(call, "");
+}
 
 }  // namespace
 
-KWinPlacement::KWinPlacement(QObject* parent) : QObject(parent), expiry_(new QTimer(this)) {
-    if (!KWinScript::reachable()) {
+KWinPlacement::KWinPlacement(EventLoop& loop, BusConnection& bus) : bus_(bus) {
+    if (!KWinScript::reachable(bus)) {
         RWIN_INFO("placement", "not on KWin: toplevel windows are placed by the compositor");
         return;
     }
-    QDBusConnection bus = QDBusConnection::sessionBus();
-    if (!bus.registerObject(QLatin1String(kPath), this, QDBusConnection::ExportScriptableSlots)) {
-        RWIN_WARN("placement", "cannot put the placement object on the session bus: {}",
-                  bus.lastError().message().toStdString());
+    static const sd_bus_vtable kVtable[] = {
+        SD_BUS_VTABLE_START(0),
+        SD_BUS_METHOD("placed", "s", "", &KWinPlacement::placed_call, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("moved", "s", "", &KWinPlacement::moved_call, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("outputs", "s", "", &KWinPlacement::outputs_call, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_VTABLE_END,
+    };
+    if (sd_bus_add_object_vtable(bus.bus(), &object_, kPath, kInterface, kVtable, this) < 0) {
+        RWIN_WARN("placement", "cannot put the placement object on the session bus");
         return;
     }
-    service_ = bus.baseService();
+    service_ = bus.unique_name();
+    rewatch_ = loop.timer([this] { watch(); });
+    watch();
+    expiry_ = loop.timer([this] { expire(); });
+    expiry_->start(kExpiryCheck, true);
+}
+
+// KWin now and then answers a script's run with a file it cannot open -
+// seen right after other scripts were unloaded - and the same script run
+// again a moment later runs.
+void KWinPlacement::watch() {
     watcher_ = std::make_unique<KWinScript>(
-        script_name(QStringLiteral("watch")),
-        QString::fromLatin1(kWatcher).arg(service_, QLatin1String(kPath)).arg(QCoreApplication::applicationPid()));
-    connect(expiry_, &QTimer::timeout, this, &KWinPlacement::expire);
-    expiry_->start(kExpiryCheckMs);
-    RWIN_INFO("placement", "placing toplevel windows through KWin ({})", active() ? "watching" : "not watching");
+        bus_, script_name("watch"), std::format(kWatcher, service_, kPath, kInterface, ::getpid()),
+        [this](bool ran, const std::string&) {
+            if (ran) {
+                RWIN_INFO("placement", "placing toplevel windows through KWin");
+            } else if (++watch_tries_ < kMostWatchTries) {
+                rewatch_->start(kRewatch, false);
+            }
+        });
 }
 
 KWinPlacement::~KWinPlacement() {
-    if (!service_.isEmpty()) QDBusConnection::sessionBus().unregisterObject(QLatin1String(kPath));
+    pending_.clear();
+    watcher_.reset();
+    if (object_ != nullptr) sd_bus_slot_unref(object_);
 }
 
-QString KWinPlacement::script_name(const QString& role) {
-    return QStringLiteral("remotewin-%1-%2-%3").arg(QCoreApplication::applicationPid()).arg(role).arg(++scripts_);
+std::string KWinPlacement::script_name(std::string_view role) {
+    return std::format("remotewin-{}-{}-{}", ::getpid(), role, ++scripts_);
 }
 
-QString KWinPlacement::tag_for(std::uint64_t window) {
-    QString tag(1, QChar(kMarker));
-    for (int digit = kDigitCount - 1; digit >= 0; --digit) {
-        tag += QChar(kDigits[(window >> (digit * 2)) & 0x3]);
-    }
+std::string KWinPlacement::tag_for(std::uint64_t window) {
+    std::string tag;
+    append_utf8(tag, kMarker);
+    for (int digit = kDigitCount - 1; digit >= 0; --digit) append_utf8(tag, kDigits[(window >> (digit * 2)) & 0x3]);
     return tag;
 }
 
-std::optional<std::uint64_t> KWinPlacement::window_of(const QString& tag) {
-    if (tag.size() != kDigitCount + 1 || tag.front() != QChar(kMarker)) return std::nullopt;
+std::optional<std::uint64_t> KWinPlacement::window_of(std::string_view tag) {
+    constexpr std::size_t kCharBytes = 3;
+    if (tag.size() != (kDigitCount + 1) * kCharBytes) return std::nullopt;
+    std::string marker;
+    append_utf8(marker, kMarker);
+    if (!tag.starts_with(marker)) return std::nullopt;
     std::uint64_t window = 0;
-    for (qsizetype at = 1; at < tag.size(); ++at) {
-        const auto digit = std::find(kDigits.begin(), kDigits.end(), tag[at].unicode());
-        if (digit == kDigits.end()) return std::nullopt;
-        window = (window << 2) | static_cast<std::uint64_t>(digit - kDigits.begin());
+    for (std::size_t at = kCharBytes; at < tag.size(); at += kCharBytes) {
+        const std::string_view digit = tag.substr(at, kCharBytes);
+        const auto known = std::find_if(kDigits.begin(), kDigits.end(), [&](char16_t code) {
+            std::string encoded;
+            append_utf8(encoded, code);
+            return encoded == digit;
+        });
+        if (known == kDigits.end()) return std::nullopt;
+        window = (window << 2) | static_cast<std::uint64_t>(known - kDigits.begin());
     }
     return window;
 }
 
-void KWinPlacement::place(std::uint64_t window, QRectF frame) {
+void KWinPlacement::place(std::uint64_t window, const BoxF& frame) {
     if (!active()) return;
-    run_for(window, QString::fromLatin1(kPlacer)
-                        .arg(js_string(tag_for(window)))
-                        .arg(QCoreApplication::applicationPid())
-                        .arg(number(frame.x()), number(frame.y()), number(frame.width()), number(frame.height()),
-                             service_, QLatin1String(kPath)));
+    run_for(window, std::format(kPlacer, js_string(tag_for(window)), ::getpid(), number(frame.x), number(frame.y),
+                                number(frame.width), number(frame.height), service_, kPath, kInterface));
 }
 
-void KWinPlacement::send_to_output(std::uint64_t window, const QString& output) {
+void KWinPlacement::send_to_output(std::uint64_t window, const std::string& output) {
     if (!active()) return;
-    run_for(window, QString::fromLatin1(kSender)
-                        .arg(js_string(tag_for(window)))
-                        .arg(QCoreApplication::applicationPid())
-                        .arg(js_string(output), service_, QLatin1String(kPath)));
+    run_for(window, std::format(kSender, js_string(tag_for(window)), ::getpid(), js_string(output), service_, kPath,
+                                kInterface));
 }
 
 // One script per window at a time: a newer one replaces what an older one
 // was still waiting to do.
-void KWinPlacement::run_for(std::uint64_t window, const QString& source) {
+void KWinPlacement::run_for(std::uint64_t window, const std::string& source) {
     std::erase_if(pending_, [window](const Pending& pending) { return pending.window == window; });
-    Pending pending;
-    pending.window = window;
-    pending.since.start();
-    pending.script = std::make_unique<KWinScript>(script_name(QStringLiteral("place")), source);
-    if (!pending.script->running()) {
-        Q_EMIT window_not_placed(window);
-        return;
-    }
-    pending_.push_back(std::move(pending));
+    pending_.push_back(Pending{window, now_ns(), nullptr, false});
+    pending_.back().script = std::make_unique<KWinScript>(bus_, script_name("place"), source,
+                                                          [this, window](bool ran, const std::string&) {
+                                                              if (ran) return;
+                                                              for (Pending& pending : pending_) {
+                                                                  if (pending.window == window) pending.failed = true;
+                                                              }
+                                                          });
 }
 
-void KWinPlacement::placed(const QString& report) {
-    const QStringList parts = report.split(QLatin1Char(' '));
+int KWinPlacement::placed_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+    return string_call(call, self, &KWinPlacement::placed);
+}
+
+int KWinPlacement::moved_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+    return string_call(call, self, &KWinPlacement::moved);
+}
+
+int KWinPlacement::outputs_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+    return string_call(call, self, &KWinPlacement::outputs);
+}
+
+void KWinPlacement::placed(std::string_view report) {
+    const std::vector<std::string_view> parts = words_of(report, ' ');
     const std::optional<std::uint64_t> window = parts.size() == 3 ? window_of(parts[0]) : std::nullopt;
     if (!window.has_value()) {
-        RWIN_WARN("placement", "a placement report that names no window: '{}'", report.toStdString());
+        RWIN_WARN("placement", "a placement report that names no window: '{}'", report);
         return;
     }
     const auto pending = std::find_if(pending_.begin(), pending_.end(),
                                       [&](const Pending& entry) { return entry.window == *window; });
-    const qint64 took = pending == pending_.end() ? -1 : pending->since.elapsed();
+    const std::int64_t took = pending == pending_.end() ? -1 : (now_ns() - pending->since) / kNanosecondsPerMillisecond;
     if (pending != pending_.end()) pending_.erase(pending);
-    const QPointF at(parts[1].toDouble(), parts[2].toDouble());
-    RWIN_DEBUG("placement", "{:#x} placed at {:.2f},{:.2f} in {} ms", *window, at.x(), at.y(), took);
-    Q_EMIT window_placed(*window, at, took);
+    const PointF at{to_double(parts[1]), to_double(parts[2])};
+    RWIN_DEBUG("placement", "{:#x} placed at {:.2f},{:.2f} in {} ms", *window, at.x, at.y, took);
+    window_placed(*window, at, took);
 }
 
-void KWinPlacement::moved(const QString& report) {
-    const QStringList parts = report.split(QLatin1Char(' '));
+void KWinPlacement::moved(std::string_view report) {
+    const std::vector<std::string_view> parts = words_of(report, ' ');
     const std::optional<std::uint64_t> window = parts.size() == 5 ? window_of(parts[0]) : std::nullopt;
     if (!window.has_value()) {
-        RWIN_WARN("placement", "a move report that names no window: '{}'", report.toStdString());
+        RWIN_WARN("placement", "a move report that names no window: '{}'", report);
         return;
     }
-    const QRectF frame(parts[1].toDouble(), parts[2].toDouble(), parts[3].toDouble(), parts[4].toDouble());
-    RWIN_TRACE("placement", "{:#x} is at {:.2f},{:.2f}", *window, frame.x(), frame.y());
-    Q_EMIT window_moved(*window, frame);
+    const BoxF frame{to_double(parts[1]), to_double(parts[2]), to_double(parts[3]), to_double(parts[4])};
+    RWIN_TRACE("placement", "{:#x} is at {:.2f},{:.2f}", *window, frame.x, frame.y);
+    window_moved(*window, frame);
 }
 
-// Qt has no word of an output's scale on Wayland beyond the whole number
-// above it (2 for 1.2); KWin has the scale itself.
-void KWinPlacement::outputs(const QString& report) {
+// KWin has each output's scale itself, fraction and all.
+void KWinPlacement::outputs(std::string_view report) {
     outputs_.clear();
-    for (const QString& entry : report.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
-        const QStringList parts = entry.split(QLatin1Char(' '));
+    for (const std::string_view entry : words_of(report, ';')) {
+        const std::vector<std::string_view> parts = words_of(entry, ' ');
         if (parts.size() != 4) continue;
-        outputs_.push_back(Output{parts[0], QPointF(parts[1].toDouble(), parts[2].toDouble()), parts[3].toDouble()});
-        RWIN_INFO("placement", "output {} at {},{} scale {}", parts[0].toStdString(), parts[1].toStdString(),
-                  parts[2].toStdString(), parts[3].toStdString());
+        outputs_.push_back(Output{std::string(parts[0]), PointF{to_double(parts[1]), to_double(parts[2])},
+                                  to_double(parts[3])});
+        RWIN_INFO("placement", "output {} at {},{} scale {}", parts[0], parts[1], parts[2], parts[3]);
     }
 }
 
-std::optional<ScreenMapping> KWinPlacement::output_named(const QString& name) const {
-    const auto output = std::find_if(outputs_.begin(), outputs_.end(),
-                                     [&](const Output& candidate) { return candidate.name == name; });
-    if (output != outputs_.end()) return ScreenMapping{output->origin, output->scale};
-    if (!outputs_.empty()) return ScreenMapping{outputs_.front().origin, outputs_.front().scale};
-    return std::nullopt;
+std::optional<ScreenMapping> KWinPlacement::primary_output() const {
+    if (outputs_.empty()) return std::nullopt;
+    return ScreenMapping{outputs_.front().origin, outputs_.front().scale};
 }
 
+std::string KWinPlacement::primary_output_name() const { return outputs_.empty() ? std::string() : outputs_.front().name; }
+
 void KWinPlacement::expire() {
+    const std::int64_t now = now_ns();
     for (auto it = pending_.begin(); it != pending_.end();) {
-        if (!it->since.hasExpired(kPlacementTimeoutMs)) {
+        if (!it->failed && now - it->since < kPlacementTimeoutNs) {
             ++it;
             continue;
         }
         const std::uint64_t window = it->window;
-        RWIN_WARN("placement", "{:#x} was not placed: KWin never had it", window);
+        if (!it->failed) RWIN_WARN("placement", "{:#x} was not placed: KWin never had it", window);
         it = pending_.erase(it);
-        Q_EMIT window_not_placed(window);
+        window_not_placed(window);
     }
 }
 

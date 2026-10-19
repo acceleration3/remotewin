@@ -2,30 +2,52 @@
 
 namespace rwin::host {
 
-void ResizeBorder::fit_to(QMargins band) noexcept {
-    band_ = band.isNull() ? QMargins(kThickness, kThickness, kThickness, kThickness) : band;
+void ResizeBorder::fit_to(int left, int top, int right, int bottom) noexcept {
+    const bool none = left == 0 && top == 0 && right == 0 && bottom == 0;
+    left_ = none ? kThickness : left;
+    top_ = none ? kThickness : top;
+    right_ = none ? kThickness : right;
+    bottom_ = none ? kThickness : bottom;
 }
 
-Qt::Edges ResizeBorder::at(QPointF position, QSize size) const noexcept {
-    Qt::Edges edges;
-    if (position.x() < band_.left()) edges |= Qt::LeftEdge;
-    if (position.x() >= size.width() - band_.right()) edges |= Qt::RightEdge;
-    if (position.y() < band_.top()) edges |= Qt::TopEdge;
-    if (position.y() >= size.height() - band_.bottom()) edges |= Qt::BottomEdge;
+std::uint32_t ResizeBorder::at(PointF position, Size size) const noexcept {
+    std::uint32_t edges = 0;
+    if (position.x < left_) edges |= kLeft;
+    if (position.x >= size.width - right_) edges |= kRight;
+    if (position.y < top_) edges |= kTop;
+    if (position.y >= size.height - bottom_) edges |= kBottom;
     return edges;
 }
 
-Qt::CursorShape ResizeBorder::cursor_for(Qt::Edges edges) noexcept {
-    const bool left = edges.testFlag(Qt::LeftEdge);
-    const bool right = edges.testFlag(Qt::RightEdge);
-    const bool top = edges.testFlag(Qt::TopEdge);
-    const bool bottom = edges.testFlag(Qt::BottomEdge);
+CursorShape ResizeBorder::cursor_for(std::uint32_t edges) noexcept {
+    switch (edges) {
+        case kTop | kLeft:
+        case kBottom | kRight: return CursorShape::NwseResize;
+        case kTop | kRight:
+        case kBottom | kLeft: return CursorShape::NeswResize;
+        case kLeft:
+        case kRight: return CursorShape::EwResize;
+        case kTop:
+        case kBottom: return CursorShape::NsResize;
+        default: return CursorShape::Default;
+    }
+}
 
-    if ((left && top) || (right && bottom)) return Qt::SizeFDiagCursor;
-    if ((right && top) || (left && bottom)) return Qt::SizeBDiagCursor;
-    if (left || right) return Qt::SizeHorCursor;
-    if (top || bottom) return Qt::SizeVerCursor;
-    return Qt::ArrowCursor;
+std::optional<std::uint32_t> ResizeBorder::edges_of(MoveSizeKind kind) noexcept {
+    switch (kind) {
+        case MoveSizeKind::Left: return kLeft;
+        case MoveSizeKind::Right: return kRight;
+        case MoveSizeKind::Top: return kTop;
+        case MoveSizeKind::TopLeft: return kTop | kLeft;
+        case MoveSizeKind::TopRight: return kTop | kRight;
+        case MoveSizeKind::Bottom: return kBottom;
+        case MoveSizeKind::BottomLeft: return kBottom | kLeft;
+        case MoveSizeKind::BottomRight: return kBottom | kRight;
+        case MoveSizeKind::Move:
+        case MoveSizeKind::KeyMove:
+        case MoveSizeKind::KeySize: break;
+    }
+    return std::nullopt;
 }
 
 }  // namespace rwin::host

@@ -18,6 +18,7 @@ constexpr UINT kPopupSystemMenu = 0x0313;
 // The Alt+Space WM_SYSCHAR that precedes SC_KEYMENU: repeat 1, scan code
 // 0x39, context (Alt held) set.
 constexpr LPARAM kAltSpace = 0x20390001;
+constexpr ULONG_PTR kMenuClassAtom = 32768;
 
 std::int32_t kept_in(std::int32_t at, std::int32_t room_from, std::uint32_t room_size, std::uint32_t size) {
     return std::clamp(at, room_from, room_from + static_cast<std::int32_t>(room_size - std::min(size, room_size)));
@@ -47,6 +48,38 @@ void post_sys_command(void* window, SysCommand::Command command) {
 
 void post_system_menu(void* window, std::int32_t screen_x, std::int32_t screen_y) {
     ::PostMessageW(static_cast<HWND>(window), kPopupSystemMenu, 0, MAKELPARAM(screen_x, screen_y));
+}
+
+void dismiss_popup(void* window) {
+    const auto hwnd = static_cast<HWND>(window);
+    GUITHREADINFO gui{};
+    gui.cbSize = sizeof(gui);
+    const bool known = ::GetGUIThreadInfo(::GetWindowThreadProcessId(hwnd, nullptr), &gui) != FALSE;
+    if (known && gui.hwndMenuOwner != nullptr && ::GetClassLongPtrW(hwnd, GCW_ATOM) == kMenuClassAtom) {
+        ::PostMessageW(gui.hwndMenuOwner, WM_CANCELMODE, 0, 0);
+        RWIN_DEBUG("popup", "{:#x}: menu of {:#x} cancelled", reinterpret_cast<std::uintptr_t>(window),
+                   reinterpret_cast<std::uintptr_t>(gui.hwndMenuOwner));
+        return;
+    }
+    if (known) {
+        for (HWND box : {gui.hwndFocus, ::GetParent(gui.hwndFocus)}) {
+            COMBOBOXINFO info{};
+            info.cbSize = sizeof(info);
+            if (box == nullptr || ::GetComboBoxInfo(box, &info) == FALSE || info.hwndList != hwnd) continue;
+            ::PostMessageW(box, CB_SHOWDROPDOWN, FALSE, 0);
+            RWIN_DEBUG("popup", "{:#x}: list of {:#x} closed", reinterpret_cast<std::uintptr_t>(window),
+                       reinterpret_cast<std::uintptr_t>(box));
+            return;
+        }
+    }
+    INPUT escape[2] = {};
+    for (INPUT& key : escape) {
+        key.type = INPUT_KEYBOARD;
+        key.ki.wVk = VK_ESCAPE;
+    }
+    escape[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    ::SendInput(2, escape, sizeof(INPUT));
+    RWIN_DEBUG("popup", "{:#x}: Escape", reinterpret_cast<std::uintptr_t>(window));
 }
 
 void place(void* window, const Rect& frame, const Rect& room) {

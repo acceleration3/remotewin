@@ -1,7 +1,5 @@
 #include "host/wayland/confined_pointer.hpp"
 
-#include "host/wayland/owned_proxy.hpp"
-#include "host/wayland/pointer_globals.hpp"
 #include "logging/logger.hpp"
 
 #include <pointer-constraints-unstable-v1-client-protocol.h>
@@ -14,16 +12,13 @@ void ConfinedPointer::Release::operator()(zwp_confined_pointer_v1* confinement) 
 }
 
 // The region is copied by the request, so it is gone again at once.
-ConfinedPointer::ConfinedPointer(zwp_pointer_constraints_v1* constraints, wl_surface* surface, wl_pointer* pointer,
-                                 const QRegion& region) {
-    OwnedProxy<wl_region, &wl_region_destroy> area;
-    wl_compositor* compositor = PointerGlobals::compositor();
-    if (!region.isEmpty() && compositor != nullptr) {
-        area.reset(wl_compositor_create_region(compositor));
-        for (const QRect& rect : region) wl_region_add(area.get(), rect.x(), rect.y(), rect.width(), rect.height());
-    }
-    confinement_.reset(zwp_pointer_constraints_v1_confine_pointer(constraints, surface, pointer, area.get(),
+ConfinedPointer::ConfinedPointer(wl_compositor* compositor, zwp_pointer_constraints_v1* constraints,
+                                 wl_surface* surface, wl_pointer* pointer, const Box& area) {
+    wl_region* region = wl_compositor_create_region(compositor);
+    wl_region_add(region, area.x, area.y, area.width, area.height);
+    confinement_.reset(zwp_pointer_constraints_v1_confine_pointer(constraints, surface, pointer, region,
                                                                   ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_ONESHOT));
+    wl_region_destroy(region);
     static constexpr zwp_confined_pointer_v1_listener kListener{&ConfinedPointer::confined,
                                                                 &ConfinedPointer::unconfined};
     zwp_confined_pointer_v1_add_listener(confinement_.get(), &kListener, this);

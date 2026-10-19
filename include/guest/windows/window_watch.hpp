@@ -48,6 +48,9 @@ public:
     void ask(const SysCommand& request);
     void ask(const SysMenu& request);
     void ask(const WindowMove& request);
+    // The host's compositor dismissed the window's popup: its menu or list
+    // is closed here too.
+    void dismiss(WindowId popup);
     // ``window``'s frames now lie elsewhere in its frame: its GEOMETRY is
     // said again.
     void reread(WindowId window);
@@ -63,7 +66,10 @@ private:
 
         [[nodiscard]] bool operator==(const Event&) const noexcept = default;
     };
-    using Request = std::variant<Activate, SysCommand, SysMenu, WindowMove, WindowId>;
+    struct Dismissal {
+        WindowId popup;
+    };
+    using Request = std::variant<Activate, SysCommand, SysMenu, WindowMove, WindowId, Dismissal>;
     struct Parts;
 
     void run();

@@ -58,16 +58,30 @@ bool read_geometry(MessageReader& in, WindowFields::Geometry& into) {
 
 void write_popup(MessageWriter& out, const WindowFields::Popup& popup) {
     popup.anchor.write(out);
-    popup.rect.write(out);
-    out.put_u8(popup.gravity);
-    out.put_u8(popup.constraints);
+    out.put_u8(static_cast<std::uint8_t>(popup.kind));
+    popup.placed.write(out);
+    popup.opens_from.write(out);
+    out.put_u8(static_cast<std::uint8_t>(popup.edge));
+    out.put_u8(static_cast<std::uint8_t>(popup.gravity));
+    out.put_u8(popup.adjust);
 }
 
 bool read_popup(MessageReader& in, WindowFields::Popup& into) {
-    if (!read_id(in, into.anchor) || !read_rect(in, into.rect)) return false;
-    into.gravity = in.u8();
-    into.constraints = in.u8();
-    return in.ok();
+    using Popup = WindowFields::Popup;
+    if (!read_id(in, into.anchor)) return false;
+    const std::uint8_t kind = in.u8();
+    if (!read_rect(in, into.placed) || !read_rect(in, into.opens_from)) return false;
+    const std::uint8_t edge = in.u8();
+    const std::uint8_t gravity = in.u8();
+    into.adjust = in.u8();
+    constexpr auto kLastEdge = static_cast<std::uint8_t>(Popup::Edge::BottomRight);
+    if (!in.ok() || kind > static_cast<std::uint8_t>(Popup::Kind::Tooltip) || edge > kLastEdge || gravity > kLastEdge) {
+        return false;
+    }
+    into.kind = static_cast<Popup::Kind>(kind);
+    into.edge = static_cast<Popup::Edge>(edge);
+    into.gravity = static_cast<Popup::Edge>(gravity);
+    return true;
 }
 
 }  // namespace

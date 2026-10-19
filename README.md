@@ -70,8 +70,9 @@ Under accel-virt's GPU (virtio-gpu-av), a window's frames need not cross
 as pixels at all. `remotewin --export-socket <path>` (or
 `$RWIN_EXPORT_SOCKET`) connects to the device's export socket
 (accel-virt's `docs/external-export.md`); when it answers and its GPU is
-the one Qt draws on here (the EGL display's DRM device, by PCI address),
-the guest is told so at its hello (`FrameRoute`). Then, per window and
+the one the compositor composes on (the main device of its
+`zwp_linux_dmabuf_v1` feedback, by PCI address), the guest is told so at
+its hello (`FrameRoute`). Then, per window and
 for the desktop:
 
   * the guest half keeps a ring of three shared B8G8R8A8 textures the
@@ -82,26 +83,29 @@ for the desktop:
     slot the host is not reading, flushed, and named by its copy count
     (`FrameInSlot`);
   * the host half exports each surface once, asks the device until its
-    count of copies reaches the frame's, and draws the dma-buf it was
-    given as an EGL image (`GpuPicture`, a `QOpenGLWidget` over the
-    mirror) after waiting on the copy's sync_file on its own GPU queue;
-  * once a later frame is drawn and a fence after that draw signals,
-    the slot goes back to the guest (`SlotFree`).
+    count of copies reaches the frame's, and attaches the dma-buf it was
+    given to the window's surface as a `wl_buffer`, with the copy's
+    sync_file as the acquire point of a `wp_linux_drm_syncobj_v1`
+    timeline (or, where the compositor has no explicit sync, once the
+    sync_file signals);
+  * when the compositor is done with it (the release point, or
+    `wl_buffer.release`) the slot goes back to the guest (`SlotFree`).
 
-Nothing of a frame is copied by either CPU. The picture lands exactly
-where the pixel path's QPainter puts one: the same device pixels at a fit
-of 1, resampled bilinearly when fitted, a colour key matched against
-each texel before it is resampled, a region kept to its rectangles, a
-layered window's alpha applied. Windows that leave a margin round
-themselves (menus, tooltips) still go as pixels: what they draw is found
-by looking at their pixels.
+Nothing of a frame is copied by either CPU, and no GL context exists on
+the host: the compositor composes the guest's buffer, or scans it out.
+The picture lands where the pixel path's `wl_shm` buffer does: one picture
+pixel to one device pixel, through `wp_viewporter`, at the scale
+`wp_fractional_scale_v1` gives. A layered window's alpha is applied by
+the compositor (`wp_alpha_modifier_v1`); a colour key or a window region
+is cut out of the pixels, so such a window goes as pixels. Windows that
+leave a margin round themselves (menus, tooltips) still go as pixels:
+what they draw is found by looking at their pixels.
 
 A failure of the connection to the GPU device - no socket, another GPU,
 the connection lost - sends the guest back to pixels for every window,
 with one line saying why. One window the host cannot draw this way (an
 import EGL refuses, a surface the device will not export) goes to pixels
 alone (`WindowPixels`), and a reset GPU device has every ring made afresh.
-The conformance harness never opens the socket, and judges the pixel path.
 
 ## Both halves from one build
 
@@ -118,3 +122,8 @@ it lacks and exits with status 3, a guest half logs it and ends.
 
 The guest half cross-builds from Linux with mingw-w64, the same way the
 host half builds natively.
+
+The host half needs a C and a C++20 compiler, pkg-config, and
+`wayland-client`, `wayland-scanner`, `wayland-protocols` (1.38 or newer),
+`xkbcommon`, `libdrm` (2.4.116 or newer) and `libsystemd` (sd-bus). It
+links no Qt.

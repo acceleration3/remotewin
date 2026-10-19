@@ -5,7 +5,7 @@
 namespace rwin::host {
 
 SlotLease::~SlotLease() {
-    if (!link_.isNull()) link_->send_slot_free(slot_);
+    link_.send_slot_free(slot_);
 }
 
 }  // namespace rwin::host

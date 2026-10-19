@@ -1,9 +1,8 @@
 #pragma once
 
+#include "host/geometry/point.hpp"
+#include "host/geometry/size.hpp"
 #include "proto/system_cursor.hpp"
-
-#include <QImage>
-#include <QPoint>
 
 #include <cstdint>
 #include <vector>
@@ -15,9 +14,10 @@ namespace rwin::host {
 // screen's device pixels.
 struct CursorLook {
     struct Frame {
-        // Straight alpha (Format_ARGB32).
-        QImage image;
-        QPoint hotspot;
+        Size size;
+        // Straight-alpha BGRA, top-down, width * 4 per row.
+        std::vector<std::uint8_t> bgra;
+        Point hotspot;
         int delay_ms = 0;
     };
 

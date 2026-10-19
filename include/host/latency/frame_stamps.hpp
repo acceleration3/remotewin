@@ -27,12 +27,13 @@ struct FrameStamps {
         Executed,
         // The GPU device handed over the fence for the copy.
         Ready,
-        // A mirror took it to draw.
+        // A mirror took it to show.
         Shown,
-        // Drawn into the mirror.
-        Drawn,
-        // The mirror's buffer went to the compositor.
-        Swapped,
+        // Its buffer was ready to attach: made, and the copy into it done
+        // or handed to the compositor to wait for.
+        Acquired,
+        // Committed to the compositor.
+        Committed,
         // The compositor put it on screen (wp_presentation).
         Presented,
     };

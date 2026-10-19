@@ -30,6 +30,8 @@ public:
 
     [[nodiscard]] bool drop_shadows() const noexcept { return drop_shadows_.load(); }
     [[nodiscard]] Rect work_area() const;
+    // The primary monitor, whole.
+    [[nodiscard]] Rect monitor() const;
     // Whether anything changed since the last call.
     [[nodiscard]] bool changed() noexcept { return changed_.exchange(false); }
 
@@ -43,6 +45,7 @@ private:
     std::atomic<bool> drop_shadows_{false};
     mutable std::mutex lock_;
     Rect work_area_;
+    Rect monitor_;
     std::atomic<bool> changed_{false};
     std::atomic<unsigned long> thread_id_{0};
     std::thread worker_;

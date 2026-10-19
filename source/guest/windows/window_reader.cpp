@@ -31,7 +31,6 @@ constexpr std::array<std::wstring_view, 4> kShellClasses{L"Progman", L"WorkerW",
 constexpr std::wstring_view kOwnClassPrefix = L"rwin-guest-";
 // Office's frame-shadow windows, which RAIL keeps next to their neighbours.
 constexpr std::wstring_view kOfficeBorderClass = L"MSO_BORDEREFFECT_WINDOW_CLASS";
-constexpr ULONG_PTR kMenuClassAtom = 32768;
 constexpr std::wstring_view kMenuClass = L"#32768";
 constexpr std::size_t kClassChars = 256;
 constexpr std::size_t kTitleChars = 1024;
@@ -103,11 +102,6 @@ std::vector<Rect> region_of(HWND window, std::int32_t inset_x, std::int32_t inse
     }
     ::DeleteObject(region);
     return rects;
-}
-
-HWND root_owner_of(HWND window) {
-    HWND root = ::GetAncestor(window, GA_ROOTOWNER);
-    return root != nullptr ? root : window;
 }
 
 bool owner_hidden(HWND owner) {
@@ -204,7 +198,8 @@ bool WindowReader::admissible(void* window) const {
     return !shell_.shell_managed(window) || shell_.shown_in_switchers(window);
 }
 
-WindowReader::Reading WindowReader::read(void* window, WindowId id) const {
+WindowReader::Reading WindowReader::read(void* window, WindowId id,
+                                         std::optional<PopupIntent::Point> opened_at) const {
     const auto hwnd = static_cast<HWND>(window);
     Reading reading;
     WindowFields& fields = reading.fields;
@@ -231,7 +226,9 @@ WindowReader::Reading WindowReader::read(void* window, WindowId id) const {
     const UINT dpi = ::GetDpiForWindow(hwnd);
     fields.dpi = static_cast<std::uint16_t>(dpi != 0 ? dpi : USER_DEFAULT_SCREEN_DPI);
     read_owner(window, reading);
-    if (reading.owner == nullptr && !reading.hidden_owner) read_anchor(window, reading);
+    const PopupIntent intent{window, fields.geometry.frame, opened_at};
+    reading.anchor = intent.anchor();
+    if (reading.anchor != nullptr) fields.popup = intent.popup();
     return reading;
 }
 
@@ -300,33 +297,6 @@ void WindowReader::read_owner(void* window, Reading& into) const {
         return;
     }
     into.owner = owner;
-}
-
-// A menu and a combo box's dropped list are placed against a window that
-// does not own them: the association lives in the thread's input state.
-// GUITHREADINFO names the window whose menu is up while one is, and the
-// window holding the mouse capture while the active window's list is
-// dropped. That window is often one nobody sees (an application draws its
-// menu bar in an internal window), so it is taken up to its root owner.
-void WindowReader::read_anchor(void* window, Reading& into) const {
-    const auto hwnd = static_cast<HWND>(window);
-    GUITHREADINFO gui{};
-    gui.cbSize = sizeof(gui);
-    if (::GetGUIThreadInfo(::GetWindowThreadProcessId(hwnd, nullptr), &gui) == FALSE) return;
-    HWND anchor = nullptr;
-    if (gui.hwndMenuOwner != nullptr && ::GetClassLongPtrW(hwnd, GCW_ATOM) == kMenuClassAtom) {
-        anchor = root_owner_of(gui.hwndMenuOwner);
-    } else if (((::GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CHILD) != 0 || gui.hwndCapture == hwnd)
-               && gui.hwndActive != nullptr) {
-        anchor = root_owner_of(gui.hwndActive);
-    }
-    if (anchor == nullptr || anchor == hwnd) return;
-    const WindowSurface self{static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(hwnd))};
-    const WindowSurface against{static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(anchor))};
-    if (!self.valid() || !against.valid()) return;
-    into.anchor = anchor;
-    into.fields.popup.rect = Rect{self.screen_x(0) - against.screen_x(0), self.screen_y(0) - against.screen_y(0),
-                                  self.width(), self.height()};
 }
 
 WindowFields::AppId WindowReader::read_app_id(void* window) const {

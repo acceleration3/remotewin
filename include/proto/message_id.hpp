@@ -31,6 +31,10 @@ enum class MessageId : std::uint8_t {
     // One window's frames come as pixels from here on: the host cannot
     // draw that window's shared surfaces, whatever it does with the rest.
     WindowPixels = 27,
+    // The compositor dismissed a popup of the window's (a press outside
+    // every window of this application, Escape): its menu or list is to
+    // close in the guest too.
+    PopupDismiss = 28,
     PointerMove = 30,
     PointerButton = 31,
     PointerWheel = 32,
@@ -46,6 +50,7 @@ enum class MessageId : std::uint8_t {
     WindowNew = 68,
     WindowChanged = 69,
     WindowGone = 70,
+    WindowIcon = 71,
     ZOrder = 73,
     MinMax = 74,
     MoveSizeStart = 75,

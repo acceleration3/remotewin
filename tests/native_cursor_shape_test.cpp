@@ -20,42 +20,36 @@ void check(bool condition, const char* what) {
     ++failures;
 }
 
-// The wp_cursor_shape_device_v1 shape Qt 6.11 asks for a Qt shape by
-// (qwaylandcursor.cpp, qtCursorShapeToWaylandShape) - which is the name the
-// compositor draws, and so what the guest's cursor turns into on the glass.
-const char* css_name_of(Qt::CursorShape shape) {
+// The CSS name wp_cursor_shape_v1 gives each shape it numbers
+// (cursor-shape-v1.xml), which is what the guest's cursor turns into on the
+// glass.
+const char* css_name_of(rwin::host::CursorShape shape) {
+    using rwin::host::CursorShape;
     switch (shape) {
-        case Qt::ArrowCursor:
-            return "default";
-        case Qt::IBeamCursor:
-            return "text";
-        case Qt::WaitCursor:
-            return "wait";
-        case Qt::CrossCursor:
-            return "crosshair";
-        case Qt::UpArrowCursor:
-            return "n-resize";
-        case Qt::SizeFDiagCursor:
-            return "nwse-resize";
-        case Qt::SizeBDiagCursor:
-            return "nesw-resize";
-        case Qt::SizeHorCursor:
-            return "ew-resize";
-        case Qt::SizeVerCursor:
-            return "ns-resize";
-        case Qt::SizeAllCursor:
-            return "all-scroll";
-        case Qt::ForbiddenCursor:
-            return "not-allowed";
-        case Qt::PointingHandCursor:
-            return "pointer";
-        case Qt::BusyCursor:
-            return "progress";
-        case Qt::WhatsThisCursor:
-            return "help";
-        default:
-            return "unmapped";
+        case CursorShape::Default: return "default";
+        case CursorShape::Help: return "help";
+        case CursorShape::Pointer: return "pointer";
+        case CursorShape::Progress: return "progress";
+        case CursorShape::Wait: return "wait";
+        case CursorShape::Crosshair: return "crosshair";
+        case CursorShape::Text: return "text";
+        case CursorShape::NotAllowed: return "not-allowed";
+        case CursorShape::NResize: return "n-resize";
+        case CursorShape::EwResize: return "ew-resize";
+        case CursorShape::NsResize: return "ns-resize";
+        case CursorShape::NeswResize: return "nesw-resize";
+        case CursorShape::NwseResize: return "nwse-resize";
+        case CursorShape::AllScroll: return "all-scroll";
+        default: return "unmapped";
     }
+}
+
+void shapes_are_numbered_as_the_protocol_numbers_them() {
+    using rwin::host::CursorShape;
+    check(static_cast<int>(CursorShape::Default) == 1 && static_cast<int>(CursorShape::Text) == 9
+              && static_cast<int>(CursorShape::NotAllowed) == 15 && static_cast<int>(CursorShape::NwseResize) == 29
+              && static_cast<int>(CursorShape::AllScroll) == 32,
+          "a shape's number is cursor-shape-v1's");
 }
 
 struct Meaning {
@@ -76,7 +70,7 @@ constexpr std::array kMeanings{
 
 void every_system_cursor_is_worn_as_its_meaning() {
     for (const Meaning& meaning : kMeanings) {
-        const std::optional<Qt::CursorShape> shape = native_shape_for(meaning.cursor);
+        const std::optional<rwin::host::CursorShape> shape = native_shape_for(meaning.cursor);
         if (!shape.has_value() || std::strcmp(css_name_of(*shape), meaning.css) != 0) {
             std::printf("  %s: wanted %s, got %s\n", rwin::name_of(meaning.cursor), meaning.css,
                         shape.has_value() ? css_name_of(*shape) : "nothing");
@@ -103,6 +97,7 @@ void no_system_cursor_is_left_out() {
 }  // namespace
 
 int main() {
+    shapes_are_numbered_as_the_protocol_numbers_them();
     every_system_cursor_is_worn_as_its_meaning();
     cursors_no_desktop_has_are_the_guest_s_pixels();
     no_system_cursor_is_left_out();

@@ -19,10 +19,13 @@ Hello Hello::ours() {
     hello.build = std::string(kBuild);
     for (const std::string_view name :
          {Feature::kWindows, Feature::kInput, Feature::kFramesPixels, Feature::kFramesShared, Feature::kCursor,
-          Feature::kPointerGrab, Feature::kLatency, Feature::kMoveSize, Feature::kAppId, Feature::kPopupIntent,
-          Feature::kMonitor}) {
+          Feature::kPointerGrab, Feature::kLatency, Feature::kMoveSize, Feature::kAppId, Feature::kMonitor,
+          Feature::kIcons}) {
         hello.features.push_back(Feature{std::string(name), 1});
     }
+    // 2: POPUP carries the popup's kind and where it was meant to open, and
+    // the host can dismiss one.
+    hello.features.push_back(Feature{std::string(Feature::kPopupIntent), 2});
     return hello;
 }
 

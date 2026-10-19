@@ -4,14 +4,16 @@
 #include "host/export/export_request.hpp"
 #include "host/export/export_socket.hpp"
 #include "host/export/shared_frame.hpp"
+#include "host/export/pci_address.hpp"
 #include "host/export/window_ring.hpp"
 #include "host/latency/display_lock.hpp"
 #include "host/latency/guest_clock.hpp"
 #include "host/latency/latency_log.hpp"
+#include "host/loop/deferred.hpp"
+#include "host/loop/event_loop.hpp"
+#include "host/loop/signal.hpp"
 #include "logging/frame_timing.hpp"
 #include "proto/window_id.hpp"
-
-#include <QObject>
 
 #include <cstdint>
 #include <deque>
@@ -20,8 +22,6 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
-
-class QSocketNotifier;
 
 namespace rwin {
 struct FrameInSlot;
@@ -41,7 +41,8 @@ class SlotLease;
 //
 // The guest is told at its hello whether to send frames this way
 // (FrameRoute): only when the export socket answers and its GPU is the one
-// windows here are drawn on. A window whose surfaces cannot be exported or
+// the compositor composes on - the surfaces come in the layout their driver
+// keeps with the memory, which only that GPU can read. A window whose surfaces cannot be exported or
 // drawn here has its frames sent as pixels from then on (WindowPixels),
 // and the others keep theirs; only the export connection itself failing
 // sends every window back to pixels, for good: a mirror that shows frames
@@ -49,11 +50,10 @@ class SlotLease;
 //
 // Nothing is copied here and no pixel is touched; what crosses this class
 // is descriptors and counts.
-class SharedFrameFeed : public QObject {
-    Q_OBJECT
+class SharedFrameFeed {
 public:
-    explicit SharedFrameFeed(GuestLink& link, QObject* parent = nullptr);
-    ~SharedFrameFeed() override;
+    SharedFrameFeed(EventLoop& loop, GuestLink& link);
+    ~SharedFrameFeed();
 
     SharedFrameFeed(const SharedFrameFeed&) = delete;
     SharedFrameFeed& operator=(const SharedFrameFeed&) = delete;
@@ -61,9 +61,11 @@ public:
     SharedFrameFeed& operator=(SharedFrameFeed&&) = delete;
 
     // Connects to the export socket at ``path`` and checks the GPU it
-    // names: offered() from then on, unless either fails, and then frames
+    // names against ``composing``, the compositor's (nothing where it does
+    // not say, and a buffer it cannot take sends that window back to
+    // pixels): offered() from then on, unless either fails, and then frames
     // come as pixels, with a line saying why.
-    void open(const std::string& path);
+    void open(const std::string& path, const std::optional<PciAddress>& composing);
     [[nodiscard]] bool offered() const noexcept { return socket_.has_value(); }
 
     // Something here cannot draw the frames from the GPU (``why``): they
@@ -73,13 +75,12 @@ public:
     // come as pixels from here on.
     void pixels_for(WindowId window, const std::string& why);
 
-    // A frame from here reached the screen (GpuPicture::frame_timed): said
-    // in the log with the rest (LatencyLog), and, while this application is
-    // the active one, what times the guest's display (DisplayLock).
-    void shown(const FrameStamps& stamps);
+    // A frame from here reached the screen: said in the log with the rest
+    // (LatencyLog), and, while ``active`` - this application has the
+    // keyboard - what times the guest's display (DisplayLock).
+    void shown(const FrameStamps& stamps, bool active);
 
-Q_SIGNALS:
-    void frame_ready(rwin::WindowId window, const rwin::host::SharedFrame& frame);
+    Signal<WindowId, const SharedFrame&> frame_ready;
 
 private:
     struct Asked {
@@ -114,9 +115,11 @@ private:
     // The window whose ring ``surface`` is one of.
     [[nodiscard]] std::optional<WindowId> window_of(std::uint64_t surface) const;
 
+    EventLoop& loop_;
     GuestLink& link_;
     std::optional<ExportSocket> socket_;
-    QSocketNotifier* notifier_ = nullptr;
+    std::unique_ptr<EventLoop::Watch> answers_;
+    Deferred later_;
     // Answers come in the order requests went, on the one connection.
     std::deque<Asked> asked_;
     std::map<std::uint64_t, PendingFrame> syncing_;

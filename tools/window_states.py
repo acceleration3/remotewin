@@ -4,9 +4,9 @@
   guest   every window the guest half has told of, topmost first: owner,
           styles, rectangle, state (what Windows says), and whether it is
           the mirrored application's
-  mirror  each mirror's own idea of the window: the kind of Qt window it
-          is, its transient parent, the state it believes it is in, and
-          what holds the pointer and keyboard in that process
+  mirror  each mirror's own idea of the window: the role its surface has
+          (toplevel, popup, subsurface) and what it is placed against, the
+          state the compositor gave it and the state this side asked for
           (org.remotewin.Windows.Describe on the mirror's bus connection)
   kwin    the compositor's: stacking order, transient parent, layer,
           minimised and active (a KWin script, read back from the journal)
@@ -196,19 +196,14 @@ def compare(report, kwin_windows):
             if not g["hidden"]:
                 issues.append(f"{entry['handle']}: the guest shows it and there is no mirror")
         else:
-            mflags = [f for f in ("visible", "minimized", "qt_minimized", "maximized", "active", "modal",
-                                  "stays_on_top", "frameless", "shows_without_activating",
-                                  "transparent_for_mouse") if m.get(f)]
-            if not m["enabled"]:
-                mflags.append("DISABLED-WIDGET")
-            if not m["forwards_input"]:
-                mflags.append("no-input")
-            lines.append(f"    mirror  {m['kind']} popup_of={m['popup_of']} attached_to={m['attached_to']}"
-                         f" transient={m['transient_parent']} at={m['position']} size={m['logical_size']}"
-                         f" dpr={m['device_pixel_ratio']:.2f} frames={m['frames_presented']} {' '.join(mflags)}")
+            mflags = [f for f in ("shown", "mapped", "activated", "maximized", "fullscreen", "asked_minimized",
+                                  "asked_maximized", "asked_fullscreen", "modal", "grabs") if m.get(f)]
+            lines.append(f"    mirror  {m['role']} parent={m['parent']} placed={m['placed']}"
+                         f" size={m['logical_size'][2:]} scale={m['scale']:.2f} frames={m['frames_presented']}"
+                         f" {' '.join(mflags)}")
         if k is None:
             lines.append("    kwin    none")
-            if m is not None and m["visible"]:
+            if m is not None and m["mapped"]:
                 issues.append(f"{entry['handle']}: the mirror is visible and KWin has no window for it")
         else:
             parent = id_to_handle.get(k["transient_for"]) if k["transient_for"] else None
@@ -218,24 +213,15 @@ def compare(report, kwin_windows):
                          f" transient_for={name_of(parent) if parent else k['transient_for']} {' '.join(kflags)}"
                          f"{'' if k['wants_input'] else ' no-focus'}")
         if m is not None:
-            if g["owned"] and not g["stands_alone"] and m["kind"] != "popup" and m["popup_of"] is None:
-                issues.append(f"{entry['handle']}: owned without standing alone, mirrored as a {m['kind']}")
-            if m["kind"] == "popup":
-                issues.append(f"{entry['handle']}: mirrored as a Qt popup, which takes the pointer from every "
-                              "other window of the application while it is open")
-            if m["kind"] in ("popup", "tooltip") and g["activates"] and not g["topmost"] and not g["disabled"]:
-                issues.append(f"{entry['handle']}: Windows activates it on a click, and it is mirrored as a "
-                              f"{m['kind']}: KWin will not give it focus, and only the mirror can move it")
-            if g["minimized"] != (m["minimized"] or m["qt_minimized"]):
+            if g["owned"] and not g["stands_alone"] and m["role"] == "toplevel" and m["parent"] is None:
+                issues.append(f"{entry['handle']}: owned without standing alone, mirrored as a toplevel of its own")
+            if g["minimized"] != m["asked_minimized"]:
                 issues.append(f"{entry['handle']}: minimised in the guest={g['minimized']}, "
-                              f"on this side={m['minimized'] or m['qt_minimized']}")
-            if g["disabled"] == m["forwards_input"]:
-                issues.append(f"{entry['handle']}: disabled in the guest={g['disabled']}, "
-                              f"mirror forwards input={m['forwards_input']}")
+                              f"asked here={m['asked_minimized']}")
         if k is not None and m is not None:
-            if k["minimized"] != (m["minimized"] or m["qt_minimized"]):
-                issues.append(f"{entry['handle']}: KWin minimised={k['minimized']}, the mirror thinks "
-                              f"{m['minimized'] or m['qt_minimized']}")
+            if k["minimized"] != m["asked_minimized"]:
+                issues.append(f"{entry['handle']}: KWin minimised={k['minimized']}, the mirror asked "
+                              f"{m['asked_minimized']}")
             if g["owned"] and not k["transient_for"]:
                 issues.append(f"{entry['handle']}: owned by {g['owner']} in the guest, transient for nothing "
                               "in KWin")
@@ -247,15 +233,7 @@ def compare(report, kwin_windows):
                       + " | KWin top→bottom " + " ".join(name_of(h) for h in kwin_order))
     for w in unmatched:
         issues.append(f"KWin window {w['id']} {[round(v) for v in w['geometry']]} matches no guest window")
-    for stray in report["strays"]:
-        if stray["visible"]:
-            issues.append(f"{stray['handle']}: a visible mirror of a window the guest has said is gone")
-    grabs = {k: report[k] for k in ("active_popup", "mouse_grabber", "keyboard_grabber", "active_window",
-                                     "focus_widget")}
-    if grabs["active_popup"]:
-        issues.append(f"Qt's active popup is {grabs['active_popup']}: until it closes, every mouse press in "
-                      "this application goes to it")
-    return lines, grabs, issues
+    return lines, issues
 
 
 def main(argv):
@@ -276,10 +254,9 @@ def main(argv):
             print("   no window report on the bus (a build from before org.remotewin.Windows, or --desktop)")
             continue
         print(f"   app id {report['app_id']}")
-        lines, grabs, issues = compare(report, [w for w in kwin_windows if w["pid"] == pid])
+        lines, issues = compare(report, [w for w in kwin_windows if w["pid"] == pid])
         for line in lines:
             print("   " + line)
-        print("   qt      " + " ".join(f"{k}={v}" for k, v in grabs.items()))
         print("   disagreements:" if issues else "   no disagreements")
         for issue in issues:
             print("     - " + issue)

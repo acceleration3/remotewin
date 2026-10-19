@@ -1,7 +1,6 @@
 #include "host/export/shared_frame_feed.hpp"
 
 #include "host/export/export_hello.hpp"
-#include "host/export/rendering_gpu.hpp"
 #include "host/export/slot_lease.hpp"
 #include "host/export/surface_memory.hpp"
 #include "host/link/guest_link.hpp"
@@ -10,10 +9,7 @@
 #include "proto/slot_free.hpp"
 #include "proto/slot_ring.hpp"
 
-#include <QGuiApplication>
-#include <QImage>
-#include <QSocketNotifier>
-#include <QTimer>
+#include <poll.h>
 
 #include <algorithm>
 #include <iterator>
@@ -21,22 +17,23 @@
 
 namespace rwin::host {
 
-SharedFrameFeed::SharedFrameFeed(GuestLink& link, QObject* parent) : QObject(parent), link_(link), clock_(link) {
-    connect(&link_, &GuestLink::connected, this, &SharedFrameFeed::offer);
-    connect(&link_, &GuestLink::ring_announced, this, &SharedFrameFeed::take_ring);
-    connect(&link_, &GuestLink::frame_in_slot, this, &SharedFrameFeed::take_frame);
-    connect(&link_, &GuestLink::window_gone, this, [this](WindowId window) {
+SharedFrameFeed::SharedFrameFeed(EventLoop& loop, GuestLink& link)
+    : loop_(loop), link_(link), later_(loop), clock_(loop, link) {
+    link_.connected.connect([this] { offer(); });
+    link_.ring_announced.connect([this](const SlotRing& ring) { take_ring(ring); });
+    link_.frame_in_slot.connect([this](const FrameInSlot& frame) { take_frame(frame); });
+    link_.window_gone.connect([this](WindowId window) {
         pixels_only_.erase(window);
         drop_window(window);
     });
     // A window the guest sends as pixels has no ring any more.
-    connect(&link_, &GuestLink::frame_arrived, this, [this](WindowId window, const QImage&) { drop_window(window); });
+    link_.frame_arrived.connect([this](WindowId window, const PixelsView&) { drop_window(window); });
 }
 
 // Leases let go of after the socket: what they free is the guest's.
 SharedFrameFeed::~SharedFrameFeed() = default;
 
-void SharedFrameFeed::open(const std::string& path) {
+void SharedFrameFeed::open(const std::string& path, const std::optional<PciAddress>& composing) {
     std::string why;
     std::optional<ExportHello> hello = ExportHello::greet(path, ++next_tag_, why);
     if (!hello.has_value()) {
@@ -44,13 +41,17 @@ void SharedFrameFeed::open(const std::string& path) {
         return;
     }
     const ExportGpu gpu = hello->gpu();
-    if (const std::optional<std::string> refusal = RenderingGpu{}.refusal_for(gpu)) {
-        RWIN_WARN("export", "frames come as pixels: {}", *refusal);
+    if (!gpu.pci.has_value()) {
+        RWIN_WARN("export", "frames come as pixels: the GPU device's GPU is on no PCI bus");
+        return;
+    }
+    if (composing.has_value() && *composing != *gpu.pci) {
+        RWIN_WARN("export", "frames come as pixels: the guest's surfaces are on {}, the compositor composes on {}",
+                  gpu.pci->to_string(), composing->to_string());
         return;
     }
     socket_ = std::move(hello->socket());
-    notifier_ = new QSocketNotifier(socket_->descriptor(), QSocketNotifier::Read, this);
-    connect(notifier_, &QSocketNotifier::activated, this, &SharedFrameFeed::read_answers);
+    answers_ = loop_.watch(socket_->descriptor(), POLLIN, [this](short) { read_answers(); });
     RWIN_INFO("export", "frames stay on the GPU: '{}', {}", path, gpu.pci->to_string());
 }
 
@@ -62,8 +63,8 @@ void SharedFrameFeed::give_up(const std::string& why) {
     if (!offered()) return;
     RWIN_WARN("export", "frames come as pixels from here on: {}", why);
     link_.send_route(false);
-    delete notifier_;
-    notifier_ = nullptr;
+    answers_.reset();
+    later_.clear();
     socket_.reset();
     asked_.clear();
     syncing_.clear();
@@ -154,9 +155,8 @@ std::optional<std::uint64_t> SharedFrameFeed::ask(const ExportRequest& request) 
 // Only the application the user is in times the guest's display: there is
 // one display clock, and a mirror on another output would put it in phase
 // with that one instead.
-void SharedFrameFeed::shown(const FrameStamps& stamps) {
+void SharedFrameFeed::shown(const FrameStamps& stamps, bool active) {
     latency_.take(stamps);
-    const bool active = QGuiApplication::applicationState() == Qt::ApplicationActive;
     if (active_ && !active) lock_.forget();
     active_ = active;
     if (!active) return;
@@ -234,7 +234,7 @@ void SharedFrameFeed::exported(const ExportAnswer& answer, UniqueFd dma_buf) {
             return;
         }
         if (++export_asks_[answer.surface] < kMostExportAsks) {
-            QTimer::singleShot(kExportRetryMs, this, [this, surface = answer.surface] {
+            later_.after(std::chrono::milliseconds(kExportRetryMs), [this, surface = answer.surface] {
                 static_cast<void>(ask(ExportRequest::Operation::Export, surface));
             });
             return;
@@ -276,14 +276,14 @@ void SharedFrameFeed::synced(const ExportAnswer& answer, UniqueFd fence, Pending
             if (memory == nullptr || !fence.valid() || !ring->show(frame.order)) return;
             timing_.note("ready", frame.order, 0, frame.window.key());
             frame.stamps.note_now(FrameStamps::Stage::Ready);
-            Q_EMIT frame_ready(frame.window, SharedFrame{memory, std::move(frame.lease),
-                                                         std::make_shared<UniqueFd>(std::move(fence)), frame.ring,
-                                                         frame.order, frame.stamps});
+            frame_ready(frame.window, SharedFrame{memory, std::move(frame.lease),
+                                                  std::make_shared<UniqueFd>(std::move(fence)), frame.ring,
+                                                  frame.order, frame.stamps});
             return;
         }
         case CopyWait::Verdict::AskAgain:
-            QTimer::singleShot(CopyWait::kRetryMs, this,
-                               [this, again = std::move(frame)]() mutable { ask_sync(std::move(again)); });
+            later_.after(std::chrono::milliseconds(CopyWait::kRetryMs),
+                         [this, again = std::make_shared<PendingFrame>(std::move(frame))] { ask_sync(std::move(*again)); });
             return;
         case CopyWait::Verdict::GiveUp:
             RWIN_WARN("export", "{}: copy {} into slot {} never ran (the device has run {}); frame dropped",

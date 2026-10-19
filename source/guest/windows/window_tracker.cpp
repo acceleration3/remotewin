@@ -58,7 +58,9 @@ WindowTracker::WindowTracker(WindowDirectory& directory, const WindowReader& rea
       reader_(reader),
       outbox_(outbox),
       fields_(fields_for(features)),
-      says_min_max_(features.has(Feature::kMoveSize)) {}
+      says_min_max_(features.has(Feature::kMoveSize)) {
+    if (features.has(Feature::kIcons)) icons_.emplace(outbox);
+}
 
 void WindowTracker::sync(SyncBegin::Reason reason) {
     MessageWriter begin{MessageId::SyncBegin};
@@ -162,6 +164,12 @@ void WindowTracker::sweep() {
     }
     for (void* window : gone) forget(window);
     for (void* window : changed) refresh(window);
+    for (const auto& [window, record] : records_) look_at_icon(window, record);
+}
+
+// Only a window with a taskbar button has an icon anyone sees.
+void WindowTracker::look_at_icon(void* window, const Record& record) {
+    if (icons_.has_value() && (record.sent.taskbar & WindowFields::kTaskbarButton) != 0) icons_->look(window, record.id);
 }
 
 std::optional<WindowId> WindowTracker::id_of(void* window) const {
@@ -202,6 +210,7 @@ void WindowTracker::send_new(const Record& record) {
     record.id.write(out);
     record.sent.write(out, fields_);
     outbox_.send(out.take());
+    look_at_icon(reinterpret_cast<void*>(static_cast<std::uintptr_t>(record.id.hwnd)), record);
     if (!says_min_max_) return;
     MessageWriter limits{MessageId::MinMax};
     read_min_max(reinterpret_cast<void*>(static_cast<std::uintptr_t>(record.id.hwnd)), record.id).write(limits);
@@ -214,6 +223,7 @@ void WindowTracker::forget(void* window) {
     const WindowId id = found->second.id;
     records_.erase(found);
     directory_.forget(id);
+    if (icons_.has_value()) icons_->forget(id);
     full_ = false;
     MessageWriter out{MessageId::WindowGone};
     id.write(out);
@@ -223,7 +233,13 @@ void WindowTracker::forget(void* window) {
 
 WindowFields WindowTracker::fields_of(void* window, Record& record, const WindowFields::AppId& app) {
     record.owner = ::GetWindow(static_cast<HWND>(window), GW_OWNER);
-    WindowReader::Reading reading = reader_.read(window, record.id);
+    if (!WindowReader::effectively_visible(window)) {
+        record.opened_at.reset();
+    } else if (!record.opened_at.has_value()) {
+        POINT pointer{};
+        if (::GetCursorPos(&pointer) != FALSE) record.opened_at = PopupIntent::Point{pointer.x, pointer.y};
+    }
+    WindowReader::Reading reading = reader_.read(window, record.id, record.opened_at);
     reading.fields.app_id = app;
     reading.fields.owner = owner_id(reading);
     if (reading.anchor != nullptr) {
