@@ -149,13 +149,20 @@ where windows are, and remotewin injects input by guest-screen position.
 Stop trying to keep them in step. The guest desktop becomes a private
 canvas:
 
-- **No overlap in the guest.** Each mirrored top-level window gets its own
-  region of the guest's virtual desktop, laid out by the guest so windows
-  never overlap. avgpu owns the guest's display modes and can offer a large
-  or multi-monitor virtual layout that is never scanned out.
-  - Absolute input injection then always reaches the intended window.
-  - WGC never captures a window covered by another.
+- **Input reaches its window, wherever it is.** Pointer input is injected
+  at absolute guest-screen positions, so it lands on whatever guest window
+  is topmost there. Map input per surface instead: a point in a host
+  surface becomes the same point in its guest window. Before injecting,
+  raise that window to the top of the guest's stacking order
+  (`SetWindowPos(HWND_TOP, SWP_NOACTIVATE)`). Nobody sees the guest's
+  screen, so its stacking is free to follow input.
+  - Capture does not need this: Windows.Graphics.Capture takes each window
+    from DWM's own surface for it, so a window covered by another in the
+    guest still captures whole.
   - The guest needs no knowledge of host positions at all.
+  - An optional guest layout in which mirrored windows never overlap (avgpu
+    owns the display modes and can offer a large virtual desktop) would make
+    the raise unnecessary. It is not needed.
 - **Popups by intent, not by result.** Send the popup's anchor rectangle on
   its owner and its intended direction, not the coordinates Windows chose
   after flipping against a guest screen edge. Sources: the owner-relative
@@ -172,9 +179,12 @@ backend, and deletes the position-sync heuristics (echo filtering,
 recent-placement lists) that exist only because two sides fight over
 coordinates.
 
-### R3. Take windows from the driver where it already has them
+### R3. Take what the driver already has (an optimisation)
 
-DWM hands avgpu things remotewin currently reconstructs:
+Windows.Graphics.Capture per window works for every window and stays the
+general mechanism; it runs in the guest's user session, so capture stays
+in remotewin's guest half. DWM also hands avgpu two things that can make
+particular cases cheaper:
 
 - **The cursor.** The miniport implements `SetPointerShape` and
   `SetPointerPosition`: DWM tells the driver the exact cursor image and
@@ -189,8 +199,9 @@ DWM hands avgpu things remotewin currently reconstructs:
   attach the plane's buffer to the mirror (R1), at the application's
   present rate. That gives the lowest latency LSW can offer, and the
   fullscreen and borderless-game path falls out of it.
-- **Everything else** (GDI and DWM-composed windows) keeps WGC, with
-  `DirtyRegionMode` for damage.
+- **Everything else** keeps WGC, with `DirtyRegionMode` for damage. Planes
+  only save a copy and perhaps a frame of latency for games and video: do
+  this only if WGC's latency is measured to matter there.
 
 To find out: how many planes DWM will promote for windowed swapchains
 under our caps, and how a plane is matched to its HWND (the present's
@@ -258,13 +269,13 @@ Now that host folders mount in the guest:
 |---|---|---|
 | A | The bug list in Part 1 | Days of work. Each fix is user-visible now. |
 | B | R1: native Wayland client with direct buffers | Removes copies and GL contexts. Unlocks positioner, subsurfaces, activation, icons, shortcut inhibit and fullscreen. |
-| C | R2: guest canvas and popups by intent | Makes every compositor correct. Deletes the sync heuristics. |
+| C | R2: per-surface input mapping, the target raised in the guest, and popups by intent | Makes every compositor correct. Deletes the sync heuristics. |
 | D | R4: mirror service, AUMID identity, reconnect | Robustness, grouping, icons. Survives manager and guest restarts. |
 | E | R5: transport over the GPU device | Security, latency, capabilities. Needs an accel-virt service class. |
-| F | R3: driver cursor and planes | Lowest-latency path for games and video. Exact cursors. |
+| F | R3: driver cursor, then planes if WGC's latency matters | Exact cursors. Planes only if measured to matter for games and video. |
 | G | R6: clipboard, drag-and-drop, tray, notifications, IME, layout | Integration on top of the agent and shares. |
 
 Phases B and C are the heart of it: a remotewin that hands the compositor
-the guest's own buffers and never needs to know where the compositor put
-a window. Phases E and F are what only LSW can do, because it owns both
-ends of the GPU.
+the buffers it captured and never needs to know where the compositor put
+a window. Capture stays in the guest; the device carries buffers and
+messages (phase E); planes are an optimisation, last.
