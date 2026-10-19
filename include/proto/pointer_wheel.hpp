@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/window_id.hpp"
+
 #include <cstdint>
 #include <optional>
 
@@ -13,7 +15,7 @@ class MessageWriter;
 // WHEEL_DELTA, 120, a notch. Positive dy turns away from the user, which
 // scrolls up; positive dx tilts right.
 struct PointerWheel {
-    std::uint64_t window = 0;
+    WindowId window;
     std::int32_t x = 0;
     std::int32_t y = 0;
     std::int32_t dx = 0;

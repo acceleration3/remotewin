@@ -7,7 +7,7 @@
 namespace rwin {
 
 void FrameInSlot::write(MessageWriter& out) const {
-    out.put_u64(window);
+    window.write(out);
     out.put_u32(ring);
     out.put_u32(slot);
     out.put_u64(copies);
@@ -18,14 +18,15 @@ void FrameInSlot::write(MessageWriter& out) const {
 
 std::optional<FrameInSlot> FrameInSlot::read(MessageReader& in) {
     FrameInSlot frame;
-    frame.window = in.u64();
+    const std::optional<WindowId> window = WindowId::read(in);
     frame.ring = in.u32();
     frame.slot = in.u32();
     frame.copies = in.u64();
     frame.composed = static_cast<std::int64_t>(in.u64());
     frame.taken = static_cast<std::int64_t>(in.u64());
     frame.copied = static_cast<std::int64_t>(in.u64());
-    if (!in.ok() || frame.slot >= SlotRing::kSlots || frame.copies == 0) return std::nullopt;
+    if (!window.has_value() || !in.ok() || frame.slot >= SlotRing::kSlots || frame.copies == 0) return std::nullopt;
+    frame.window = *window;
     return frame;
 }
 

@@ -8,7 +8,7 @@
 namespace rwin {
 
 void SlotRing::write(MessageWriter& out) const {
-    out.put_u64(window);
+    window.write(out);
     out.put_u32(ring);
     out.put_u32(width);
     out.put_u32(height);
@@ -17,12 +17,13 @@ void SlotRing::write(MessageWriter& out) const {
 
 std::optional<SlotRing> SlotRing::read(MessageReader& in) {
     SlotRing made;
-    made.window = in.u64();
+    const std::optional<WindowId> window = WindowId::read(in);
     made.ring = in.u32();
     made.width = in.u32();
     made.height = in.u32();
     for (std::uint64_t& surface : made.surfaces) surface = in.u64();
-    if (!in.ok() || made.width == 0 || made.height == 0) return std::nullopt;
+    if (!window.has_value() || !in.ok() || made.width == 0 || made.height == 0) return std::nullopt;
+    made.window = *window;
     if (std::find(made.surfaces.begin(), made.surfaces.end(), 0) != made.surfaces.end()) return std::nullopt;
     return made;
 }

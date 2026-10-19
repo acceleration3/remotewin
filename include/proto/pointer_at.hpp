@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/window_id.hpp"
+
 #include <cstdint>
 #include <optional>
 
@@ -15,13 +17,13 @@ class MessageWriter;
 // sent against the window lands a step ahead and drags the window
 // further. The host works the screen point out from where the press was
 // and the pointer's own motion since, which no window's place enters.
-// ``button`` is kNoButton for a move, else the PointerInjector button
+// ``button`` is kNoButton for a move, else the PointerButton::Button
 // coming up or going down there.
 struct PointerAt {
     static constexpr std::uint8_t kNoButton = 0xFF;
 
     // The guest window the button was pressed in.
-    std::uint64_t window = 0;
+    WindowId window;
     std::int32_t x = 0;
     std::int32_t y = 0;
     std::uint8_t button = kNoButton;
@@ -30,6 +32,7 @@ struct PointerAt {
     [[nodiscard]] bool operator==(const PointerAt&) const noexcept = default;
 
     void write(MessageWriter& out) const;
+    // Refused for a button PointerButton does not number.
     [[nodiscard]] static std::optional<PointerAt> read(MessageReader& in);
 };
 

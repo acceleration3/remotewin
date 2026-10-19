@@ -34,10 +34,11 @@ void MessageWriter::put_i32(std::int32_t v) {
     put_u32(static_cast<std::uint32_t>(v));
 }
 
+void MessageWriter::put_i64(std::int64_t v) { put_u64(static_cast<std::uint64_t>(v)); }
+
 void MessageWriter::put_string(std::string_view v) {
-    const std::size_t size = v.size() > 0xFFFF ? 0xFFFF : v.size();
-    put_u16(static_cast<std::uint16_t>(size));
-    put_bytes(reinterpret_cast<const std::uint8_t*>(v.data()), size);
+    put_u32(static_cast<std::uint32_t>(v.size()));
+    put_bytes(reinterpret_cast<const std::uint8_t*>(v.data()), v.size());
 }
 
 void MessageWriter::put_bytes(const std::uint8_t* data, std::size_t size) {

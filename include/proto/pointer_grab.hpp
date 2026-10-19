@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/window_id.hpp"
+
 #include <cstdint>
 #include <optional>
 
@@ -29,7 +31,7 @@ struct PointerGrab {
 
     Kind kind = Kind::None;
     // The guest window it is for: the foreground one.
-    std::uint64_t window = 0;
+    WindowId window;
     // Confine: the clip rectangle. Lock: the clip rectangle when there is
     // one, else empty.
     Area area;

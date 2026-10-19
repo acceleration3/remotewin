@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/window_id.hpp"
+
 #include <cstdint>
 #include <optional>
 
@@ -14,7 +16,7 @@ class MessageWriter;
 // FrameInSlot. The guest copies into a slot only once the host has freed
 // it; nothing in the GPU device keeps a copy off a surface being read.
 struct SlotFree {
-    std::uint64_t window = 0;
+    WindowId window;
     std::uint32_t ring = 0;
     std::uint32_t slot = 0;
 

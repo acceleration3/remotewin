@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proto/pointer_grab.hpp"
+#include "proto/window_id.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -37,9 +38,8 @@ public:
 
     // One look at the guest.
     struct Look {
-        // The foreground window when it is one of the mirrored
-        // application's, else 0.
-        std::uint64_t foreground = 0;
+        // The foreground window when it is one the host shows, else none.
+        WindowId foreground;
         // CURSOR_SHOWING with a cursor to show.
         bool cursor_shown = true;
         // GetClipCursor, when it is less than the whole desktop.
@@ -81,7 +81,7 @@ private:
     void forget() noexcept;
 
     std::optional<Pending> pending_;
-    std::uint64_t window_ = 0;
+    WindowId window_;
     Point return_point_;
     int returns_ = 0;
     std::uint64_t last_return_ms_ = 0;

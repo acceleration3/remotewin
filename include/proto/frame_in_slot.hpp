@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/window_id.hpp"
+
 #include <cstdint>
 #include <optional>
 
@@ -24,7 +26,7 @@ class MessageWriter;
 // host puts them on its own clock (GuestClock) to say where a frame's time
 // went; 0 is a moment the guest did not see.
 struct FrameInSlot {
-    std::uint64_t window = 0;
+    WindowId window;
     std::uint32_t ring = 0;
     std::uint32_t slot = 0;
     std::uint64_t copies = 0;

@@ -7,17 +7,18 @@
 namespace rwin {
 
 void SlotFree::write(MessageWriter& out) const {
-    out.put_u64(window);
+    window.write(out);
     out.put_u32(ring);
     out.put_u32(slot);
 }
 
 std::optional<SlotFree> SlotFree::read(MessageReader& in) {
     SlotFree freed;
-    freed.window = in.u64();
+    const std::optional<WindowId> window = WindowId::read(in);
     freed.ring = in.u32();
     freed.slot = in.u32();
-    if (!in.ok() || freed.slot >= SlotRing::kSlots) return std::nullopt;
+    if (!window.has_value() || !in.ok() || freed.slot >= SlotRing::kSlots) return std::nullopt;
+    freed.window = *window;
     return freed;
 }
 

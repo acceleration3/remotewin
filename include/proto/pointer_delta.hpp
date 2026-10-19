@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/window_id.hpp"
+
 #include <cstdint>
 #include <optional>
 
@@ -14,7 +16,7 @@ class MessageWriter;
 // would (relative SendInput), which is what reaches raw input.
 struct PointerDelta {
     // The guest window the pointer is held on.
-    std::uint64_t window = 0;
+    WindowId window;
     std::int32_t dx = 0;
     std::int32_t dy = 0;
 

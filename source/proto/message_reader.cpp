@@ -37,8 +37,10 @@ std::uint64_t MessageReader::u64() {
 
 std::int32_t MessageReader::i32() { return static_cast<std::int32_t>(u32()); }
 
+std::int64_t MessageReader::i64() { return static_cast<std::int64_t>(u64()); }
+
 std::string MessageReader::string() {
-    const std::size_t size = u16();
+    const std::size_t size = u32();
     if (!want(size)) return {};
     const auto* from = reinterpret_cast<const char*>(data_ + at_);
     at_ += size;

@@ -1,24 +1,40 @@
 add_library(rwin_proto STATIC
+    activate.cpp
     clock_echo.cpp
     cursor_picture.cpp
+    feature_set.cpp
     frame_decoder.cpp
     frame_in_slot.cpp
     frame_route.cpp
     guest_cursor.cpp
-    guest_desktop.cpp
+    hello.cpp
     key_stroke.cpp
     message_reader.cpp
     message_writer.cpp
+    min_max.cpp
+    move_size_end.cpp
+    move_size_start.cpp
     picture_rect.cpp
-    pointer_delta.cpp
-    pointer_wheel.cpp
     pointer_at.cpp
+    pointer_button.cpp
+    pointer_delta.cpp
     pointer_grab.cpp
     pointer_grab_rule.cpp
+    pointer_move.cpp
+    pointer_wheel.cpp
+    rect.cpp
     slot_free.cpp
     slot_ring.cpp
+    surface_lost.cpp
+    sync_begin.cpp
+    sys_command.cpp
+    sys_menu.cpp
+    sys_param.cpp
     system_cursor.cpp
-    wire_hello.cpp
+    window_fields.cpp
+    window_id.cpp
+    window_move.cpp
+    z_order.cpp
     probe/cursor_truth.cpp
     probe/input_record.cpp
     probe/probe_action.cpp

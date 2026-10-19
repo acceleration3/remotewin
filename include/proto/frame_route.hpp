@@ -15,7 +15,10 @@ class MessageWriter;
 // copied into a ring of surfaces the host imports (SlotRing, FrameInSlot,
 // SlotFree) - and nothing but their names crosses the wire. Said again,
 // off, when the host can no longer take them; the guest then goes back to
-// pixels for every window.
+// pixels for every window. Said again, on, when the host has lost every
+// ring it held - the GPU device was reset - and the guest makes each
+// window's ring afresh. One window the host cannot draw this way goes to
+// pixels alone (WindowPixels).
 struct FrameRoute {
     bool shared_surfaces = false;
 

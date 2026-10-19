@@ -6,7 +6,7 @@
 namespace rwin {
 
 void PointerWheel::write(MessageWriter& out) const {
-    out.put_u64(window);
+    window.write(out);
     out.put_i32(x);
     out.put_i32(y);
     out.put_i32(dx);
@@ -15,12 +15,13 @@ void PointerWheel::write(MessageWriter& out) const {
 
 std::optional<PointerWheel> PointerWheel::read(MessageReader& in) {
     PointerWheel wheel;
-    wheel.window = in.u64();
+    const std::optional<WindowId> window = WindowId::read(in);
     wheel.x = in.i32();
     wheel.y = in.i32();
     wheel.dx = in.i32();
     wheel.dy = in.i32();
-    if (!in.ok()) return std::nullopt;
+    if (!window.has_value() || !in.ok()) return std::nullopt;
+    wheel.window = *window;
     return wheel;
 }
 

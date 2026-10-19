@@ -73,7 +73,7 @@ PointerGrab PointerGrabRule::grab_for(const Look& look) noexcept {
     }
     judge(look);
     PointerGrab grab;
-    if (look.foreground == 0) return grab;
+    if (look.foreground.none()) return grab;
     grab.window = look.foreground;
     const bool small_clip = look.clip.has_value() && look.clip->width() <= kSmallClip
                             && look.clip->height() <= kSmallClip;

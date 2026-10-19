@@ -6,7 +6,7 @@
 namespace rwin {
 
 void KeyStroke::write(MessageWriter& out) const {
-    out.put_u64(window);
+    window.write(out);
     out.put_u16(scan_code);
     out.put_u32(virtual_key);
     out.put_u32(character);
@@ -15,12 +15,13 @@ void KeyStroke::write(MessageWriter& out) const {
 
 std::optional<KeyStroke> KeyStroke::read(MessageReader& in) {
     KeyStroke stroke;
-    stroke.window = in.u64();
+    const std::optional<WindowId> window = WindowId::read(in);
     stroke.scan_code = in.u16();
     stroke.virtual_key = in.u32();
     stroke.character = in.u32();
     stroke.pressed = in.u8() != 0;
-    if (!in.ok()) return std::nullopt;
+    if (!window.has_value() || !in.ok()) return std::nullopt;
+    stroke.window = *window;
     return stroke;
 }
 

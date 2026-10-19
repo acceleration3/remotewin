@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/window_id.hpp"
+
 #include <cstdint>
 #include <optional>
 
@@ -20,7 +22,7 @@ struct KeyStroke {
     // The 0xE0 prefix of an extended key, in the high byte of scan_code.
     static constexpr std::uint16_t kExtended = 0xE000;
 
-    std::uint64_t window = 0;
+    WindowId window;
     // Set 1, low byte the code, kExtended set for an E0 key; 0 for none.
     std::uint16_t scan_code = 0;
     // VK_*; 0 for none.

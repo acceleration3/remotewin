@@ -24,6 +24,8 @@ public:
     std::uint32_t u32();
     std::uint64_t u64();
     std::int32_t i32();
+    std::int64_t i64();
+    // UTF-8, with a u32 length.
     std::string string();
     // Points into the caller's buffer; valid only while it lives.
     const std::uint8_t* bytes(std::size_t size);

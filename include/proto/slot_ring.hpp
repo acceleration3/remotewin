@@ -1,5 +1,7 @@
 #pragma once
 
+#include "proto/window_id.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -24,7 +26,7 @@ struct SlotRing {
     // neither waits on the other in the steady state.
     static constexpr std::size_t kSlots = 3;
 
-    std::uint64_t window = 0;
+    WindowId window;
     std::uint32_t ring = 0;
     std::uint32_t width = 0;
     std::uint32_t height = 0;

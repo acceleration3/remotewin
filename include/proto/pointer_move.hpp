@@ -1,0 +1,26 @@
+#pragma once
+
+#include "proto/window_id.hpp"
+
+#include <cstdint>
+#include <optional>
+
+namespace rwin {
+
+class MessageReader;
+class MessageWriter;
+
+// The pointer over a mirror, at a point of its window's picture (or the
+// monitor's).
+struct PointerMove {
+    WindowId window;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+
+    [[nodiscard]] bool operator==(const PointerMove&) const noexcept = default;
+
+    void write(MessageWriter& out) const;
+    [[nodiscard]] static std::optional<PointerMove> read(MessageReader& in);
+};
+
+}  // namespace rwin
