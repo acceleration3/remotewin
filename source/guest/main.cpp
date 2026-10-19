@@ -35,8 +35,8 @@ int main(int argc, char** argv) {
     // it is sent. The capture's frames are physical whatever the process
     // declares; a process that declares nothing is shown everything else -
     // window rectangles, the work area, the screen it moves the pointer
-    // over - scaled down to 96 DPI, and on a guest set to 120% the window
-    // list then says 833 where the frame is 1000. Declared before any of it
+    // over - scaled down to 96 DPI, and on a guest set to 120% a window
+    // record then says 833 where the frame is 1000. Declared before any of it
     // is asked, because the awareness is fixed from the first window call.
     // The error is kept here: the logger is not open yet, and opening it
     // sets its own.

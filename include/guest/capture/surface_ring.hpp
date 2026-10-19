@@ -4,6 +4,7 @@
 #include "guest/capture/slot_ledger.hpp"
 #include "proto/frame_in_slot.hpp"
 #include "proto/slot_ring.hpp"
+#include "proto/window_id.hpp"
 
 #include <array>
 #include <cstdint>
@@ -42,7 +43,7 @@ public:
 
     // ``rings_made`` numbers every ring of the session, so a ring's number
     // is never reused while the host may still free a slot of it.
-    SurfaceRing(const GraphicsDevice& device, const SurfaceIdReader& ids, std::uint64_t window,
+    SurfaceRing(const GraphicsDevice& device, const SurfaceIdReader& ids, WindowId window,
                 std::uint32_t& rings_made) noexcept;
     ~SurfaceRing();
 
@@ -71,7 +72,7 @@ private:
 
     const GraphicsDevice& device_;
     const SurfaceIdReader& ids_;
-    std::uint64_t window_;
+    WindowId window_;
     std::uint32_t& rings_made_;
     std::array<ID3D11Texture2D*, SlotRing::kSlots> textures_{};
     std::array<std::optional<CaptureStream::Frame>, SlotRing::kSlots> sources_{};

@@ -2,6 +2,7 @@
 
 #include "proto/pointer_grab.hpp"
 #include "proto/pointer_grab_rule.hpp"
+#include "proto/window_id.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -19,9 +20,9 @@ namespace rwin::guest {
 class PointerGrabWatcher {
 public:
     // The grab now, when it is not the grab answered with last.
-    // ``foreground`` is the foreground window when it is one of the
-    // mirrored application's, else 0.
-    [[nodiscard]] std::optional<PointerGrab> changed(std::uint64_t foreground);
+    // ``foreground`` is the foreground window when it is one the host
+    // shows, else none.
+    [[nodiscard]] std::optional<PointerGrab> changed(WindowId foreground);
 
     // The host's pointer put the cursor at this screen point.
     void put_at(std::int32_t screen_x, std::int32_t screen_y);

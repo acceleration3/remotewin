@@ -63,12 +63,12 @@ const char* kind_name(PointerGrab::Kind kind) {
 
 }  // namespace
 
-std::optional<PointerGrab> PointerGrabWatcher::changed(std::uint64_t foreground) {
+std::optional<PointerGrab> PointerGrabWatcher::changed(WindowId foreground) {
     const PointerGrabRule::Look look{foreground, cursor_shown(), clip_now(), cursor_now(), ::GetTickCount64()};
     const PointerGrab grab = rule_.grab_for(look);
     if (grab == last_) return std::nullopt;
     last_ = grab;
-    RWIN_INFO("pointer", "grab {} for {:#x}: area {},{}-{},{} held at {},{} (cursor {}, warping {})",
+    RWIN_INFO("pointer", "grab {} for {}: area {},{}-{},{} held at {},{} (cursor {}, warping {})",
               kind_name(grab.kind), grab.window, grab.area.left, grab.area.top, grab.area.right, grab.area.bottom,
               grab.x, grab.y, look.cursor_shown ? "shown" : "hidden", rule_.warping());
     return grab;

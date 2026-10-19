@@ -17,7 +17,7 @@
 
 namespace rwin::guest {
 
-SurfaceRing::SurfaceRing(const GraphicsDevice& device, const SurfaceIdReader& ids, std::uint64_t window,
+SurfaceRing::SurfaceRing(const GraphicsDevice& device, const SurfaceIdReader& ids, WindowId window,
                          std::uint32_t& rings_made) noexcept
     : device_(device), ids_(ids), window_(window), rings_made_(rings_made) {}
 
@@ -72,7 +72,7 @@ std::optional<SurfaceRing::Delivery> SurfaceRing::copy(CaptureStream::Frame& fra
 void SurfaceRing::free(const SlotFree& freed) noexcept {
     if (freed.window != window_) return;
     if (!ledger_.freed(freed.ring, freed.slot)) {
-        RWIN_DEBUG("shared", "{:#x}: slot {} of ring {} was not the host's (ring {} now)", window_, freed.slot,
+        RWIN_DEBUG("shared", "{}: slot {} of ring {} was not the host's (ring {} now)", window_, freed.slot,
                    freed.ring, ledger_.ring());
         return;
     }
@@ -96,7 +96,7 @@ bool SurfaceRing::remake(CaptureStream::Extent size) {
     for (std::size_t slot = 0; slot < textures_.size(); ++slot) {
         if (const HRESULT created = device_.device()->CreateTexture2D(&described, nullptr, &textures_[slot]);
             FAILED(created)) {
-            RWIN_WARN("shared", "{:#x}: no shared {}x{} texture: {:#010x}", window_, size.width, size.height,
+            RWIN_WARN("shared", "{}: no shared {}x{} texture: {:#010x}", window_, size.width, size.height,
                       static_cast<unsigned>(created));
             release_textures();
             return false;
@@ -109,7 +109,7 @@ bool SurfaceRing::remake(CaptureStream::Extent size) {
         if (resource != nullptr) resource->Release();
         const std::optional<std::uint64_t> id = handed ? ids_.id_of(shared) : std::nullopt;
         if (!id.has_value()) {
-            RWIN_WARN("shared", "{:#x}: shared texture {} has {}", window_, slot,
+            RWIN_WARN("shared", "{}: shared texture {} has {}", window_, slot,
                       handed ? "no surface id" : "no shared handle");
             release_textures();
             return false;
@@ -119,7 +119,7 @@ bool SurfaceRing::remake(CaptureStream::Extent size) {
     rings_made_ = made.ring;
     announced_ = made;
     ledger_ = SlotLedger{made.ring};
-    RWIN_DEBUG("shared", "{:#x}: ring {} of {}x{}: {:#x} {:#x} {:#x}", window_, made.ring, size.width, size.height,
+    RWIN_DEBUG("shared", "{}: ring {} of {}x{}: {:#x} {:#x} {:#x}", window_, made.ring, size.width, size.height,
                made.surfaces[0], made.surfaces[1], made.surfaces[2]);
     return true;
 }

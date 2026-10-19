@@ -1,6 +1,5 @@
-#include "guest/input/keyboard_injector.hpp"
+#include "guest/input/key_input.hpp"
 
-#include "guest/windows/window_focus.hpp"
 #include "logging/logger.hpp"
 #include "proto/key_stroke.hpp"
 
@@ -41,20 +40,7 @@ UINT send(WORD virtual_key, WORD scan, DWORD flags) {
     return ::SendInput(1, &input, sizeof(input));
 }
 
-}  // namespace
-
-void KeyboardInjector::put(const KeyStroke& stroke) const {
-    focus_.give_to(stroke.window);
-    if (stroke.scan_code != 0) {
-        press_scan_code(stroke.scan_code, stroke.pressed);
-    } else if (stroke.character != 0) {
-        if (stroke.pressed) type(stroke.character);
-    } else if (stroke.virtual_key != 0) {
-        press_virtual_key(stroke.virtual_key, stroke.pressed);
-    }
-}
-
-void KeyboardInjector::type(std::uint32_t character) const {
+void type(std::uint32_t character) {
     // Anything outside the basic plane arrives as a surrogate pair, and
     // each half goes in as its own keystroke for the receiver to
     // reassemble.
@@ -75,7 +61,7 @@ void KeyboardInjector::type(std::uint32_t character) const {
 
 // wVk is left 0: with KEYEVENTF_SCANCODE Windows ignores it and asks the
 // layout, as it does for a key a keyboard sent.
-void KeyboardInjector::press_scan_code(std::uint16_t scan_code, bool pressed) const {
+void press_scan_code(std::uint16_t scan_code, bool pressed) {
     DWORD flags = KEYEVENTF_SCANCODE | (pressed ? 0 : KEYEVENTF_KEYUP);
     if ((scan_code & KeyStroke::kExtended) == KeyStroke::kExtended) {
         flags |= KEYEVENTF_EXTENDEDKEY;
@@ -85,13 +71,25 @@ void KeyboardInjector::press_scan_code(std::uint16_t scan_code, bool pressed) co
                pressed ? "down" : "up", accepted);
 }
 
-void KeyboardInjector::press_virtual_key(std::uint32_t virtual_key, bool pressed) const {
+void press_virtual_key(std::uint32_t virtual_key, bool pressed) {
     const ScanCode scan = scan_code_of(virtual_key);
     DWORD flags = pressed ? 0 : KEYEVENTF_KEYUP;
     if (scan.extended) flags |= KEYEVENTF_EXTENDEDKEY;
     const UINT accepted = send(static_cast<WORD>(virtual_key), scan.value, flags);
     RWIN_DEBUG("input", "virtual key {:#x} {}: {} accepted", virtual_key,
                pressed ? "down" : "up", accepted);
+}
+
+}  // namespace
+
+void put_key(const KeyStroke& stroke) {
+    if (stroke.scan_code != 0) {
+        press_scan_code(stroke.scan_code, stroke.pressed);
+    } else if (stroke.character != 0) {
+        if (stroke.pressed) type(stroke.character);
+    } else if (stroke.virtual_key != 0) {
+        press_virtual_key(stroke.virtual_key, stroke.pressed);
+    }
 }
 
 }  // namespace rwin::guest

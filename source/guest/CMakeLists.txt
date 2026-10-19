@@ -12,31 +12,35 @@ add_executable(remotewin-guest
     capture/surface_id_reader.cpp
     capture/surface_ring.cpp
     capture/window_capture.cpp
-    input/keyboard_injector.cpp
-    input/pointer_grab_watcher.cpp
-    input/pointer_injector.cpp
-    session/guest_session.cpp
-    session/multimedia_thread.cpp
     cursor/cursor_decoder.cpp
     cursor/cursor_image.cpp
     cursor/cursor_watcher.cpp
     cursor/monochrome_picture.cpp
+    cursor/sent_cursors.cpp
+    input/key_input.cpp
+    input/pointer_grab_watcher.cpp
+    input/pointer_input.cpp
+    session/guest_session.cpp
+    session/multimedia_thread.cpp
+    session/outbox.cpp
     session/tcp_client.cpp
-    windows/application_process.cpp
-    windows/window_enumerator.cpp
-    windows/window_focus.cpp
-    windows/window_drag_watcher.cpp
-    windows/launch_scope.cpp
-    windows/foreground_hand_off.cpp
-    windows/window_list_watcher.cpp
-    windows/window_mover.cpp
-    windows/window_resizer.cpp
-    windows/work_area.cpp
+    windows/app_id_resolver.cpp
+    windows/desktop_settings.cpp
+    windows/marker_window.cpp
+    windows/min_max_reader.cpp
+    windows/move_size_report.cpp
+    windows/shell_views.cpp
+    windows/wide_text.cpp
+    windows/window_commands.cpp
+    windows/window_directory.cpp
+    windows/window_reader.cpp
     windows/window_surface.cpp
-    windows/shadow_setting.cpp
+    windows/window_tracker.cpp
+    windows/window_watch.cpp
+    windows/z_order_report.cpp
 )
 target_link_libraries(remotewin-guest PRIVATE
-    rwin::proto rwin::logging ws2_32 gdi32 user32 dwmapi d3d11 dxgi runtimeobject ole32 avrt)
+    rwin::proto rwin::logging ws2_32 gdi32 user32 dwmapi d3d11 dxgi runtimeobject ole32 avrt advapi32 shlwapi)
 
 # Statically linked: this drops onto a stock Windows install with no
 # runtime to ship beside it.
