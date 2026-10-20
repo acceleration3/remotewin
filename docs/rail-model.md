@@ -1508,7 +1508,10 @@ FocusWindow, and no code path for a version-5 peer.
   monitor's whole rectangle, with it: what a fullscreen window covers); host to guest, `DragFullWindows`
   on, once after the hello. Drop shadows are per window, in FRAME.
 - **Frames**: `WindowPixels{window}` (host to guest, id 27) sends one
-  window back to pixels; `FrameRoute{shared}` said again after a GPU
+  window back to pixels, and the guest captures it afresh, so its picture
+  comes again however still it sits (§7.10); the host sends it before
+  `Subscribe` for a window whose picture only pixels can show.
+  `FrameRoute{shared}` said again after a GPU
   device reset makes every ring afresh and forgets the per-window
   fallbacks. `SurfaceLost{window}` stops a window's frames without its
   mirror going; the guest captures it again a second later by itself.
@@ -1782,6 +1785,47 @@ Fixed rather than written down (rows 7, 9, 18, 39, 51, 56, 75 and 88):
 
 Open: the host's resize band lies inside the window, not outside it as
 MS-RDPERP 1.3.4 has it (row 25).
+
+### 7.10 A picture refused on the GPU
+
+Affinity's welcome and its close confirmation did not show until the main
+window was minimised and restored. Both are WPF windows whose
+`WindowChrome` has no glass frame, and WPF rounds such a window's corners
+with `SetWindowRgn` (a complex region, 8 px corners; measured in the guest
+on a WPF window of its own). The host can cut a region (or a colour key)
+out of pixels only - it draws nothing on the GPU - so it refused the first
+frame each window sent on the GPU and sent `WindowPixels`. The guest marked
+the window pixels-only and waited for the next frame, which Windows'
+capture sends only when the window changes: a dialog sitting still never
+sent one, and its mirror never mapped (`mapped` false, one frame, no
+picture, in `Describe`, for Affinity's close confirmation). The main
+window, which redraws as it loads, came back by itself. A minimise and
+restore made the dialog redraw.
+
+Fixed on both sides:
+
+- **Host.** A mirror whose picture is cut out (`PictureCutout::why_pixels`)
+  has its window sent to pixels before it is subscribed, and again whenever
+  a change gives it a region or a key: no ring is made, no frame refused. A
+  region one of whose rectangles holds the whole picture (WPF's
+  square-cornered `WindowChrome`) cuts nothing and stays on the GPU.
+- **Guest.** `WindowPixels` makes the window's capture afresh, as a route
+  change makes every capture: its first frame comes at once. That covers a
+  refusal for any other reason (the compositor not taking a dma-buf, an
+  export failing).
+
+Checked: the integration cases `welcome-in-front`,
+`close-confirmation-in-front` and their `-rounded` variants, which play a
+GPU device's export socket (`FakeExportDevice`) and send the rounded
+windows' pictures on the GPU as the guest does. Against the host before
+this and a guest that waits for the next frame, the rounded cases never
+map the main window or the dialog; against it with a guest that captures
+afresh they map, one ring each later. Live, on a private headless KWin
+with the guest of this branch and a WPF window and owned dialog shown by
+PowerShell: the host before this logged "a window region, cut out on
+pixels" for each and, with the guest before this, never mapped them; with
+both halves of this branch both map with no ring, the dialog transient for
+the main window and active.
 
 ## Appendix: binaries, symbols, method
 

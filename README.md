@@ -140,9 +140,11 @@ config directory) inside a private `dbus-run-session`, runs the
 moves and system commands as Windows does, after a delay, with the
 window's new fields and a frame of its new size by the pixel path. The
 pointer is KWin's fake input; KWin's view of the window comes from a
-watching KWin script, the host's from its `Describe`. Each case takes
-about a second; all twelve about 12 s one after another (`-j` runs them
-side by side). They are skipped (exit 77) where `kwin_wayland` or
+watching KWin script, the host's from its `Describe`. Cases ending in
+`-rounded` also play the GPU device's export socket, so the guest's
+pictures of its other windows go on the GPU as the real guest's do. Each
+case takes about a second; all of them about 25 s one after another (`-j`
+runs them side by side). They are skipped (exit 77) where `kwin_wayland` or
 `dbus-run-session` is not installed. One case alone, with its verdicts
 and timings:
 
