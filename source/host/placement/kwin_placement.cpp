@@ -36,7 +36,8 @@ constexpr std::array<char16_t, 4> kDigits{0x200B, 0x200C, 0x200D, 0x2060};
 constexpr int kDigitCount = 32;
 
 // Finds this process's windows by their tag, and reports where each is
-// put - not during a drag, which is reported once, where it ends.
+// put - not during a drag, which is reported once, where it ends - and
+// when it is maximised, made fullscreen or minimised.
 constexpr const char* kWatcher = R"JS(
 const service = "{0}";
 const marker = String.fromCharCode(0x2063);
@@ -49,14 +50,18 @@ function report(w, dragged) {{
     const tag = tagOf(w);
     if (tag === "") return;
     const g = w.frameGeometry;
+    const state = w.maximizeMode !== 0 || w.fullScreen;
     callDBus(service, "{1}", "{2}", "moved",
-             tag + " " + g.x + " " + g.y + " " + g.width + " " + g.height + " " + (dragged ? 1 : 0));
+             [tag, g.x, g.y, g.width, g.height, dragged ? 1 : 0, state ? 1 : 0, w.minimized ? 1 : 0].join(" "));
 }}
 function watch(w) {{
     if (w.pid !== {3}) return;
     w.frameGeometryChanged.connect(function() {{ if (!w.move && !w.resize) report(w, false); }});
     w.interactiveMoveResizeFinished.connect(function() {{ report(w, true); }});
     w.captionChanged.connect(function() {{ report(w, false); }});
+    w.maximizedChanged.connect(function() {{ report(w, false); }});
+    w.fullScreenChanged.connect(function() {{ report(w, false); }});
+    w.minimizedChanged.connect(function() {{ report(w, false); }});
     report(w, false);
 }}
 workspace.windowList().forEach(watch);
@@ -71,16 +76,18 @@ workspace.screensChanged.connect(outputs);
 outputs();
 )JS";
 
-// Puts one window's frame corner somewhere, now or as KWin maps it.
+// Puts one window's frame corner somewhere, now or as KWin maps it, at the
+// size it has.
 constexpr const char* kPlacer = R"JS(
 const tag = "{0}";
 function place(w) {{
     if (w.pid !== {1}) return false;
     const caption = w.captionNormal || "";
     if (caption.indexOf(tag) < 0) return false;
-    w.frameGeometry = {{x: {2}, y: {3}, width: {4}, height: {5}}};
+    const was = w.frameGeometry;
+    w.frameGeometry = {{x: {2}, y: {3}, width: was.width, height: was.height}};
     const now = w.frameGeometry;
-    callDBus("{6}", "{7}", "{8}", "placed", tag + " " + now.x + " " + now.y);
+    callDBus("{4}", "{5}", "{6}", "placed", tag + " " + now.x + " " + now.y);
     return true;
 }}
 if (!workspace.windowList().some(place)) {{
@@ -241,10 +248,10 @@ std::optional<std::uint64_t> KWinPlacement::window_of(std::string_view tag) {
     return window;
 }
 
-void KWinPlacement::place(std::uint64_t window, const BoxF& frame) {
+void KWinPlacement::place(std::uint64_t window, PointF corner) {
     if (!active()) return;
-    run_for(window, std::format(kPlacer, js_string(tag_for(window)), ::getpid(), number(frame.x), number(frame.y),
-                                number(frame.width), number(frame.height), service_, kPath, kInterface));
+    run_for(window, std::format(kPlacer, js_string(tag_for(window)), ::getpid(), number(corner.x), number(corner.y),
+                                service_, kPath, kInterface));
 }
 
 void KWinPlacement::send_to_output(std::uint64_t window, const std::string& output) {
@@ -297,15 +304,18 @@ void KWinPlacement::placed(std::string_view report) {
 
 void KWinPlacement::moved(std::string_view report) {
     const std::vector<std::string_view> parts = words_of(report, ' ');
-    const std::optional<std::uint64_t> window = parts.size() == 6 ? window_of(parts[0]) : std::nullopt;
+    constexpr std::size_t kParts = 8;
+    const std::optional<std::uint64_t> window = parts.size() == kParts ? window_of(parts[0]) : std::nullopt;
     if (!window.has_value()) {
         RWIN_WARN("placement", "a move report that names no window: '{}'", report);
         return;
     }
-    const BoxF frame{to_double(parts[1]), to_double(parts[2]), to_double(parts[3]), to_double(parts[4])};
-    const bool dragged = parts[5] == "1";
-    RWIN_TRACE("placement", "{:#x} is at {:.2f},{:.2f}{}", *window, frame.x, frame.y, dragged ? ", dragged" : "");
-    window_moved(*window, frame, dragged);
+    const Report seen{BoxF{to_double(parts[1]), to_double(parts[2]), to_double(parts[3]), to_double(parts[4])},
+                      parts[5] == "1", parts[6] == "1", parts[7] == "1"};
+    RWIN_TRACE("placement", "{:#x} is at {:.2f},{:.2f} {:.2f}x{:.2f}{}{}{}", *window, seen.frame.x, seen.frame.y,
+               seen.frame.width, seen.frame.height, seen.dragged ? ", dragged" : "",
+               seen.by_state ? ", maximised or fullscreen" : "", seen.minimized ? ", minimised" : "");
+    window_moved(*window, seen);
 }
 
 // KWin has each output's scale itself, fraction and all.

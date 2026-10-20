@@ -84,9 +84,14 @@ public:
     // A buffer has been committed.
     [[nodiscard]] bool mapped() const noexcept { return mapped_; }
 
-    // One guest pixel to one device pixel (the default), or stretched over
-    // ``logical`` units.
+    // One guest pixel to one device pixel (the default); the same, cropped
+    // to at most ``logical`` units; or stretched over ``logical`` units.
+    // Said with the next commit, which is the caller's: committed here, a
+    // view would go out ahead of the window geometry that goes with it, and
+    // the compositor take the configure acknowledged for answered with the
+    // old geometry.
     void fit_one_to_one();
+    void crop_to(Size logical);
     void fit_to(Size logical);
     // How the picture lies on the surface as it is shown now.
     [[nodiscard]] ViewMapping mapping() const noexcept;
@@ -168,6 +173,7 @@ private:
     double fallback_scale_ = 1.0;
     Size picture_;
     std::optional<Size> fitted_;
+    std::optional<Size> cropped_;
     std::vector<Box> input_rects_;
     bool no_input_ = false;
     PictureCutout cutout_;

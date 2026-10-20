@@ -54,11 +54,22 @@ public:
     [[nodiscard]] static std::string tag_for(std::uint64_t window);
     [[nodiscard]] static std::optional<std::uint64_t> window_of(std::string_view tag);
 
-    // ``frame`` in the desktop's logical units. The size is set with the
-    // place - KWin has no move alone - and is the size the window is to
-    // be: as KWin maps a window it may not have its final size yet, and
-    // a place set with that size is a resize the client then honours.
-    void place(std::uint64_t window, const BoxF& frame);
+    // How KWin has a window, as its watching script reports it.
+    struct Report {
+        // Its frame, in the desktop's logical units.
+        BoxF frame;
+        // A move or resize its user made ended.
+        bool dragged = false;
+        // Maximised or fullscreen: the frame is the state's, not a place.
+        bool by_state = false;
+        bool minimized = false;
+    };
+
+    // The frame's corner, in the desktop's logical units. A move alone: the
+    // size is the client's, and one set here from what this side last knew
+    // would be a resize the client then honours - back to a size the window
+    // had a moment ago.
+    void place(std::uint64_t window, PointF corner);
     // Sends a window to the output of that name, keeping its state - a
     // maximised window is maximised there - now or as KWin maps it; said
     // done as a placement is (window_placed, where its frame then is).
@@ -73,8 +84,8 @@ public:
     Signal<std::uint64_t, PointF, std::int64_t> window_placed;
     // KWin did not find the window in time.
     Signal<std::uint64_t> window_not_placed;
-    // Its frame now; ``dragged`` when a move or resize its user made ended.
-    Signal<std::uint64_t, const BoxF&, bool> window_moved;
+    // Its frame, state or minimised flag changed, or a drag of it ended.
+    Signal<std::uint64_t, const Report&> window_moved;
 
 private:
     struct Output {

@@ -4,7 +4,7 @@
 #include "host/geometry/box_f.hpp"
 #include "host/geometry/point.hpp"
 #include "host/geometry/point_f.hpp"
-#include "host/geometry/size.hpp"
+#include "host/loop/signal.hpp"
 #include "host/placement/kwin_placement.hpp"
 #include "host/placement/screen_mapping.hpp"
 #include "proto/window_id.hpp"
@@ -18,22 +18,24 @@
 namespace rwin::host {
 
 class BusConnection;
-class GuestLink;
 class GuestWindow;
 
 // Keeps a toplevel mirror where its guest window is, where the compositor
 // can be told and asked (KWinPlacement): a window the guest moves -
 // SetWindowPos, a dialog centred on its owner, CW_USEDEFAULT - is put at
 // the same place on this desktop, and a mirror moved here - dragged by the
-// user, placed by the compositor - has its guest window moved under it, so
-// the guest's own idea of where the window is (the monitor a dialog centres
-// on) is what is on screen. A nicety for first placement and for keeping
-// the two in step: nothing depends on it, input reaches a window wherever
-// either side has it (R2). Elsewhere the compositor places mirrors and the
-// guest is not told.
+// user, placed by the compositor - has its guest window moved under it
+// (moved_here), so the guest's own idea of where the window is (the
+// monitor a dialog centres on) is what is on screen. A nicety for first
+// placement and for keeping the two in step: nothing depends on it, input
+// reaches a window wherever either side has it (R2). Elsewhere the
+// compositor places mirrors and the guest is not told.
+//
+// Places only: a size is the client's to commit, and a frame the
+// compositor has for a state - maximised, fullscreen - is no place.
 class PlacementSync {
 public:
-    PlacementSync(EventLoop& loop, BusConnection& bus, GuestLink& link);
+    PlacementSync(EventLoop& loop, BusConnection& bus);
 
     [[nodiscard]] bool active() const noexcept { return kwin_.active(); }
 
@@ -42,12 +44,14 @@ public:
     [[nodiscard]] std::string tag_for(WindowId window) const;
 
     // Where the guest window's picture is, as the guest last said, for a
-    // toplevel mirror of ``logical`` units whose surface is the
-    // ``generation``-th made for it. ``placeable`` is false for a window
-    // minimised or maximised in the guest: those are placed by their state.
-    // A mirror whose surface was made again is placed again: the compositor
-    // put the new one where it chose.
-    void follow_guest(const GuestWindow& window, std::uint32_t generation, Size logical, bool placeable);
+    // toplevel mirror whose surface is the ``generation``-th made for it.
+    // ``placeable`` is false for a window minimised or maximised in the
+    // guest: those are placed by their state. A mirror whose surface was
+    // made again is placed again: the compositor put the new one where it
+    // chose. ``answering`` while the guest has moves of this side's still to
+    // answer: where it says it is then, it is on its way to where it was
+    // asked to be, and is not followed.
+    void follow_guest(const GuestWindow& window, std::uint32_t generation, bool placeable, bool answering);
     // A mirror maximised for the guest is maximised on the guest's own
     // screen - the primary output, here - as Windows maximises a window on
     // the monitor it is on; KWin would maximise it on the one its user is
@@ -62,30 +66,39 @@ public:
     void hold_for_drag(WindowId window);
     // A press on the mirror: a drag the compositor never ran is over.
     void end_drag_hold(WindowId window);
+    // The guest resized its window itself, and the mirror took the size:
+    // where KWin puts a client that resizes itself (keeping its centre) is
+    // not where the guest has it, and the mirror goes back to the guest's
+    // corner rather than the guest window following KWin's.
+    void guest_resized(WindowId window);
 
     // Where the guest's screen - this desktop's primary output - is, as the
     // compositor lays it out; nothing where it does not say.
     [[nodiscard]] std::optional<ScreenMapping> guest_screen() const { return kwin_.primary_output(); }
 
+    // The mirror of a window was put somewhere here: its guest window's
+    // picture is to be at this point of the guest's screen.
+    Signal<WindowId, Point> moved_here;
+    // The compositor minimised the mirror of a window, or brought it back.
+    Signal<WindowId, bool> minimized_here;
+
 private:
     struct Tracked {
-        // The picture's corner on the guest's screen; the frame's size, and
-        // where the picture sits in it: what the guest is told when the
-        // window is put somewhere here.
+        // The picture's corner on the guest's screen.
         Point guest;
-        Size frame_size;
-        Point picture_offset;
         std::uint32_t generation = 0;
-        Size logical;
         bool placeable = false;
+        // Minimised by the compositor, as it last said.
+        bool minimized = false;
         // The compositor is dragging it (hold_for_drag).
         bool held = false;
+        // When the guest last resized the window itself (guest_resized).
+        std::int64_t guest_resized_at = 0;
         bool pending = false;
         // A placement of this window has been done, or asked for again once
         // KWin had it.
         bool placed_once = false;
         std::optional<PointF> asked;
-        Size asked_size;
         std::optional<BoxF> reported;
         // A guest move asked for and not yet reported back: when it is, it
         // is this side's own move coming back.
@@ -111,10 +124,13 @@ private:
     // ``key``: WindowId::key, which is what KWinPlacement knows a window by.
     void placed(std::uint64_t key, PointF frame_corner);
     void not_placed(std::uint64_t key);
-    void moved(std::uint64_t key, const BoxF& frame, bool dragged);
+    void moved(std::uint64_t key, const KWinPlacement::Report& report);
     void place_at_guest(WindowId window, Tracked& tracked, bool remade);
+    // A place KWin chose for a window just placed, rather than its user:
+    // put back where this side placed it. True when it was.
+    bool put_back(std::uint64_t key, Tracked& tracked, const KWinPlacement::Report& report, Point guest,
+                  const ScreenMapping& screen, const std::optional<BoxF>& before);
 
-    GuestLink& link_;
     KWinPlacement kwin_;
     std::unordered_map<std::uint64_t, Tracked> tracked_;
 };

@@ -131,19 +131,24 @@ void MirrorSurface::fall_back_to(double scale) {
 
 ViewMapping MirrorSurface::mapping() const noexcept {
     const Size picture = picture_.empty() ? Size{1, 1} : picture_;
-    return fitted_.has_value() ? ViewMapping::stretched(picture, *fitted_) : ViewMapping::one_to_one(picture, scale());
+    if (fitted_.has_value()) return ViewMapping::stretched(picture, *fitted_);
+    const ViewMapping whole = ViewMapping::one_to_one(picture, scale());
+    return cropped_.has_value() ? whole.within(*cropped_) : whole;
 }
 
 void MirrorSurface::fit_one_to_one() {
-    if (!fitted_.has_value()) return;
     fitted_.reset();
-    commit();
+    cropped_.reset();
+}
+
+void MirrorSurface::crop_to(Size logical) {
+    fitted_.reset();
+    cropped_ = logical;
 }
 
 void MirrorSurface::fit_to(Size logical) {
-    if (fitted_ == logical) return;
     fitted_ = logical;
-    commit();
+    cropped_.reset();
 }
 
 void MirrorSurface::shape_input(std::vector<Box> picture_rects) {

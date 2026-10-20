@@ -41,7 +41,7 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
     : loop_(parts.loop), link_(parts.link), frames_(parts.frames), scope_(std::move(scope)),
       activation_(parts.surfaces.globals, parts.surfaces.seat),
       grabber_(parts.link, parts.surfaces.globals, parts.surfaces.seat),
-      placement_(parts.loop, parts.bus, parts.link),
+      placement_(parts.loop, parts.bus),
       kit_{parts.link, parts.surfaces, activation_, popups_, grabber_, desktop_, placement_, std::move(app_id)},
       cursor_(parts.loop), focus_(parts.loop, parts.link, parts.surfaces.seat), token_(std::move(token)),
       empty_(parts.loop.timer([this] {
@@ -75,8 +75,13 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
     });
     link_.restacked.connect([this](const ZOrder& order) { restacked(order); });
     link_.move_size_started.connect([this](const MoveSizeStart& start) {
-        WindowMirror* mirror = find(start.window);
-        if (mirror != nullptr && mirror->take_over_move_size(start.kind)) placement_.hold_for_drag(start.window);
+        if (WindowMirror* mirror = find(start.window)) mirror->take_over_move_size(start.kind);
+    });
+    placement_.moved_here.connect([this](WindowId window, Point picture_corner) {
+        if (WindowMirror* mirror = find(window)) mirror->move_guest_to(picture_corner);
+    });
+    placement_.minimized_here.connect([this](WindowId window, bool minimized) {
+        if (WindowMirror* mirror = find(window)) mirror->compositor_minimized(minimized);
     });
     link_.move_size_ended.connect([](const MoveSizeEnd& end) {
         RWIN_DEBUG("mirror", "Windows' move or size of {} ended at {},{} {}x{}", end.window, end.frame.x, end.frame.y,
@@ -215,6 +220,8 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
     mirror.focused.connect([this](WindowId focused, bool by_press) { focus_.focused(focused, by_press); });
     mirror.pressed_while_disabled.connect([this](WindowId pressed) { bring_forward_for(pressed); });
     mirror.button_pressed.connect([this](WindowId pressed) { placement_.end_drag_hold(pressed); });
+    mirror.drag_handed.connect([this](WindowId dragged) { placement_.hold_for_drag(dragged); });
+    mirror.resized_by_guest.connect([this](WindowId resized) { placement_.guest_resized(resized); });
     mirror.shared_refused.connect(
         [this](WindowId refused, const std::string& why) { frames_.pixels_for(refused, why); });
     mirror.presented.connect([this](const FrameStamps& stamps) {
@@ -315,8 +322,8 @@ void MirrorSession::arrange_one(const GuestWindow& window, std::vector<WindowId>
 
 void MirrorSession::follow_placement(WindowMirror& mirror, const GuestWindow& window) {
     if (mirror.role().kind != MirrorRole::Kind::Toplevel || !mirror.scale_known()) return;
-    placement_.follow_guest(window, mirror.generation(), mirror.mapping().logical(),
-                            !window.minimized() && !window.maximized());
+    placement_.follow_guest(window, mirror.generation(), !window.minimized() && !window.maximized(),
+                            mirror.guest_catching_up());
     if (window.maximized()) placement_.keep_on_guest_screen(window.id(), mirror.generation());
 }
 

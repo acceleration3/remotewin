@@ -17,7 +17,8 @@
 #include "host/mirror/mirror_kit.hpp"
 #include "host/mirror/mirror_role.hpp"
 #include "host/mirror/mirror_state.hpp"
-#include "host/mirror/size_requests.hpp"
+#include "host/mirror/move_requests.hpp"
+#include "host/mirror/state_sync.hpp"
 #include "host/wayland/backdrop.hpp"
 #include "host/wayland/mirror_surface.hpp"
 #include "host/wayland/popup_events.hpp"
@@ -100,6 +101,9 @@ public:
     [[nodiscard]] bool scale_known() const noexcept { return surface_ != nullptr && surface_->scale_known(); }
     [[nodiscard]] std::uint32_t generation() const noexcept { return generation_; }
     [[nodiscard]] bool holds_press() const noexcept { return buttons_held_ > 0; }
+    // The guest has moves of this side's to answer yet: where it says its
+    // window is, it is on its way to where it was asked to be.
+    [[nodiscard]] bool guest_catching_up() const noexcept { return !moves_.idle(); }
 
     // Shown as ``role``, against ``parent``'s mirror (null for none): made
     // again when either changed, or when the parent's surface is new.
@@ -127,11 +131,15 @@ public:
     void activate(const std::string& token);
     // Windows began moving or sizing this window (MoveSizeStart). When a
     // press here began it, the compositor is asked to run that gesture
-    // instead, and the guest is given the press's release at once: Windows'
-    // own loop ends there, having moved the window only as far as the motion
-    // sent before the MoveSizeStart came took it. True when the compositor
-    // was asked.
-    [[nodiscard]] bool take_over_move_size(MoveSizeKind kind);
+    // instead (drag_handed), and the guest is given the press's release at
+    // once: Windows' own loop ends there, having moved the window only as
+    // far as the motion sent before the MoveSizeStart came took it.
+    void take_over_move_size(MoveSizeKind kind);
+    // The mirror was put somewhere on this desktop: the guest window's
+    // picture is to be at this point of the guest's screen.
+    void move_guest_to(Point picture_corner);
+    // The compositor minimised the mirror, or brought it back.
+    void compositor_minimized(bool minimized);
     // While a button is held here, the pointer's own motion moves the
     // guest's pointer from where the press was (PointerAt): a window the
     // guest moves under the pointer - a panel being dragged - is not
@@ -150,6 +158,11 @@ public:
     Signal<WindowId> pressed_while_disabled;
     // A button went down on it.
     Signal<WindowId> button_pressed;
+    // The compositor runs a move or resize of it now, for its user.
+    Signal<WindowId> drag_handed;
+    // The guest made its window another size by itself, and the mirror is
+    // that size now.
+    Signal<WindowId> resized_by_guest;
     // Frames on the GPU cannot be shown here: why.
     Signal<WindowId, const std::string&> shared_refused;
     Signal<const FrameStamps&> presented;
@@ -190,10 +203,21 @@ private:
     void place_popup();
     void place_subsurface();
     void picture_changed();
+    void rescaled();
     void apply_limits();
     void follow_state();
+    void minimize_here(bool minimized);
+    void take_size(const ToplevelConfigure& configure, const ToplevelConfigure& before);
+    void ask_for_wanted();
+    void answered(const Box& asked, const Box& got);
     void fit_into(const ToplevelConfigure& configure);
-    void ask_guest_for(Size picture);
+    // Maximised or fullscreen: the window is the size it is ``given``.
+    void fit_given(Size given, Size natural);
+    void ask_guest_for(const Box& frame);
+    [[nodiscard]] Size shown_picture() const noexcept;
+    // The window's size here: the size the compositor gave while the guest
+    // has not answered it, else the picture's.
+    [[nodiscard]] Size window_size() const noexcept;
     void apply_cursor();
     [[nodiscard]] bool covers_monitor() const noexcept;
     void inhibit_shortcuts();
@@ -223,14 +247,21 @@ private:
     std::unique_ptr<ToplevelIcon> icon_;
     std::unique_ptr<ShortcutsInhibitor> inhibitor_;
     bool lock_holds_shortcuts_ = false;
-    SizeRequests sizes_;
+    MoveRequests moves_;
+    StateSync maximize_;
+    StateSync minimize_;
     ResizeBorder border_;
     HeldKeys held_keys_;
     std::optional<MinMax> limits_;
     ToplevelConfigure configure_;
-    // What this side asked of the compositor for the guest window's state.
-    bool asked_minimized_ = false;
-    bool asked_maximized_ = false;
+    // A size the compositor gave - a step of a drag, a restore - that the
+    // guest has not yet shown a picture of, nor answered with a size of its
+    // own: the window is this size meanwhile, the picture it has cropped or
+    // over the backdrop. Logical units.
+    std::optional<Size> wanted_;
+    // The edges a resize the compositor runs for this mirror moves: the
+    // others are kept where the guest window has them.
+    std::uint32_t resize_edges_ = 0;
     bool asked_fullscreen_ = false;
     // Minimised in the guest before the compositor first configured it.
     bool minimize_owed_ = false;

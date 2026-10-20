@@ -40,6 +40,11 @@ Size ViewMapping::picture_for(Size logical, double scale) noexcept {
     return Size{ceil_of(logical.width * scale), ceil_of(logical.height * scale)};
 }
 
+ViewMapping ViewMapping::within(Size most) const noexcept {
+    const Size cropped{std::clamp(most.width, 1, logical_.width), std::clamp(most.height, 1, logical_.height)};
+    return ViewMapping{cropped, x_, y_};
+}
+
 Point ViewMapping::picture_point(PointF logical) const noexcept {
     return Point{floor_of(logical.x * x_), floor_of(logical.y * y_)};
 }

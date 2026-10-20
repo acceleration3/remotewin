@@ -31,6 +31,11 @@ public:
     // The picture a surface of ``logical`` units shows whole, one to one.
     [[nodiscard]] static Size picture_for(Size logical, double scale) noexcept;
 
+    // The same, on a surface no larger than ``most`` units: what is past it
+    // is cropped from the right and bottom edges, and every pixel shown is
+    // where it was.
+    [[nodiscard]] ViewMapping within(Size most) const noexcept;
+
     // The surface's size, in its logical units.
     [[nodiscard]] Size logical() const noexcept { return logical_; }
     // How much of the picture is shown, from its top left, in its pixels.

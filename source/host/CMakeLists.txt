@@ -107,7 +107,8 @@ add_library(rwin_host STATIC
     mirror/monitor_session.cpp
     mirror/popup_layout.cpp
     mirror/popup_stack.cpp
-    mirror/size_requests.cpp
+    mirror/move_requests.cpp
+    mirror/state_sync.cpp
     mirror/window_mirror.cpp
     mirror/window_report.cpp
     placement/kwin_placement.cpp
