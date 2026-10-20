@@ -1,6 +1,10 @@
 #include "test_desktop.hpp"
 
 #include "host/placement/kwin_script.hpp"
+#include "host/wayland/compositor_gpu.hpp"
+#include "host/wayland/globals.hpp"
+
+#include <wayland-client.h>
 
 #include <poll.h>
 #include <unistd.h>
@@ -45,7 +49,7 @@ TestDesktop::TestDesktop(const Layout& layout, const std::string& host_binary, c
       host_log_(scratch + "/host.log") {
     window_ = std::make_unique<ModelWindow>(window_shape(static_cast<int>(std::lround(layout.width * layout.scale)),
                                                          static_cast<int>(std::lround(layout.height * layout.scale))));
-    if (!start_kwin(scratch) || !start_host(host_binary) || !connect_guest()) return;
+    if (!start_kwin(scratch) || !start_export(scratch) || !start_host(host_binary) || !connect_guest()) return;
     const Rect frame = window_->frame();
     const auto mapped = settle(
         [&] {
@@ -63,6 +67,7 @@ TestDesktop::TestDesktop(const Layout& layout, const std::string& host_binary, c
 
 TestDesktop::~TestDesktop() {
     guest_.reset();
+    device_.reset();
     kwin_.reset();
     host_output_.reset();
     if (host_ != nullptr) host_->stop();
@@ -114,6 +119,25 @@ void TestDesktop::write_output_config(const std::string& config) const {
     std::fclose(file);
 }
 
+// The device names the GPU the compositor composes on, as accel-virt's
+// does on a desktop it serves: the host takes its surfaces only then.
+bool TestDesktop::start_export(const std::string& scratch) {
+    if (!layout_.gpu_frames) return true;
+    wl_display* display = wl_display_connect(socket_.c_str());
+    if (display == nullptr) {
+        std::fprintf(stderr, "setup: cannot connect to KWin to ask its GPU\n");
+        return false;
+    }
+    std::optional<host::PciAddress> gpu;
+    {
+        const host::Globals globals{display};
+        gpu = host::CompositorGpu{globals}.pci();
+    }
+    wl_display_disconnect(display);
+    device_ = std::make_unique<FakeExportDevice>(loop_, scratch + "/export.sock", gpu);
+    return device_->listening();
+}
+
 bool TestDesktop::start_host(const std::string& host_binary) {
     // RWIN_INTEGRATION_HOST_LOG picks the host's log level (debug by
     // default); RWIN_INTEGRATION_WAYLAND_DEBUG=1 adds its Wayland traffic.
@@ -123,8 +147,12 @@ bool TestDesktop::start_host(const std::string& host_binary) {
     if (const char* traffic = std::getenv("RWIN_INTEGRATION_WAYLAND_DEBUG"); traffic != nullptr && *traffic == '1') {
         env.emplace_back("WAYLAND_DEBUG", "client");
     }
-    host_ = std::make_unique<ChildProcess>(ChildProcess::Launch{{host_binary, "--managed", "--port", "0"},
-                                                                std::move(env), host_log_, true});
+    std::vector<std::string> arguments{host_binary, "--managed", "--port", "0"};
+    if (device_ != nullptr) {
+        arguments.emplace_back("--export-socket");
+        arguments.push_back(device_->path());
+    }
+    host_ = std::make_unique<ChildProcess>(ChildProcess::Launch{std::move(arguments), std::move(env), host_log_, true});
     std::string said;
     host_output_ = loop_.watch(host_->output(), POLLIN, [this, &said](short) {
         std::array<char, 256> chunk{};
@@ -159,7 +187,7 @@ bool TestDesktop::start_host(const std::string& host_binary) {
 }
 
 bool TestDesktop::connect_guest() {
-    guest_ = std::make_unique<FakeGuest>(loop_, *window_, layout_.timing);
+    guest_ = std::make_unique<FakeGuest>(loop_, *window_, layout_.timing, device_.get());
     return guest_->dial(port_);
 }
 

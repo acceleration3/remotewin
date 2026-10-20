@@ -1,6 +1,7 @@
 #pragma once
 
 #include "child_process.hpp"
+#include "fake_export_device.hpp"
 #include "fake_guest.hpp"
 #include "fake_pointer.hpp"
 #include "host_report.hpp"
@@ -31,6 +32,9 @@ public:
         int height = 1000;
         double scale = 1.2;
         FakeGuest::Timing timing;
+        // A GPU device's export socket is played, and the host takes the
+        // guest's pictures on the GPU where it can.
+        bool gpu_frames = false;
     };
 
     TestDesktop(const Layout& layout, const std::string& host_binary, const std::string& scratch);
@@ -69,6 +73,7 @@ public:
 private:
     bool start_kwin(const std::string& scratch);
     void write_output_config(const std::string& config) const;
+    bool start_export(const std::string& scratch);
     bool start_host(const std::string& host_binary);
     bool connect_guest();
 
@@ -79,6 +84,7 @@ private:
     std::unique_ptr<ChildProcess> kwin_process_;
     std::unique_ptr<host::BusConnection> bus_;
     std::unique_ptr<FakePointer> pointer_;
+    std::unique_ptr<FakeExportDevice> device_;
     std::unique_ptr<ChildProcess> host_;
     std::unique_ptr<host::EventLoop::Watch> host_output_;
     std::uint16_t port_ = 0;

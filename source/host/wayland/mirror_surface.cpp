@@ -21,6 +21,8 @@
 #include <chrono>
 #include <cstring>
 #include <limits>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace rwin::host {
@@ -264,9 +266,8 @@ void MirrorSurface::attach_pixels() {
 // The newest frame wins: one that comes while another still waits for its
 // buffer or its copy replaces it, and the replaced one's slot goes back.
 void MirrorSurface::show(const SharedFrame& frame) {
-    if (!cutout_.none()) {
-        shared_refused(cutout_.color_key.has_value() ? "a colour key, cut out on pixels"
-                                                     : "a window region, cut out on pixels");
+    if (const std::optional<std::string_view> why = cutout_.why_pixels(frame.size())) {
+        shared_refused(std::string(*why));
         return;
     }
     pixels_waiting_ = nullptr;

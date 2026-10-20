@@ -82,6 +82,8 @@ public:
     // Makes the host's window of that title the active one, as Alt+Tab or the
     // taskbar would.
     void activate(const std::string& title);
+    // Closes the host's window of that title, as its close button would.
+    void close(const std::string& title);
 
     void set_frame(double x, double y, double width, double height);
     void maximize(bool maximized);
@@ -95,6 +97,7 @@ private:
     void run(std::string source);
     void seen(std::string_view report);
     void command(std::string_view body);
+    void on_titled(std::string_view title, std::string_view body);
 
     host::BusConnection& bus_;
     pid_t host_;

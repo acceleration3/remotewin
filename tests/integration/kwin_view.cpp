@@ -62,10 +62,11 @@ const lines = workspace.stackingOrder.filter(function(w) { return w.pid === $PID
 callDBus("$SERVICE", "$PATH", "$INTERFACE", "surveyed", lines.join("\n"));
 )JS";
 
-constexpr std::string_view kActivate = R"JS(
+// $BODY done to the host's windows whose title begins with $TITLE, as ``w``.
+constexpr std::string_view kOnTitled = R"JS(
 workspace.stackingOrder.forEach(function(w) {
     const caption = w.captionNormal || "";
-    if (w.pid === $PID && caption.indexOf("$TITLE") === 0) workspace.activeWindow = w;
+    if (w.pid === $PID && caption.indexOf("$TITLE") === 0) { $BODY }
 });
 callDBus("$SERVICE", "$PATH", "$INTERFACE", "done", "");
 )JS";
@@ -182,9 +183,14 @@ void KWinView::surveyed(std::string_view report) {
 
 void KWinView::survey() { run(std::string{kSurvey}); }
 
-void KWinView::activate(const std::string& title) {
-    std::string source{kActivate};
+void KWinView::activate(const std::string& title) { on_titled(title, "workspace.activeWindow = w;"); }
+
+void KWinView::close(const std::string& title) { on_titled(title, "w.closeWindow();"); }
+
+void KWinView::on_titled(std::string_view title, std::string_view body) {
+    std::string source{kOnTitled};
     replace_all(source, "$TITLE", title);
+    replace_all(source, "$BODY", body);
     run(std::move(source));
 }
 

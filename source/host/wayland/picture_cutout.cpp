@@ -1,5 +1,7 @@
 #include "host/wayland/picture_cutout.hpp"
 
+#include "host/geometry/point.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
@@ -48,6 +50,14 @@ void cut_outside(std::span<std::uint8_t> pixels, int stride, Size size, const st
 }
 
 }  // namespace
+
+std::optional<std::string_view> PictureCutout::why_pixels(Size picture) const noexcept {
+    if (color_key.has_value()) return "a colour key, cut out on pixels";
+    const Box whole = Box::of(Point{}, picture);
+    const bool cuts = std::none_of(region.begin(), region.end(), [&](const Box& box) { return box.contains(whole); });
+    if (region.empty() || !cuts) return std::nullopt;
+    return "a window region, cut out on pixels";
+}
 
 void PictureCutout::apply(std::span<std::uint8_t> pixels, int stride, Size size) const {
     if (color_key.has_value()) cut_key(pixels, stride, size, *color_key);

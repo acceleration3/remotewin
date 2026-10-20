@@ -12,6 +12,7 @@
 #include "host/mirror/popup_stack.hpp"
 #include "host/placement/placement_sync.hpp"
 #include "host/wayland/activation.hpp"
+#include "host/wayland/picture_cutout.hpp"
 #include "host/wayland/globals.hpp"
 #include "host/wayland/key_press.hpp"
 #include "host/wayland/seat.hpp"
@@ -218,6 +219,10 @@ void WindowMirror::make_role() {
             RWIN_INFO("mirror", "{} is a part of {}", window(), parent_->window());
             return;
     }
+}
+
+std::optional<std::string_view> WindowMirror::why_pixels() const {
+    return PictureCutout{color_key(), window_.region()}.why_pixels(window_.picture_size());
 }
 
 std::optional<std::uint32_t> WindowMirror::color_key() const {

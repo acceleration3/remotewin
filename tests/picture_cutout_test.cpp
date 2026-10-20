@@ -60,14 +60,30 @@ void none_is_nothing() {
     std::vector<std::uint8_t> pixels = picture({1, 2, 3, 0xFF});
     const std::vector<std::uint8_t> before = pixels;
     const PictureCutout none;
-    check(none.none(), "no key and no region is no cutout");
+    check(!none.why_pixels(kSize).has_value(), "no key and no region is no cutout");
     none.apply(pixels, kStride, kSize);
     check(pixels == before, "and changes nothing");
+}
+
+// What only pixels can show: a key, or a region that leaves part of the
+// picture out. A region holding all of it - WPF's square-cornered
+// WindowChrome - leaves the picture on the GPU.
+void what_keeps_a_picture_off_the_gpu() {
+    check(PictureCutout{0x00FF00FF, {}}.why_pixels(kSize).has_value(), "a colour key is cut on pixels");
+    check(PictureCutout{std::nullopt, {Box{1, 0, 2, 3}, Box{0, 1, 4, 1}}}.why_pixels(kSize).has_value(),
+          "rounded corners are cut on pixels");
+    check(!PictureCutout{std::nullopt, {Box{0, 0, 4, 3}}}.why_pixels(kSize).has_value(),
+          "a region of the whole picture cuts nothing");
+    check(!PictureCutout{std::nullopt, {Box{0, 0, 2, 3}, Box{-1, -1, 9, 9}}}.why_pixels(kSize).has_value(),
+          "nor one with a rectangle past it");
+    check(PictureCutout{std::nullopt, {Box{0, 0, 4, 3}}}.why_pixels(Size{5, 3}).has_value(),
+          "the same region cuts a wider picture");
 }
 
 }  // namespace
 
 int main() {
+    what_keeps_a_picture_off_the_gpu();
     a_colour_key_is_cut_out();
     outside_the_region_is_cut_out();
     none_is_nothing();

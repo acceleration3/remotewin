@@ -26,6 +26,8 @@ class MessageReader;
 
 namespace rwin::integration {
 
+class FakeExportDevice;
+
 // The guest half, played: one window (ModelWindow) on the other end of a
 // wire 6 link to the host under test, as remotewin-guest.exe would be. It
 // answers what the host asks of the window - a WindowMove, a SysCommand -
@@ -36,6 +38,14 @@ namespace rwin::integration {
 // A window brought back from minimised sends first the frame Windows'
 // capture took of it as it went, the size of its minimised stub, as
 // Windows.Graphics.Capture hands one over.
+//
+// With a GPU device (FakeExportDevice) and the host taking shared surfaces,
+// the other windows' pictures go as the real guest sends them on the GPU: a
+// ring of three surfaces made on the device, and each picture copied into a
+// slot of it. A window the host sends back to pixels (WindowPixels) is
+// captured afresh, and its picture sent as pixels at once. The
+// ModelWindow's pictures always go as pixels: the device's surfaces are no
+// memory a compositor can show.
 class FakeGuest {
 public:
     struct Timing {
@@ -46,10 +56,12 @@ public:
         std::chrono::milliseconds frame{16};
     };
 
-    // What the host asked, as it came.
+    // What the host asked, as it came, and of which window: only the
+    // ModelWindow's requests are carried out.
     struct Asked {
         std::int64_t at_ns = 0;
         std::variant<Rect, SysCommand::Command> request;
+        WindowId window;
     };
     // A frame the window was said to have.
     struct Placed {
@@ -63,7 +75,8 @@ public:
         std::uint32_t height = 0;
     };
 
-    FakeGuest(host::EventLoop& loop, ModelWindow& window, Timing timing);
+    // ``device`` is null for a guest whose frames go only as pixels.
+    FakeGuest(host::EventLoop& loop, ModelWindow& window, Timing timing, FakeExportDevice* device);
     ~FakeGuest();
 
     FakeGuest(const FakeGuest&) = delete;
@@ -96,6 +109,10 @@ public:
     // What the host asked to be made active, or not, in the guest.
     [[nodiscard]] const std::vector<Activate>& activations() const noexcept { return activations_; }
     [[nodiscard]] bool subscribed_to(WindowId id) const;
+    // Rings made for a window's pictures on the GPU device, and windows the
+    // host sent back to pixels.
+    [[nodiscard]] std::size_t rings_made(WindowId id) const;
+    [[nodiscard]] bool sent_back_to_pixels(WindowId id) const;
 
     [[nodiscard]] const std::vector<Asked>& asked() const noexcept { return asked_; }
     [[nodiscard]] const std::vector<Placed>& placed() const noexcept { return placed_; }
@@ -109,6 +126,14 @@ private:
         WindowId id;
         WindowFields said;
         bool subscribed = false;
+        bool pixels_only = false;
+        std::uint32_t ring = 0;
+        std::uint32_t ring_width = 0;
+        std::uint32_t ring_height = 0;
+        std::size_t rings_made = 0;
+        // Slot 0's surface, and the copies into it so far.
+        std::uint64_t slot_surface = 0;
+        std::uint64_t copies = 0;
     };
     struct Due {
         std::chrono::steady_clock::time_point at;
@@ -124,13 +149,15 @@ private:
     void send_frame();
     void send_picture(std::uint32_t width, std::uint32_t height);
     void send_picture_of(WindowId id, std::uint32_t width, std::uint32_t height);
-    void picture_other(const Other& other);
+    void picture_other(Other& other);
+    void copy_into_ring(Other& other, std::uint32_t width, std::uint32_t height);
     [[nodiscard]] Other* other(WindowId id);
     void send(const std::vector<std::uint8_t>& bytes);
 
     host::EventLoop& loop_;
     ModelWindow& window_;
     Timing timing_;
+    FakeExportDevice* device_;
     WindowId id_{0x10a42, 1};
     int fd_ = -1;
     std::unique_ptr<host::EventLoop::Watch> watch_;
@@ -142,6 +169,10 @@ private:
     std::deque<Due> due_;
     WindowFields said_;
     bool subscribed_ = false;
+    // The host takes the pictures of windows on the GPU (FrameRoute).
+    bool shared_ = false;
+    std::uint32_t rings_ = 0;
+    std::uint64_t surfaces_ = 0;
     std::optional<MoveSizeKind> looping_;
     // The next frame is the one captured as the window was minimised.
     bool stale_frame_ = false;

@@ -39,6 +39,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct wl_surface;
@@ -105,6 +106,9 @@ public:
     // The guest has moves of this side's to answer yet: where it says its
     // window is, it is on its way to where it was asked to be.
     [[nodiscard]] bool guest_catching_up() const noexcept { return !moves_.idle(); }
+    // Why its pictures can be shown only from pixels (PictureCutout); nothing
+    // when they can stay on the GPU.
+    [[nodiscard]] std::optional<std::string_view> why_pixels() const;
 
     // Shown as ``role``, against ``parent``'s mirror (null for none): made
     // again when either changed, or when the parent's surface is new.

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace rwin::host {
@@ -20,7 +21,11 @@ struct PictureCutout {
     // Picture rectangles; empty for no region, the whole picture.
     std::vector<Box> region;
 
-    [[nodiscard]] bool none() const noexcept { return !color_key.has_value() && region.empty(); }
+    // Why a picture of this size can only be cut as pixels - the host has
+    // nothing to draw a GPU frame with - and nothing when nothing of it is
+    // cut: no key, and no region, or one whose rectangle holds the whole
+    // picture (WPF's WindowChrome with square corners sets one).
+    [[nodiscard]] std::optional<std::string_view> why_pixels(Size picture) const noexcept;
 
     // ``pixels`` are premultiplied BGRA rows ``stride`` bytes apart.
     void apply(std::span<std::uint8_t> pixels, int stride, Size size) const;

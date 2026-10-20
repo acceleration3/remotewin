@@ -1,7 +1,11 @@
 #include "fake_guest.hpp"
 
+#include "fake_export_device.hpp"
+
 #include "host/latency/frame_stamps.hpp"
 #include "proto/feature.hpp"
+#include "proto/frame_in_slot.hpp"
+#include "proto/frame_route.hpp"
 #include "proto/hello.hpp"
 #include "proto/message_reader.hpp"
 #include "proto/message_writer.hpp"
@@ -9,6 +13,7 @@
 #include "proto/move_size_end.hpp"
 #include "proto/move_size_start.hpp"
 #include "proto/pointer_button.hpp"
+#include "proto/slot_ring.hpp"
 #include "proto/sync_begin.hpp"
 #include "proto/sys_param.hpp"
 #include "proto/window_move.hpp"
@@ -41,8 +46,8 @@ constexpr Rect kMinimizedStub{0, 0, 185, 27};
 Hello hello() {
     Hello ours;
     ours.build = "remotewin integration guest";
-    for (const std::string_view name : {Feature::kWindows, Feature::kInput, Feature::kFramesPixels, Feature::kMoveSize,
-                                        Feature::kAppId}) {
+    for (const std::string_view name : {Feature::kWindows, Feature::kInput, Feature::kFramesPixels,
+                                        Feature::kFramesShared, Feature::kMoveSize, Feature::kAppId}) {
         ours.features.push_back(Feature{std::string(name), 1});
     }
     return ours;
@@ -50,8 +55,8 @@ Hello hello() {
 
 }  // namespace
 
-FakeGuest::FakeGuest(host::EventLoop& loop, ModelWindow& window, Timing timing)
-    : loop_(loop), window_(window), timing_(timing), chunk_(kChunk) {
+FakeGuest::FakeGuest(host::EventLoop& loop, ModelWindow& window, Timing timing, FakeExportDevice* device)
+    : loop_(loop), window_(window), timing_(timing), device_(device), chunk_(kChunk) {
     carry_ = loop_.timer([this] { carry_out(); });
     capture_ = loop_.timer([this] { send_frame(); });
 }
@@ -141,6 +146,19 @@ void FakeGuest::take(MessageReader& message) {
             capture_->start(timing_.frame, false);
             return;
         }
+        case MessageId::FrameRoute:
+            if (const std::optional<FrameRoute> route = FrameRoute::read(message)) {
+                shared_ = route->shared_surfaces && device_ != nullptr;
+            }
+            return;
+        case MessageId::WindowPixels:
+            if (const std::optional<WindowId> id = WindowId::read(message)) {
+                if (Other* played = other(*id)) {
+                    played->pixels_only = true;
+                    picture_other(*played);
+                }
+            }
+            return;
         case MessageId::Activate:
             if (const std::optional<Activate> activation = Activate::read(message)) {
                 activations_.push_back(*activation);
@@ -148,14 +166,14 @@ void FakeGuest::take(MessageReader& message) {
             return;
         case MessageId::WindowMove:
             if (const std::optional<WindowMove> move = WindowMove::read(message)) {
-                asked_.push_back(Asked{host::now_ns(), move->frame});
-                ask(move->frame);
+                asked_.push_back(Asked{host::now_ns(), move->frame, move->window});
+                if (move->window == id_) ask(move->frame);
             }
             return;
         case MessageId::SysCommand:
             if (const std::optional<SysCommand> command = SysCommand::read(message)) {
-                asked_.push_back(Asked{host::now_ns(), command->command});
-                ask(command->command);
+                asked_.push_back(Asked{host::now_ns(), command->command, command->window});
+                if (command->window == id_) ask(command->command);
             }
             return;
         case MessageId::PointerButton: {
@@ -270,13 +288,52 @@ bool FakeGuest::subscribed_to(WindowId id) const {
 }
 
 // Windows' capture has nothing of a hidden window, or of one of no size.
-void FakeGuest::picture_other(const Other& played) {
+void FakeGuest::picture_other(Other& played) {
     const Rect& picture = played.said.geometry.picture;
     if (!played.subscribed || played.said.show == WindowFields::Show::Hidden || picture.width == 0
         || picture.height == 0) {
         return;
     }
+    if (shared_ && !played.pixels_only) {
+        copy_into_ring(played, picture.width, picture.height);
+        return;
+    }
     send_picture_of(played.id, picture.width, picture.height);
+}
+
+// A ring is made the first time, or again when the picture outgrows it.
+void FakeGuest::copy_into_ring(Other& played, std::uint32_t width, std::uint32_t height) {
+    if (played.ring == 0 || width > played.ring_width || height > played.ring_height) {
+        SlotRing ring{played.id, ++rings_, width, height, {}};
+        for (std::uint64_t& surface : ring.surfaces) {
+            surface = ++surfaces_;
+            device_->made(surface, width, height);
+        }
+        played.slot_surface = ring.surfaces[0];
+        played.copies = 0;
+        played.ring = ring.ring;
+        played.ring_width = width;
+        played.ring_height = height;
+        ++played.rings_made;
+        MessageWriter made{MessageId::SlotRing};
+        ring.write(made);
+        send(made.take());
+    }
+    // Slot 0, every time: the host frees it before the next.
+    device_->copied(played.slot_surface);
+    MessageWriter out{MessageId::FrameInSlot};
+    FrameInSlot{played.id, played.ring, 0, width, height, ++played.copies, 0, 0, 0}.write(out);
+    send(out.take());
+}
+
+std::size_t FakeGuest::rings_made(WindowId id) const {
+    const auto found = std::find_if(others_.begin(), others_.end(), [id](const Other& o) { return o.id == id; });
+    return found == others_.end() ? 0 : found->rings_made;
+}
+
+bool FakeGuest::sent_back_to_pixels(WindowId id) const {
+    const auto found = std::find_if(others_.begin(), others_.end(), [id](const Other& o) { return o.id == id; });
+    return found != others_.end() && found->pixels_only;
 }
 
 void FakeGuest::show_window(WindowId id, const WindowFields& fields) {

@@ -18,6 +18,9 @@
 #include "proto/window_fields.hpp"
 
 #include <algorithm>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace rwin::host {
@@ -144,7 +147,10 @@ std::optional<MirrorState> MirrorSession::state_of(WindowId window) const {
 void MirrorSession::window_changed(WindowId window, std::uint32_t mask) {
     WindowMirror* mirror = find(window);
     const GuestWindow* known = windows().find(window);
-    if (mirror != nullptr && known != nullptr) mirror->follow(*known);
+    if (mirror != nullptr && known != nullptr) {
+        mirror->follow(*known);
+        route_frames(*mirror);
+    }
     if ((mask & kBelongingFields) != 0) {
         reconcile();
     } else if ((mask & WindowFields::kGeometry) != 0) {
@@ -250,8 +256,15 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
     mirror.follow_relative_motion(held_motion_ != nullptr);
     if (cursor_.shown().id != 0 || !cursor_.shown().shown) mirror.wear_cursor(cursor_.look(), cursor_.step());
     mirrors_.emplace(window.id(), std::move(made));
+    route_frames(mirror);
     link_.subscribe(window.id());
     return mirror;
+}
+
+void MirrorSession::route_frames(const WindowMirror& mirror) {
+    if (const std::optional<std::string_view> why = mirror.why_pixels()) {
+        frames_.pixels_for(mirror.window(), std::string(*why));
+    }
 }
 
 // What is placed against a window going stands on its own until the

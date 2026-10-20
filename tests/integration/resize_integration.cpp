@@ -1015,10 +1015,135 @@ void activation_both_ways(Case& run) {
     judge_stacking(run, followed, "the window the guest activated is active and on top here");
 }
 
+// An application of WPF windows, as Affinity is: a main window that comes up
+// after the window shown first (here the harness's own, as its splash), and
+// windows it owns that Windows activates as they open - a welcome shown
+// 1.4 s after the main window, a close confirmation shown when the main
+// window is closed, which disables it while it is up. Rounded, each has the
+// window region WPF's WindowChrome rounds its corners with when it has no
+// glass frame, which the host can cut out of pixels only.
+
+constexpr const char* kAppTitle = "Played application";
+constexpr const char* kWelcomeTitle = "Played welcome";
+constexpr const char* kConfirmTitle = "Played close confirmation";
+constexpr WindowId kAppId{0x17035a, 3};
+constexpr const char* kWpfClass = "HwndWrapper[Affinity.exe;;integration]";
+constexpr std::uint32_t kWsDisabled = 0x08000000;
+constexpr std::int32_t kWpfCorner = 8;
+constexpr milliseconds kWelcomeAfter{1400};
+
+enum class Corners { Square, Rounded };
+
+// WPF's rounded region (SetWindowRgn of a rounded rectangle), in the rows
+// GetRegionData gives, coarsely: the corners left out.
+std::vector<Rect> rounded_region(const Rect& frame) {
+    const auto inset = static_cast<std::uint32_t>(kWpfCorner);
+    return {Rect{kWpfCorner, 0, frame.width - 2 * inset, inset},
+            Rect{0, kWpfCorner, frame.width, frame.height - 2 * inset},
+            Rect{kWpfCorner, static_cast<std::int32_t>(frame.height - inset), frame.width - 2 * inset, inset}};
+}
+
+WindowFields wpf_window(const ModelWindow& main, std::string title, std::uint32_t style, Rect frame, WindowId owner,
+                        Corners corners) {
+    WindowFields fields = played_window(main, std::move(title), kWpfClass, style, 0, frame, owner);
+    if (corners == Corners::Rounded) fields.geometry.region = rounded_region(frame);
+    return fields;
+}
+
+// The application's main window shown and made active by Windows: its
+// mirror is the active window here.
+WindowFields show_application(Case& run, Corners corners) {
+    const Rect at = run.window().frame();
+    WindowFields main = wpf_window(run.window(), kAppTitle, kWsOverlappedWindow, Rect{at.x + 40, at.y + 30, 900, 600},
+                                   WindowId{}, corners);
+    run.guest().show_window(kAppId, main);
+    run.guest().stack(ZOrder{kAppId, {kAppId, kMainId, kMonitorWindow}});
+    const auto active = stacking_settles(
+        run,
+        [](const Stacking& stacking) {
+            const KWinView::Stacked* shown = stacked(stacking, kAppTitle);
+            return shown != nullptr && shown->active;
+        },
+        milliseconds(100));
+    judge_stacking(run, active, "the application's main window is shown and active");
+    return main;
+}
+
+// A window the main window owns, shown and activated by Windows: its mirror
+// is above the main window's, transient for it, and active - with no
+// minimise and restore to bring it there.
+void owned_in_front(Case& run, WindowId id, const std::string& title, Corners corners, const std::string& what) {
+    const Rect at = run.window().frame();
+    run.guest().show_window(id, wpf_window(run.window(), title, kWsCaption | kWsSysMenu,
+                                           Rect{at.x + 240, at.y + 180, 543, 340}, kAppId, corners));
+    run.desktop().pass(milliseconds(30));
+    run.guest().stack(ZOrder{id, {id, kAppId, kMainId, kMonitorWindow}});
+    const auto took = stacking_settles(
+        run,
+        [&title](const Stacking& stacking) {
+            const KWinView::Stacked* shown = stacked(stacking, title);
+            return shown != nullptr && shown->transient && shown->active && above(stacking, title, kAppTitle);
+        },
+        kHold);
+    judge_stacking(run, took, what);
+}
+
+// A rounded window's pictures were asked for as pixels before the guest
+// sent one on the GPU, which the host would only have refused.
+void judge_no_ring(Case& run, WindowId id, const std::string& what) {
+    run.verdicts().check(run.guest().rings_made(id) == 0 && run.guest().sent_back_to_pixels(id),
+                         std::format("{}'s pictures came as pixels from the first ({} ring(s) made for it)", what,
+                                     run.guest().rings_made(id)));
+}
+
+void welcome(Case& run, Corners corners) {
+    show_application(run, corners);
+    run.desktop().pass(kWelcomeAfter);
+    constexpr WindowId kWelcome{0x120354, 4};
+    owned_in_front(run, kWelcome, kWelcomeTitle, corners,
+                   "the welcome is above the main window, transient for it, and active");
+    if (corners == Corners::Square) return;
+    judge_no_ring(run, kAppId, "the main window");
+    judge_no_ring(run, kWelcome, "the welcome");
+}
+
+// The main window closed here: the guest is asked to close it, and the
+// application asks first, in a modal dialog it owns.
+void close_confirmation(Case& run, Corners corners) {
+    WindowFields main = show_application(run, corners);
+    const std::size_t asked = run.guest().asked().size();
+    run.in_kwin([](KWinView& kwin) { kwin.close(kAppTitle); });
+    const auto closing = run.desktop().settle(
+        [&] {
+            const auto& requests = run.guest().asked();
+            return std::any_of(requests.begin() + static_cast<std::ptrdiff_t>(asked), requests.end(),
+                               [](const FakeGuest::Asked& request) {
+                                   const auto* command = std::get_if<Command>(&request.request);
+                                   return request.window == kAppId && command != nullptr
+                                          && *command == Command::Close;
+                               });
+        },
+        kSettleWait, milliseconds(0));
+    run.judge_settled(closing, "the guest was asked to close the main window");
+    main.style.style |= kWsDisabled;
+    run.guest().change_window(kAppId, main);
+    constexpr WindowId kConfirm{0x2e0018, 23};
+    owned_in_front(run, kConfirm, kConfirmTitle, corners,
+                   "the close confirmation is above the main window, transient for it, and active");
+    if (corners == Corners::Rounded) judge_no_ring(run, kConfirm, "the close confirmation");
+}
+
+void welcome_in_front(Case& run) { welcome(run, Corners::Square); }
+void welcome_in_front_rounded(Case& run) { welcome(run, Corners::Rounded); }
+void close_confirmation_in_front(Case& run) { close_confirmation(run, Corners::Square); }
+void close_confirmation_in_front_rounded(Case& run) { close_confirmation(run, Corners::Rounded); }
+
 struct Named {
     std::string_view name;
     void (*run)(Case&);
     FakeGuest::Timing timing;
+    // The guest's pictures go on the GPU, through a played GPU device.
+    bool gpu_frames = false;
 };
 
 // The guest's timing: an application that lays itself out in 25 ms and a
@@ -1040,6 +1165,10 @@ constexpr Named kCases[] = {
     {"dialog-in-front", &dialog_in_front, kQuick},   {"menus-in-front", &menus_in_front, kQuick},
     {"winui-popup", &winui_popup, kQuick},           {"activation-both-ways", &activation_both_ways, kQuick},
     {"map-keeps-guest-active", &map_keeps_guest_active, kQuick}, {"taskbar-presence", &taskbar_presence, kQuick},
+    {"welcome-in-front", &welcome_in_front, kQuick},
+    {"welcome-in-front-rounded", &welcome_in_front_rounded, kQuick, true},
+    {"close-confirmation-in-front", &close_confirmation_in_front, kQuick},
+    {"close-confirmation-in-front-rounded", &close_confirmation_in_front_rounded, kQuick, true},
 };
 
 bool on_path(const std::string& program) {
@@ -1067,6 +1196,7 @@ int run_case(const Named& named) {
     {
         TestDesktop::Layout layout;
         layout.timing = named.timing;
+        layout.gpu_frames = named.gpu_frames;
         const char* host = std::getenv("RWIN_INTEGRATION_HOST");
         TestDesktop desktop{layout, host != nullptr ? host : RWIN_HOST_BINARY, scratch};
         verdicts.check(desktop.ready(), "the mirror came up where the guest has its window");
