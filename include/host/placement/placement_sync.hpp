@@ -54,6 +54,14 @@ public:
     // on. Once per surface.
     void keep_on_guest_screen(WindowId window, std::uint32_t generation);
     void forget(WindowId window);
+    // The compositor drags the mirror of ``window`` now, for a move or size
+    // Windows began (MoveSizeStart). Until the drag ends the guest window is
+    // not followed: pointer motion sent before the drag was handed over has
+    // Windows' own move loop moving it, and placing the mirror there fights
+    // the drag, then puts the mirror back where the guest got to.
+    void hold_for_drag(WindowId window);
+    // A press on the mirror: a drag the compositor never ran is over.
+    void end_drag_hold(WindowId window);
 
     // Where the guest's screen - this desktop's primary output - is, as the
     // compositor lays it out; nothing where it does not say.
@@ -68,7 +76,10 @@ private:
         Size frame_size;
         Point picture_offset;
         std::uint32_t generation = 0;
+        Size logical;
         bool placeable = false;
+        // The compositor is dragging it (hold_for_drag).
+        bool held = false;
         bool pending = false;
         // A placement of this window has been done, or asked for again once
         // KWin had it.
@@ -100,7 +111,8 @@ private:
     // ``key``: WindowId::key, which is what KWinPlacement knows a window by.
     void placed(std::uint64_t key, PointF frame_corner);
     void not_placed(std::uint64_t key);
-    void moved(std::uint64_t key, const BoxF& frame);
+    void moved(std::uint64_t key, const BoxF& frame, bool dragged);
+    void place_at_guest(WindowId window, Tracked& tracked, bool remade);
 
     GuestLink& link_;
     KWinPlacement kwin_;

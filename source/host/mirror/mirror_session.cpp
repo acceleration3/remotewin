@@ -75,7 +75,8 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
     });
     link_.restacked.connect([this](const ZOrder& order) { restacked(order); });
     link_.move_size_started.connect([this](const MoveSizeStart& start) {
-        if (WindowMirror* mirror = find(start.window)) mirror->take_over_move_size(start.kind);
+        WindowMirror* mirror = find(start.window);
+        if (mirror != nullptr && mirror->take_over_move_size(start.kind)) placement_.hold_for_drag(start.window);
     });
     link_.move_size_ended.connect([](const MoveSizeEnd& end) {
         RWIN_DEBUG("mirror", "Windows' move or size of {} ended at {},{} {}x{}", end.window, end.frame.x, end.frame.y,
@@ -213,6 +214,7 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
     WindowMirror& mirror = *made;
     mirror.focused.connect([this](WindowId focused, bool by_press) { focus_.focused(focused, by_press); });
     mirror.pressed_while_disabled.connect([this](WindowId pressed) { bring_forward_for(pressed); });
+    mirror.button_pressed.connect([this](WindowId pressed) { placement_.end_drag_hold(pressed); });
     mirror.shared_refused.connect(
         [this](WindowId refused, const std::string& why) { frames_.pixels_for(refused, why); });
     mirror.presented.connect([this](const FrameStamps& stamps) {

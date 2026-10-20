@@ -45,18 +45,19 @@ function tagOf(w) {{
     const at = caption.indexOf(marker);
     return at < 0 ? "" : caption.substring(at);
 }}
-function report(w) {{
+function report(w, dragged) {{
     const tag = tagOf(w);
     if (tag === "") return;
     const g = w.frameGeometry;
-    callDBus(service, "{1}", "{2}", "moved", tag + " " + g.x + " " + g.y + " " + g.width + " " + g.height);
+    callDBus(service, "{1}", "{2}", "moved",
+             tag + " " + g.x + " " + g.y + " " + g.width + " " + g.height + " " + (dragged ? 1 : 0));
 }}
 function watch(w) {{
     if (w.pid !== {3}) return;
-    w.frameGeometryChanged.connect(function() {{ if (!w.move && !w.resize) report(w); }});
-    w.interactiveMoveResizeFinished.connect(function() {{ report(w); }});
-    w.captionChanged.connect(function() {{ report(w); }});
-    report(w);
+    w.frameGeometryChanged.connect(function() {{ if (!w.move && !w.resize) report(w, false); }});
+    w.interactiveMoveResizeFinished.connect(function() {{ report(w, true); }});
+    w.captionChanged.connect(function() {{ report(w, false); }});
+    report(w, false);
 }}
 workspace.windowList().forEach(watch);
 workspace.windowAdded.connect(watch);
@@ -296,14 +297,15 @@ void KWinPlacement::placed(std::string_view report) {
 
 void KWinPlacement::moved(std::string_view report) {
     const std::vector<std::string_view> parts = words_of(report, ' ');
-    const std::optional<std::uint64_t> window = parts.size() == 5 ? window_of(parts[0]) : std::nullopt;
+    const std::optional<std::uint64_t> window = parts.size() == 6 ? window_of(parts[0]) : std::nullopt;
     if (!window.has_value()) {
         RWIN_WARN("placement", "a move report that names no window: '{}'", report);
         return;
     }
     const BoxF frame{to_double(parts[1]), to_double(parts[2]), to_double(parts[3]), to_double(parts[4])};
-    RWIN_TRACE("placement", "{:#x} is at {:.2f},{:.2f}", *window, frame.x, frame.y);
-    window_moved(*window, frame);
+    const bool dragged = parts[5] == "1";
+    RWIN_TRACE("placement", "{:#x} is at {:.2f},{:.2f}{}", *window, frame.x, frame.y, dragged ? ", dragged" : "");
+    window_moved(*window, frame, dragged);
 }
 
 // KWin has each output's scale itself, fraction and all.

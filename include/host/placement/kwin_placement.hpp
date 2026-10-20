@@ -73,7 +73,8 @@ public:
     Signal<std::uint64_t, PointF, std::int64_t> window_placed;
     // KWin did not find the window in time.
     Signal<std::uint64_t> window_not_placed;
-    Signal<std::uint64_t, const BoxF&> window_moved;
+    // Its frame now; ``dragged`` when a move or resize its user made ended.
+    Signal<std::uint64_t, const BoxF&, bool> window_moved;
 
 private:
     struct Output {

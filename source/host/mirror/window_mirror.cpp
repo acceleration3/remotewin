@@ -550,14 +550,14 @@ void WindowMirror::activate(const std::string& token) {
 
 // A keyboard move or size has no press to give back, and Windows runs it
 // against the window's own geometry, which the mirror follows.
-void WindowMirror::take_over_move_size(MoveSizeKind kind) {
+bool WindowMirror::take_over_move_size(MoveSizeKind kind) {
     if (toplevel_ == nullptr || buttons_held_ == 0) {
         RWIN_DEBUG("chrome", "{}: Windows moves or sizes it with no press held here; left to Windows", window());
-        return;
+        return false;
     }
-    if (kind == MoveSizeKind::KeyMove || kind == MoveSizeKind::KeySize) return;
+    if (kind == MoveSizeKind::KeyMove || kind == MoveSizeKind::KeySize) return false;
     const InputSerial& press = kit_.surfaces.seat.last_press();
-    if (!press.valid() || press.surface != surface()) return;
+    if (!press.valid() || press.surface != surface()) return false;
     if (const std::optional<std::uint32_t> edges = ResizeBorder::edges_of(kind)) {
         toplevel_->resize(kit_.surfaces.seat.seat(), press.serial, *edges);
     } else {
@@ -570,6 +570,7 @@ void WindowMirror::take_over_move_size(MoveSizeKind kind) {
     held_at_.reset();
     swallow_release_ = true;
     let_go(window());
+    return true;
 }
 
 std::optional<Point> WindowMirror::picture_point(PointF at) const noexcept {
@@ -673,6 +674,7 @@ void WindowMirror::button(std::uint32_t code, bool pressed) {
         pressed_while_disabled(window());
         return;
     }
+    button_pressed(window());
     if (kit_.grabber.intercept_press(*this)) return;
     swallow_release_ = false;
     const InputSerial& press = kit_.surfaces.seat.last_press();

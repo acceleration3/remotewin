@@ -128,8 +128,10 @@ public:
     // Windows began moving or sizing this window (MoveSizeStart). When a
     // press here began it, the compositor is asked to run that gesture
     // instead, and the guest is given the press's release at once: Windows'
-    // own loop ends where it began, having moved nothing.
-    void take_over_move_size(MoveSizeKind kind);
+    // own loop ends there, having moved the window only as far as the motion
+    // sent before the MoveSizeStart came took it. True when the compositor
+    // was asked.
+    [[nodiscard]] bool take_over_move_size(MoveSizeKind kind);
     // While a button is held here, the pointer's own motion moves the
     // guest's pointer from where the press was (PointerAt): a window the
     // guest moves under the pointer - a panel being dragged - is not
@@ -146,6 +148,8 @@ public:
     // it, which the guest has already activated the window by.
     Signal<WindowId, bool> focused;
     Signal<WindowId> pressed_while_disabled;
+    // A button went down on it.
+    Signal<WindowId> button_pressed;
     // Frames on the GPU cannot be shown here: why.
     Signal<WindowId, const std::string&> shared_refused;
     Signal<const FrameStamps&> presented;
