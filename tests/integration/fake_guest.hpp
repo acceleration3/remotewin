@@ -6,8 +6,11 @@
 #include "proto/frame_decoder.hpp"
 #include "proto/move_size_kind.hpp"
 #include "proto/rect.hpp"
+#include "proto/activate.hpp"
 #include "proto/sys_command.hpp"
+#include "proto/window_fields.hpp"
 #include "proto/window_id.hpp"
+#include "proto/z_order.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -80,6 +83,20 @@ public:
     void act(SysCommand::Command command);
     void place_itself(const Rect& frame);
 
+    // Other windows of the application, said as the real guest says them:
+    // whole when first shown (WindowNew), then what changed, then gone; a
+    // window the host subscribed to is sent a frame of its picture's size
+    // whenever it is shown and has one, as Windows' capture does.
+    void show_window(WindowId id, const WindowFields& fields);
+    void change_window(WindowId id, const WindowFields& fields);
+    void forget_window(WindowId id);
+    // The guest's stacking and active window, once Windows has settled it.
+    void stack(const ZOrder& order);
+
+    // What the host asked to be made active, or not, in the guest.
+    [[nodiscard]] const std::vector<Activate>& activations() const noexcept { return activations_; }
+    [[nodiscard]] bool subscribed_to(WindowId id) const;
+
     [[nodiscard]] const std::vector<Asked>& asked() const noexcept { return asked_; }
     [[nodiscard]] const std::vector<Placed>& placed() const noexcept { return placed_; }
     [[nodiscard]] const std::vector<Pictured>& pictured() const noexcept { return pictured_; }
@@ -88,6 +105,11 @@ public:
 
 private:
     using Request = std::variant<Rect, SysCommand::Command, MoveSizeKind>;
+    struct Other {
+        WindowId id;
+        WindowFields said;
+        bool subscribed = false;
+    };
     struct Due {
         std::chrono::steady_clock::time_point at;
         Request request;
@@ -101,6 +123,9 @@ private:
     void report();
     void send_frame();
     void send_picture(std::uint32_t width, std::uint32_t height);
+    void send_picture_of(WindowId id, std::uint32_t width, std::uint32_t height);
+    void picture_other(const Other& other);
+    [[nodiscard]] Other* other(WindowId id);
     void send(const std::vector<std::uint8_t>& bytes);
 
     host::EventLoop& loop_;
@@ -120,6 +145,8 @@ private:
     std::optional<MoveSizeKind> looping_;
     // The next frame is the one captured as the window was minimised.
     bool stale_frame_ = false;
+    std::vector<Other> others_;
+    std::vector<Activate> activations_;
     std::vector<Asked> asked_;
     std::vector<Placed> placed_;
     std::vector<Pictured> pictured_;

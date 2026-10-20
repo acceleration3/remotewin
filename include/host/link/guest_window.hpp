@@ -50,6 +50,9 @@ public:
     [[nodiscard]] bool hidden() const noexcept { return fields_.show == WindowFields::Show::Hidden; }
     [[nodiscard]] bool minimized() const noexcept { return fields_.show == WindowFields::Show::Minimized; }
     [[nodiscard]] bool maximized() const noexcept { return fields_.show == WindowFields::Show::Maximized; }
+    // Something a mirror can show: not hidden, and of some size. WinUI shows
+    // a popup at 0x0 and gives it its size a frame later.
+    [[nodiscard]] bool showable() const noexcept { return !hidden() && !picture_size().empty(); }
 
     [[nodiscard]] const std::string& title() const noexcept { return fields_.title; }
 

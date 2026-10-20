@@ -20,12 +20,18 @@ ActivationSync::ActivationSync(EventLoop& loop, GuestLink& link, Seat& seat)
     seat_.keyboard_focus_changed.connect([this] { keyboard_moved(); });
 }
 
-void ActivationSync::focused(WindowId window, bool by_press) {
+bool ActivationSync::focused(WindowId window, FocusCause cause) {
     settle_->stop();
     host_active_ = window;
-    if (by_press || window == guest_active_) return;
+    if (cause == FocusCause::Press || window == guest_active_) return false;
+    if (cause == FocusCause::Mapping && !guest_active_.none()) {
+        RWIN_DEBUG("focus", "{} focused by the compositor as it mapped; the guest has {} active", window,
+                   guest_active_);
+        return false;
+    }
     RWIN_DEBUG("focus", "{} focused here without a press in it; activating it in the guest", window);
     link_.send_activate(window, true);
+    return true;
 }
 
 void ActivationSync::follow(const ZOrder& order, WindowMirror* active) {

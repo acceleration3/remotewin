@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 namespace rwin::host {
 
@@ -36,6 +37,9 @@ using Popup = WindowFields::Popup;
 // A press this recent on the surface the keyboard comes to is what brought
 // the keyboard there.
 constexpr std::int64_t kPressBroughtFocusNs = 500'000'000;
+// The first focus a surface gets this soon after it is mapped is the
+// compositor focusing what it mapped.
+constexpr std::int64_t kMapBroughtFocusNs = 500'000'000;
 // A press older than this opened no popup: a grab with its serial would be
 // refused, and the popup dismissed as it opens.
 constexpr std::int64_t kGrabPressNs = 2'000'000'000;
@@ -180,7 +184,12 @@ void WindowMirror::make_surface() {
     surface_->picture_resized.connect([this] { picture_changed(); });
     surface_->shared_refused.connect([this](const std::string& why) { shared_refused(window(), why); });
     surface_->presented.connect([this](const FrameStamps& stamps) { presented(stamps); });
-    surface_->first_mapped.connect([this] { mapped_now(window()); });
+    surface_->first_mapped.connect([this] {
+        mapped_at_ = now_ns();
+        mapped_now(window());
+    });
+    mapped_at_ = 0;
+    focused_since_mapped_ = false;
     surface_->frame_owed.connect([this] { show_last_frame(); });
     surface_->set_opacity(style_.opacity());
     surface_->take_no_input(style_.click_through());
@@ -852,7 +861,14 @@ void WindowMirror::keyboard_entered() {
     kit_.grabber.keyboard_moved();
     if (toplevel_ == nullptr || !style_.activates()) return;
     if (window_.minimized()) minimize_.want_guest(false, now_ns());
-    focused(window(), pressed_into());
+    focused(window(), focus_cause());
+}
+
+FocusCause WindowMirror::focus_cause() noexcept {
+    const bool first = !std::exchange(focused_since_mapped_, true);
+    if (pressed_into()) return FocusCause::Press;
+    if (first && mapped_at_ != 0 && now_ns() - mapped_at_ < kMapBroughtFocusNs) return FocusCause::Mapping;
+    return FocusCause::Other;
 }
 
 void WindowMirror::keyboard_left() {

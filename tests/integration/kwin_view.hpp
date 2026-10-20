@@ -52,12 +52,34 @@ public:
     KWinView(KWinView&&) = delete;
     KWinView& operator=(KWinView&&) = delete;
 
+    // One of the host's windows as KWin stacks them, any kind - a popup, a
+    // dialog - with its title less the host's invisible tag.
+    struct Stacked {
+        std::string title;
+        bool popup = false;
+        bool transient = false;
+        bool active = false;
+        double x = 0;
+        double y = 0;
+        double width = 0;
+        double height = 0;
+    };
+
     [[nodiscard]] bool watching() const noexcept { return watching_; }
     // How the host's window last was; nothing before KWin has it.
     [[nodiscard]] const std::optional<Seen>& now() const noexcept { return now_; }
     [[nodiscard]] const std::vector<Seen>& journal() const noexcept { return journal_; }
     // How many commands KWin has carried out.
     [[nodiscard]] std::size_t done() const noexcept { return done_; }
+
+    // Asks KWin for the host's windows bottom to top (workspace.stackingOrder);
+    // the answer is stacking() once surveys() has gone up by one.
+    void survey();
+    [[nodiscard]] const std::vector<Stacked>& stacking() const noexcept { return stacking_; }
+    [[nodiscard]] std::size_t surveys() const noexcept { return surveys_; }
+    // Makes the host's window of that title the active one, as Alt+Tab or the
+    // taskbar would.
+    void activate(const std::string& title);
 
     void set_frame(double x, double y, double width, double height);
     void maximize(bool maximized);
@@ -66,6 +88,9 @@ public:
 private:
     static int seen_call(sd_bus_message* call, void* self, sd_bus_error* error);
     static int done_call(sd_bus_message* call, void* self, sd_bus_error* error);
+    static int surveyed_call(sd_bus_message* call, void* self, sd_bus_error* error);
+    void surveyed(std::string_view report);
+    void run(std::string source);
     void seen(std::string_view report);
     void command(std::string_view body);
 
@@ -79,6 +104,8 @@ private:
     std::optional<Seen> now_;
     std::vector<Seen> journal_;
     std::size_t done_ = 0;
+    std::vector<Stacked> stacking_;
+    std::size_t surveys_ = 0;
 };
 
 }  // namespace rwin::integration

@@ -14,6 +14,7 @@
 #include "host/link/pixels_view.hpp"
 #include "host/loop/event_loop.hpp"
 #include "host/loop/signal.hpp"
+#include "host/mirror/focus_cause.hpp"
 #include "host/mirror/mirror_kit.hpp"
 #include "host/mirror/mirror_role.hpp"
 #include "host/mirror/mirror_state.hpp"
@@ -152,9 +153,8 @@ public:
 
     [[nodiscard]] MirrorState state() const;
 
-    // The keyboard came here; ``by_press`` when a press in a mirror brought
-    // it, which the guest has already activated the window by.
-    Signal<WindowId, bool> focused;
+    // The keyboard came here, and what brought it.
+    Signal<WindowId, FocusCause> focused;
     Signal<WindowId> pressed_while_disabled;
     // A button went down on it.
     Signal<WindowId> button_pressed;
@@ -227,6 +227,7 @@ private:
     [[nodiscard]] Size logical_of(Size picture) const noexcept;
     void send_button(std::uint8_t button, Point at, bool pressed);
     [[nodiscard]] bool pressed_into() const noexcept;
+    [[nodiscard]] FocusCause focus_cause() noexcept;
     void show_last_frame();
     // The colour Windows does not draw (LWA_COLORKEY), if the window has one.
     [[nodiscard]] std::optional<std::uint32_t> color_key() const;
@@ -306,6 +307,10 @@ private:
     // hides and shows it.
     bool dismissed_ = false;
     std::int64_t dismissed_at_ = 0;
+    // When the surface was first on screen, and whether the keyboard has
+    // come to it since.
+    std::int64_t mapped_at_ = 0;
+    bool focused_since_mapped_ = false;
     // Waits to see whether the press that dismissed the popup was one of
     // this application's, which the guest closes the popup for by itself.
     std::unique_ptr<EventLoop::Timer> dismissal_;

@@ -688,6 +688,298 @@ void resize_by_compositor(Case& run) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
+// Windows of the application other than the main one, and what is judged of
+// them: where KWin stacks them, and which it has active.
+
+using Stacking = std::vector<KWinView::Stacked>;
+
+constexpr const char* kMainTitle = "Integration window";
+constexpr WindowId kMainId{0x10a42, 1};
+constexpr milliseconds kStackBound{1500};
+// Window styles as the guest sends them (RAIL's masks).
+constexpr std::uint32_t kWsPopup = 0x80000000;
+constexpr std::uint32_t kWsVisible = 0x10000000;
+constexpr std::uint32_t kWsClipSiblings = 0x04000000;
+constexpr std::uint32_t kWsCaption = 0x00C00000;
+constexpr std::uint32_t kWsSysMenu = 0x00080000;
+constexpr std::uint32_t kWsOverlappedWindow = 0x00CF0000;
+constexpr std::uint32_t kWsExToolWindow = 0x00000080;
+constexpr std::uint32_t kWsExTopmost = 0x00000008;
+constexpr std::uint32_t kWsExNoActivate = 0x08000000;
+constexpr std::uint32_t kWsExNoRedirectionBitmap = 0x00200000;
+
+// A window of the played application: the main window's process and
+// image, at ``frame`` on the guest's screen, drawn whole.
+WindowFields played_window(const ModelWindow& main, std::string title, std::string class_name, std::uint32_t style,
+                           std::uint32_t extended, Rect frame, WindowId owner) {
+    WindowFields fields = main.fields();
+    fields.title = std::move(title);
+    fields.class_name = std::move(class_name);
+    fields.style.style = style;
+    fields.style.extended = extended;
+    fields.owner = owner;
+    fields.show = WindowFields::Show::Shown;
+    fields.geometry = WindowFields::Geometry{};
+    fields.geometry.frame = frame;
+    fields.geometry.client = Rect{0, 0, frame.width, frame.height};
+    fields.geometry.picture = Rect{0, 0, frame.width, frame.height};
+    fields.taskbar = owner.none() ? WindowFields::kTaskbarButton | WindowFields::kInSwitchers : 0;
+    fields.frame = 0;
+    return fields;
+}
+
+const KWinView::Stacked* stacked(const Stacking& stacking, std::string_view title) {
+    const auto found = std::find_if(stacking.begin(), stacking.end(),
+                                    [title](const KWinView::Stacked& entry) { return entry.title == title; });
+    return found == stacking.end() ? nullptr : &*found;
+}
+
+// A popup has no title of its own to KWin: it is known by its width.
+const KWinView::Stacked* popup_of_width(const Stacking& stacking, double width) {
+    const auto found = std::find_if(stacking.begin(), stacking.end(), [width](const KWinView::Stacked& entry) {
+        return entry.popup && std::abs(entry.width - width) < 2;
+    });
+    return found == stacking.end() ? nullptr : &*found;
+}
+
+// Whether ``upper`` is stacked above ``lower`` (stackingOrder is bottom first).
+bool above(const Stacking& stacking, std::string_view upper, std::string_view lower) {
+    const KWinView::Stacked* top = stacked(stacking, upper);
+    const KWinView::Stacked* bottom = stacked(stacking, lower);
+    return top != nullptr && bottom != nullptr && top > bottom;
+}
+
+std::string stacking_text(const Stacking& stacking) {
+    std::string text;
+    for (const KWinView::Stacked& entry : stacking) {
+        text += std::format(" [{}{}{}{} {:.0f},{:.0f} {:.0f}x{:.0f}]", entry.title, entry.popup ? " popup" : "",
+                            entry.transient ? " transient" : "", entry.active ? " active" : "", entry.x, entry.y,
+                            entry.width, entry.height);
+    }
+    return text.empty() ? " nothing" : text;
+}
+
+// Surveys KWin's stacking again and again until ``wanted`` holds of it, as a
+// settle does of anything else.
+std::optional<milliseconds> stacking_settles(Case& run, const std::function<bool(const Stacking&)>& wanted,
+                                             milliseconds hold) {
+    std::size_t answered = run.kwin().surveys();
+    bool holds = false;
+    run.kwin().survey();
+    return run.desktop().settle(
+        [&] {
+            if (run.kwin().surveys() != answered) {
+                answered = run.kwin().surveys();
+                holds = wanted(run.kwin().stacking());
+                run.kwin().survey();
+            }
+            return holds;
+        },
+        kSettleWait, hold);
+}
+
+void judge_stacking(Case& run, const std::optional<milliseconds>& took, const std::string& what) {
+    run.verdicts().check(took.has_value() && *took <= kStackBound,
+                         took.has_value() ? std::format("{} in {} ms (bound {} ms)", what, took->count(),
+                                                        kStackBound.count())
+                                          : std::format("{}: never, in {} ms", what, kSettleWait.count()));
+    if (!took.has_value()) run.verdicts().note("KWin stacks, bottom first:" + stacking_text(run.kwin().stacking()));
+}
+
+void main_window_active(Case& run) {
+    const auto active = stacking_settles(
+        run, [](const Stacking& stacking) {
+            const KWinView::Stacked* main = stacked(stacking, kMainTitle);
+            return main != nullptr && main->active;
+        },
+        milliseconds(100));
+    run.verdicts().check(active.has_value(), "the main window's mirror is the active window to start with");
+}
+
+// The application opens a dialog it owns, and Windows makes it active: its
+// mirror is kept above the main window's and is the active window here.
+void dialog_in_front(Case& run) {
+    main_window_active(run);
+    const Rect main = run.window().frame();
+    constexpr WindowId kDialog{0x20b10, 2};
+    run.guest().show_window(kDialog, played_window(run.window(), "Played dialog", "#32770",
+                                                   kWsPopup | kWsVisible | kWsClipSiblings | kWsCaption | kWsSysMenu,
+                                                   0, Rect{main.x + 200, main.y + 150, 480, 320}, kMainId));
+    run.desktop().pass(milliseconds(30));
+    run.guest().stack(ZOrder{kDialog, {kDialog, kMainId, kMonitorWindow}});
+    const auto took = stacking_settles(
+        run,
+        [](const Stacking& stacking) {
+            const KWinView::Stacked* dialog = stacked(stacking, "Played dialog");
+            return dialog != nullptr && dialog->transient && dialog->active
+                   && above(stacking, "Played dialog", kMainTitle);
+        },
+        kHold);
+    judge_stacking(run, took, "the dialog's mirror is above the main window's, transient for it, and active");
+}
+
+// A menu dropped from the menu bar and a submenu out of it: each is a popup
+// above what it opens from.
+void menus_in_front(Case& run) {
+    main_window_active(run);
+    const Rect main = run.window().frame();
+    constexpr WindowId kMenu{0x20c20, 2};
+    constexpr WindowId kSubmenu{0x20c30, 3};
+    using Popup = WindowFields::Popup;
+    WindowFields menu = played_window(run.window(), "Played menu", "#32768", kWsPopup | kWsVisible | kWsClipSiblings,
+                                      kWsExToolWindow | kWsExTopmost, Rect{main.x + 10, main.y + 60, 220, 300},
+                                      WindowId{});
+    menu.popup = Popup{kMainId, Popup::Kind::MenuBar, Rect{10, 60, 220, 300}, Rect{10, 36, 40, 24},
+                       Popup::Edge::BottomLeft, Popup::Edge::BottomRight,
+                       Popup::kSlideX | Popup::kSlideY | Popup::kFlipY};
+    run.guest().show_window(kMenu, menu);
+    WindowFields submenu = played_window(run.window(), "Played submenu", "#32768",
+                                         kWsPopup | kWsVisible | kWsClipSiblings, kWsExToolWindow | kWsExTopmost,
+                                         Rect{main.x + 230, main.y + 100, 200, 160}, WindowId{});
+    submenu.popup = Popup{kMenu, Popup::Kind::Submenu, Rect{220, 40, 200, 160}, Rect{0, 40, 220, 24},
+                          Popup::Edge::TopRight, Popup::Edge::BottomRight,
+                          Popup::kSlideX | Popup::kSlideY | Popup::kFlipX};
+    run.guest().show_window(kSubmenu, submenu);
+    const double scale = run.desktop().scale();
+    const auto took = stacking_settles(
+        run,
+        [scale](const Stacking& stacking) {
+            const KWinView::Stacked* shown = popup_of_width(stacking, 220 / scale);
+            const KWinView::Stacked* sub = popup_of_width(stacking, 200 / scale);
+            const KWinView::Stacked* main = stacked(stacking, kMainTitle);
+            return shown != nullptr && sub != nullptr && main != nullptr && shown > main && sub > shown;
+        },
+        kHold);
+    judge_stacking(run, took, "the menu is a popup above the main window, and the submenu one above the menu");
+}
+
+// A WinUI popup (Notepad's menus): shown at 0x0, sized a frame later, hidden
+// between uses and shown again. Its mirror shows it once it has its size,
+// above the window it belongs to, each time.
+void winui_popup(Case& run) {
+    main_window_active(run);
+    const Rect main = run.window().frame();
+    constexpr WindowId kPopupHost{0x30d40, 2};
+    const std::uint32_t style = kWsPopup | kWsVisible | kWsClipSiblings;
+    const std::uint32_t extended = kWsExNoActivate | kWsExNoRedirectionBitmap;
+    WindowFields popup = played_window(run.window(), "PopupHost", "Microsoft.UI.Content.PopupWindowSiteBridge", style,
+                                       extended, Rect{0, 0, 0, 0}, kMainId);
+    run.guest().show_window(kPopupHost, popup);
+    run.desktop().pass(milliseconds(8));
+    const std::optional<HostReport::Mirror> unsized = run.desktop().host_report().mirror("PopupHost");
+    run.verdicts().check(!unsized.has_value() || !unsized->shown,
+                         "nothing is shown of it while it has no size");
+    run.desktop().pass(milliseconds(8));
+    const Rect sized{main.x + 30, main.y + 60, 316, 400};
+    popup.geometry.frame = sized;
+    popup.geometry.client = Rect{0, 0, sized.width, sized.height};
+    popup.geometry.picture = Rect{0, 0, sized.width, sized.height};
+    run.guest().change_window(kPopupHost, popup);
+    auto shown_whole = [&] {
+        const std::optional<HostReport::Mirror> mirror = run.desktop().host_report().mirror("PopupHost");
+        return mirror.has_value() && mirror->shown && mirror->picture.width == static_cast<int>(sized.width)
+               && mirror->picture.height == static_cast<int>(sized.height);
+    };
+    run.judge_settled(run.desktop().settle(shown_whole, kSettleWait, kHold), "the popup shown at its size");
+    const std::optional<HostReport::Mirror> first = run.desktop().host_report().mirror("PopupHost");
+    run.verdicts().check(first.has_value() && first->role != "toplevel",
+                         std::format("its mirror is a {} of the window it belongs to, not a toplevel",
+                                     first.has_value() ? first->role : std::string("missing mirror")));
+
+    popup.show = WindowFields::Show::Hidden;
+    popup.style.style = style & ~kWsVisible;
+    run.guest().change_window(kPopupHost, popup);
+    const auto hidden = run.desktop().settle(
+        [&] {
+            const std::optional<HostReport::Mirror> mirror = run.desktop().host_report().mirror("PopupHost");
+            return !mirror.has_value() || !mirror->shown;
+        },
+        kSettleWait, kHold);
+    run.judge_settled(hidden, "the popup's mirror hidden with it");
+    popup.show = WindowFields::Show::Shown;
+    popup.style.style = style;
+    run.guest().change_window(kPopupHost, popup);
+    run.judge_settled(run.desktop().settle(shown_whole, kSettleWait, kHold), "the popup shown again, the same window");
+}
+
+// Windows makes a dialog active, and the application shows another window
+// without activating it (a panel, a palette): the compositor focuses the new
+// mirror as it maps it, but that is no choice of the user's - the guest is
+// not told to activate it, and the dialog stays the active window here.
+void map_keeps_guest_active(Case& run) {
+    main_window_active(run);
+    const Rect main = run.window().frame();
+    constexpr WindowId kDialog{0x20b10, 2};
+    constexpr WindowId kPanel{0x40f60, 3};
+    run.guest().show_window(kDialog, played_window(run.window(), "Played dialog", "#32770",
+                                                   kWsPopup | kWsVisible | kWsClipSiblings | kWsCaption | kWsSysMenu,
+                                                   0, Rect{main.x + 200, main.y + 150, 480, 320}, kMainId));
+    run.guest().stack(ZOrder{kDialog, {kDialog, kMainId, kMonitorWindow}});
+    const auto dialog_active = stacking_settles(
+        run,
+        [](const Stacking& stacking) {
+            const KWinView::Stacked* dialog = stacked(stacking, "Played dialog");
+            return dialog != nullptr && dialog->active;
+        },
+        milliseconds(100));
+    run.verdicts().check(dialog_active.has_value(), "the dialog Windows activated is active here");
+    const std::size_t asked = run.guest().activations().size();
+    run.guest().show_window(kPanel, played_window(run.window(), "Played panel", "RemotewinIntegrationWindow",
+                                                  kWsOverlappedWindow | kWsVisible | kWsClipSiblings, 0,
+                                                  Rect{main.x + 600, main.y + 50, 300, 500}, WindowId{}));
+    run.guest().stack(ZOrder{kDialog, {kDialog, kMainId, kPanel, kMonitorWindow}});
+    const auto kept = stacking_settles(
+        run,
+        [](const Stacking& stacking) {
+            const KWinView::Stacked* dialog = stacked(stacking, "Played dialog");
+            return stacked(stacking, "Played panel") != nullptr && dialog != nullptr && dialog->active
+                   && above(stacking, "Played dialog", kMainTitle);
+        },
+        kHold);
+    judge_stacking(run, kept, "the panel mapped, and the dialog is still the active window");
+    const auto& activations = run.guest().activations();
+    const bool stolen = std::any_of(activations.begin() + static_cast<std::ptrdiff_t>(asked), activations.end(),
+                                    [&](const Activate& activation) { return activation.window == kPanel; });
+    run.verdicts().check(!stolen, "the guest was not asked to activate the panel for being mapped");
+}
+
+// Focus going to another mirror by other means than a press (Alt+Tab, the
+// taskbar) is said to the guest; the guest's own activation of a window is
+// followed here while the user is in one of these mirrors.
+void activation_both_ways(Case& run) {
+    main_window_active(run);
+    const Rect main = run.window().frame();
+    constexpr WindowId kOther{0x30e50, 2};
+    run.guest().show_window(kOther, played_window(run.window(), "Second window", "RemotewinIntegrationWindow",
+                                                  kWsOverlappedWindow | kWsVisible | kWsClipSiblings, 0,
+                                                  Rect{main.x + 300, main.y + 100, 600, 400}, WindowId{}));
+    run.guest().stack(ZOrder{kMainId, {kMainId, kOther, kMonitorWindow}});
+    const auto mapped = stacking_settles(
+        run, [](const Stacking& stacking) { return stacked(stacking, "Second window") != nullptr; }, kHold);
+    run.verdicts().check(mapped.has_value(), "the second window has its mirror");
+    const std::size_t asked = run.guest().activations().size();
+    run.in_kwin([](KWinView& kwin) { kwin.activate("Second window"); });
+    const auto said = run.desktop().settle(
+        [&] {
+            const auto& activations = run.guest().activations();
+            return std::any_of(activations.begin() + static_cast<std::ptrdiff_t>(asked), activations.end(),
+                               [&](const Activate& activation) { return activation.window == kOther && activation.enabled; });
+        },
+        kSettleWait, milliseconds(0));
+    run.judge_settled(said, "the guest was asked to activate the window focused here");
+    run.guest().stack(ZOrder{kOther, {kOther, kMainId, kMonitorWindow}});
+    run.desktop().pass(milliseconds(100));
+    run.guest().stack(ZOrder{kMainId, {kMainId, kOther, kMonitorWindow}});
+    const auto followed = stacking_settles(
+        run,
+        [](const Stacking& stacking) {
+            const KWinView::Stacked* shown = stacked(stacking, kMainTitle);
+            return shown != nullptr && shown->active && above(stacking, kMainTitle, "Second window");
+        },
+        kHold);
+    judge_stacking(run, followed, "the window the guest activated is active and on top here");
+}
+
 struct Named {
     std::string_view name;
     void (*run)(Case&);
@@ -710,6 +1002,9 @@ constexpr Named kCases[] = {
     {"drag-corner-in", &drag_corner_in, kQuick},     {"drag-top", &drag_top, kQuick},
     {"drag-left", &drag_left, kQuick},               {"resize-by-compositor", &resize_by_compositor, kQuick},
     {"resize-in-guest", &resize_in_guest, kQuick},
+    {"dialog-in-front", &dialog_in_front, kQuick},   {"menus-in-front", &menus_in_front, kQuick},
+    {"winui-popup", &winui_popup, kQuick},           {"activation-both-ways", &activation_both_ways, kQuick},
+    {"map-keeps-guest-active", &map_keeps_guest_active, kQuick},
 };
 
 bool on_path(const std::string& program) {

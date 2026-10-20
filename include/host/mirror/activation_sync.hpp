@@ -1,6 +1,7 @@
 #pragma once
 
 #include "host/loop/event_loop.hpp"
+#include "host/mirror/focus_cause.hpp"
 #include "proto/window_id.hpp"
 #include "proto/z_order.hpp"
 
@@ -16,7 +17,9 @@ class WindowMirror;
 // the rule a RAIL client keeps (docs/rail-model.md §2.6, §5.5):
 //
 // - A press in a mirror activates its window in the guest by itself, as
-//   input; nothing is said. Focus that comes any other way - Alt+Tab, the
+//   input; nothing is said. Nor is the compositor focusing a mirror as it
+//   maps it while the guest has another window active: a RAIL client makes
+//   its windows without activating them, and Windows decided which is. Focus that comes any other way - Alt+Tab, the
 //   taskbar, the compositor focusing a window it mapped - is said
 //   (Activate), unless the guest has that window active already.
 // - Focus leaving every mirror for something that is not one is said too,
@@ -28,9 +31,11 @@ class ActivationSync {
 public:
     ActivationSync(EventLoop& loop, GuestLink& link, Seat& seat);
 
-    // This desktop focused the mirror of ``window``; ``by_press`` when a
-    // press brought it.
-    void focused(WindowId window, bool by_press);
+    // This desktop focused the mirror of ``window``. False when the guest
+    // is not told: a press told it already, it has the window active, or the
+    // compositor only focused what it mapped while the guest has another
+    // window active - which is then the one to follow (follow).
+    bool focused(WindowId window, FocusCause cause);
     // The guest's stacking and active window; ``active`` is the mirror of
     // that window, or null when it has none here.
     void follow(const ZOrder& order, WindowMirror* active);

@@ -46,6 +46,28 @@ workspace.windowList().forEach(function(w) {
 callDBus("$SERVICE", "$PATH", "$INTERFACE", "done", "");
 )JS";
 
+// Every window of the host's, popups and dialogs too, bottom to top: title,
+// popup, transient, active and frame, a window a line.
+constexpr std::string_view kSurvey = R"JS(
+const marker = String.fromCharCode(0x2063);
+const lines = workspace.stackingOrder.filter(function(w) { return w.pid === $PID; }).map(function(w) {
+    const caption = w.captionNormal || "";
+    const at = caption.indexOf(marker);
+    const g = w.frameGeometry;
+    return [at < 0 ? caption : caption.substring(0, at), w.popupWindow ? 1 : 0, w.transient ? 1 : 0,
+            workspace.activeWindow === w ? 1 : 0, g.x, g.y, g.width, g.height].join("\t");
+});
+callDBus("$SERVICE", "$PATH", "$INTERFACE", "surveyed", lines.join("\n"));
+)JS";
+
+constexpr std::string_view kActivate = R"JS(
+workspace.stackingOrder.forEach(function(w) {
+    const caption = w.captionNormal || "";
+    if (w.pid === $PID && caption.indexOf("$TITLE") === 0) workspace.activeWindow = w;
+});
+callDBus("$SERVICE", "$PATH", "$INTERFACE", "done", "");
+)JS";
+
 void replace_all(std::string& text, std::string_view name, std::string_view value) {
     for (std::size_t at = text.find(name); at != std::string::npos; at = text.find(name, at + value.size())) {
         text.replace(at, name.size(), value);
@@ -86,6 +108,7 @@ KWinView::KWinView(host::EventLoop& /*loop*/, host::BusConnection& bus, pid_t ho
         SD_BUS_VTABLE_START(0),
         SD_BUS_METHOD("seen", "s", "", &KWinView::seen_call, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("done", "s", "", &KWinView::done_call, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("surveyed", "s", "", &KWinView::surveyed_call, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_VTABLE_END,
     };
     if (sd_bus_add_object_vtable(bus.bus(), &object_, kPath, kInterface, kVtable, this) < 0) {
@@ -128,9 +151,47 @@ void KWinView::seen(std::string_view report) {
     journal_.push_back(std::move(seen));
 }
 
+int KWinView::surveyed_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+    return string_call(call, self, &KWinView::surveyed);
+}
+
+void KWinView::surveyed(std::string_view report) {
+    stacking_.clear();
+    while (!report.empty()) {
+        const std::size_t end = report.find('\n');
+        const std::string_view line = report.substr(0, end);
+        std::vector<std::string_view> parts;
+        for (std::string_view rest = line;;) {
+            const std::size_t tab = rest.find('\t');
+            parts.push_back(rest.substr(0, tab));
+            if (tab == std::string_view::npos) break;
+            rest.remove_prefix(tab + 1);
+        }
+        if (parts.size() == 8) {
+            stacking_.push_back(Stacked{std::string(parts[0]), parts[1] == "1", parts[2] == "1", parts[3] == "1",
+                                        number(parts[4]), number(parts[5]), number(parts[6]), number(parts[7])});
+        }
+        if (end == std::string_view::npos) break;
+        report.remove_prefix(end + 1);
+    }
+    ++surveys_;
+}
+
+void KWinView::survey() { run(std::string{kSurvey}); }
+
+void KWinView::activate(const std::string& title) {
+    std::string source{kActivate};
+    replace_all(source, "$TITLE", title);
+    run(std::move(source));
+}
+
 void KWinView::command(std::string_view body) {
     std::string source{kCommand};
     replace_all(source, "$BODY", body);
+    run(std::move(source));
+}
+
+void KWinView::run(std::string source) {
     replace_all(source, "$SERVICE", service_);
     replace_all(source, "$PATH", kPath);
     replace_all(source, "$INTERFACE", kInterface);

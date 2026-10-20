@@ -178,7 +178,7 @@ void MirrorSession::reconcile() {
     for (const GuestWindow* window : windows().stacked()) {
         if (!belongs(window->id())) continue;
         ++belonging;
-        if (find(window->id()) == nullptr) open(*window);
+        if (find(window->id()) == nullptr && !window->hidden()) open(*window);
     }
     std::vector<WindowId> strays;
     for (const auto& [window, mirror] : mirrors_) {
@@ -217,7 +217,10 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
               window.fields().app_id.aumid);
     auto made = std::make_unique<WindowMirror>(kit_, window);
     WindowMirror& mirror = *made;
-    mirror.focused.connect([this](WindowId focused, bool by_press) { focus_.focused(focused, by_press); });
+    mirror.focused.connect([this](WindowId focused, FocusCause cause) {
+        if (focus_.focused(focused, cause) || cause != FocusCause::Mapping) return;
+        focus_.follow(windows().order(), find(windows().order().active));
+    });
     mirror.pressed_while_disabled.connect([this](WindowId pressed) { bring_forward_for(pressed); });
     mirror.button_pressed.connect([this](WindowId pressed) { placement_.end_drag_hold(pressed); });
     mirror.drag_handed.connect([this](WindowId dragged) { placement_.hold_for_drag(dragged); });
@@ -233,9 +236,14 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
     mirror.reshaped.connect([this](WindowId) { rearrange_->start(std::chrono::milliseconds::zero(), false); });
     mirror.mapped_now.connect([this, &mirror](WindowId) {
         rearrange_->start(std::chrono::milliseconds::zero(), false);
-        if (token_.empty() || mirror.role().kind != MirrorRole::Kind::Toplevel) return;
-        RWIN_INFO("focus", "{} activated with the launcher's token", mirror.window());
-        mirror.activate(std::exchange(token_, std::string()));
+        if (!token_.empty() && mirror.role().kind == MirrorRole::Kind::Toplevel) {
+            RWIN_INFO("focus", "{} activated with the launcher's token", mirror.window());
+            mirror.activate(std::exchange(token_, std::string()));
+            return;
+        }
+        // The guest made it active before it had a surface here: a dialog
+        // Windows activates as it opens is followed once it is on screen.
+        if (windows().order().active == mirror.window()) focus_.follow(windows().order(), &mirror);
     });
     if (const auto icon = icons_.find(window.id()); icon != icons_.end()) mirror.set_icon(icon->second);
     mirror.note_guest_active(windows().order().active == window.id());
@@ -273,12 +281,13 @@ void MirrorSession::release_closed() {
     std::erase_if(releasing_, [](const std::unique_ptr<WindowMirror>& mirror) { return !mirror->holds_press(); });
 }
 
-// What the guest hid goes before anything is shown: a menu bar's next menu
+// What the guest hid, or has not given a size yet, goes before anything is
+// shown: a menu bar's next menu
 // opens while the last one closes, and a grabbing popup made while another
 // chain still grabs is one the compositor refuses (not_the_topmost_popup).
 void MirrorSession::arrange() {
     for (const GuestWindow* window : windows().stacked()) {
-        if (!window->hidden()) continue;
+        if (window->showable()) continue;
         if (WindowMirror* mirror = find(window->id())) mirror->hide();
     }
     std::vector<WindowId> arranging;
@@ -295,7 +304,7 @@ void MirrorSession::arrange() {
 void MirrorSession::arrange_one(const GuestWindow& window, std::vector<WindowId>& arranging) {
     WindowMirror* mirror = find(window.id());
     if (mirror == nullptr) return;
-    if (window.hidden()) {
+    if (!window.showable()) {
         mirror->hide();
         return;
     }
@@ -304,11 +313,11 @@ void MirrorSession::arrange_one(const GuestWindow& window, std::vector<WindowId>
     MirrorRole role = MirrorRole::of(window, windows());
     WindowMirror* parent = role.parent.none() ? nullptr : find(role.parent);
     const GuestWindow* parent_window = parent != nullptr ? windows().find(role.parent) : nullptr;
-    if (parent_window != nullptr && !parent_window->hidden()
+    if (parent_window != nullptr && parent_window->showable()
         && std::find(arranging.begin(), arranging.end(), role.parent) == arranging.end()) {
         arrange_one(*parent_window, arranging);
     }
-    const bool parent_usable = parent != nullptr && parent_window != nullptr && !parent_window->hidden()
+    const bool parent_usable = parent != nullptr && parent_window != nullptr && parent_window->showable()
                                && std::find(arranging.begin(), arranging.end(), role.parent) != arranging.end()
                                && (role.kind != MirrorRole::Kind::Toplevel
                                    || parent->role().kind == MirrorRole::Kind::Toplevel);

@@ -21,6 +21,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -129,9 +130,21 @@ void FakeGuest::read_host() {
 
 void FakeGuest::take(MessageReader& message) {
     switch (message.id()) {
-        case MessageId::Subscribe:
+        case MessageId::Subscribe: {
+            const std::optional<WindowId> id = WindowId::read(message);
+            if (Other* played = id.has_value() ? other(*id) : nullptr) {
+                played->subscribed = true;
+                picture_other(*played);
+                return;
+            }
             subscribed_ = true;
             capture_->start(timing_.frame, false);
+            return;
+        }
+        case MessageId::Activate:
+            if (const std::optional<Activate> activation = Activate::read(message)) {
+                activations_.push_back(*activation);
+            }
             return;
         case MessageId::WindowMove:
             if (const std::optional<WindowMove> move = WindowMove::read(message)) {
@@ -228,18 +241,76 @@ void FakeGuest::send_frame() {
 }
 
 void FakeGuest::send_picture(std::uint32_t width, std::uint32_t height) {
+    send_picture_of(id_, width, height);
+    pictured_.push_back(Pictured{host::now_ns(), width, height});
+}
+
+void FakeGuest::send_picture_of(WindowId id, std::uint32_t width, std::uint32_t height) {
     const std::size_t count = static_cast<std::size_t>(width) * height;
     if (pixels_.size() != count * 4) {
         pixels_.resize(count * 4);
         for (std::size_t at = 0; at < count; ++at) std::memcpy(pixels_.data() + at * 4, &kPictureColour, 4);
     }
     MessageWriter out{MessageId::Frame};
-    id_.write(out);
+    id.write(out);
     out.put_u32(width);
     out.put_u32(height);
     out.put_bytes(pixels_.data(), pixels_.size());
     send(out.take());
-    pictured_.push_back(Pictured{host::now_ns(), width, height});
+}
+
+FakeGuest::Other* FakeGuest::other(WindowId id) {
+    const auto found = std::find_if(others_.begin(), others_.end(), [id](const Other& o) { return o.id == id; });
+    return found == others_.end() ? nullptr : &*found;
+}
+
+bool FakeGuest::subscribed_to(WindowId id) const {
+    const auto found = std::find_if(others_.begin(), others_.end(), [id](const Other& o) { return o.id == id; });
+    return found != others_.end() && found->subscribed;
+}
+
+// Windows' capture has nothing of a hidden window, or of one of no size.
+void FakeGuest::picture_other(const Other& played) {
+    const Rect& picture = played.said.geometry.picture;
+    if (!played.subscribed || played.said.show == WindowFields::Show::Hidden || picture.width == 0
+        || picture.height == 0) {
+        return;
+    }
+    send_picture_of(played.id, picture.width, picture.height);
+}
+
+void FakeGuest::show_window(WindowId id, const WindowFields& fields) {
+    others_.push_back(Other{id, fields, false});
+    MessageWriter made{MessageId::WindowNew};
+    id.write(made);
+    fields.write(made, WindowFields::kAll);
+    send(made.take());
+}
+
+void FakeGuest::change_window(WindowId id, const WindowFields& fields) {
+    Other* played = other(id);
+    if (played == nullptr) return;
+    if (const std::uint32_t mask = fields.differences(played->said); mask != 0) {
+        MessageWriter out{MessageId::WindowChanged};
+        id.write(out);
+        fields.write(out, mask);
+        send(out.take());
+        played->said = fields;
+    }
+    picture_other(*played);
+}
+
+void FakeGuest::forget_window(WindowId id) {
+    std::erase_if(others_, [id](const Other& o) { return o.id == id; });
+    MessageWriter out{MessageId::WindowGone};
+    id.write(out);
+    send(out.take());
+}
+
+void FakeGuest::stack(const ZOrder& order) {
+    MessageWriter out{MessageId::ZOrder};
+    order.write(out);
+    send(out.take());
 }
 
 void FakeGuest::send(const std::vector<std::uint8_t>& bytes) {
