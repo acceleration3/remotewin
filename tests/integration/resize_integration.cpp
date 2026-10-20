@@ -1021,7 +1021,9 @@ void activation_both_ways(Case& run) {
 // 1.4 s after the main window, a close confirmation shown when the main
 // window is closed, which disables it while it is up. Rounded, each has the
 // window region WPF's WindowChrome rounds its corners with when it has no
-// glass frame, which the host can cut out of pixels only.
+// glass frame, and its pictures are clear outside it, as Windows' capture
+// hands them over: they stay on the GPU, and the corners show what is under
+// them.
 
 constexpr const char* kAppTitle = "Played application";
 constexpr const char* kWelcomeTitle = "Played welcome";
@@ -1088,12 +1090,80 @@ void owned_in_front(Case& run, WindowId id, const std::string& title, Corners co
     judge_stacking(run, took, what);
 }
 
-// A rounded window's pictures were asked for as pixels before the guest
-// sent one on the GPU, which the host would only have refused.
-void judge_no_ring(Case& run, WindowId id, const std::string& what) {
-    run.verdicts().check(run.guest().rings_made(id) == 0 && run.guest().sent_back_to_pixels(id),
-                         std::format("{}'s pictures came as pixels from the first ({} ring(s) made for it)", what,
-                                     run.guest().rings_made(id)));
+// A rounded window's pictures stay on the GPU: a ring made for them, none
+// sent back to pixels, and its mirror showing the guest's own buffer. Where
+// the played device's surfaces are no dma-bufs (no /dev/udmabuf) the
+// compositor refuses them, and only the ring is judged.
+void judge_on_gpu(Case& run, WindowId id, const std::string& title, const std::string& what) {
+    const std::size_t rings = run.guest().rings_made(id);
+    if (!run.desktop().gpu_frames_shown()) {
+        run.verdicts().note("the played GPU device's surfaces are no dma-bufs here (no /dev/udmabuf)");
+        run.verdicts().check(rings > 0, std::format("{}'s pictures were sent on the GPU ({} ring(s))", what, rings));
+        return;
+    }
+    const auto shown = run.desktop().settle(
+        [&] {
+            const std::optional<HostReport::Mirror> mirror = run.desktop().host_report().mirror(title);
+            return mirror.has_value() && mirror->on_gpu;
+        },
+        kSettleWait, milliseconds(0));
+    const bool back = run.guest().sent_back_to_pixels(id);
+    run.verdicts().check(rings > 0 && !back && shown.has_value(),
+                         std::format("{}'s pictures stay on the GPU ({} ring(s), {}sent back to pixels, {}shown "
+                                     "from the GPU)",
+                                     what, rings, back ? "" : "not ", shown.has_value() ? "" : "not "));
+}
+
+// The logical units round a window's top left that are looked at, and the
+// picture pixels in it that are: one in the corner a rounded region leaves
+// out, one well inside.
+constexpr int kLookUnits = 24;
+constexpr int kCornerPixel = 1;
+constexpr int kInsidePixel = 2 * kWpfCorner;
+constexpr int kColourSlack = 6;
+
+bool same_colour(std::uint32_t a, std::uint32_t b) {
+    for (const int shift : {0, 8, 16}) {
+        if (std::abs(static_cast<int>((a >> shift) & 0xFF) - static_cast<int>((b >> shift) & 0xFF)) > kColourSlack) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// What the compositor shows in a rounded window's corner is what is under
+// it - the window below's colour - and inside, the window's own: the corner
+// comes clear, and the mirror neither shows it opaque (a format without
+// alpha) nor says it is (its opaque region), either of which draws it black.
+void judge_corner(Case& run, const std::string& title, WindowId id, WindowId below, const std::string& what) {
+    run.desktop().pass(milliseconds(100));
+    std::size_t answered = run.kwin().surveys();
+    run.kwin().survey();
+    static_cast<void>(run.desktop().settle([&] { return run.kwin().surveys() != answered; }, kSettleWait,
+                                           milliseconds(0)));
+    const KWinView::Stacked* shown = stacked(run.kwin().stacking(), title);
+    if (shown == nullptr) {
+        run.verdicts().check(false, std::format("{}: no window to look at", what));
+        return;
+    }
+    const int x = static_cast<int>(std::floor(shown->x));
+    const int y = static_cast<int>(std::floor(shown->y));
+    const std::optional<ScreenCapture::Picture> screen = run.desktop().screen().area(x, y, kLookUnits, kLookUnits);
+    if (!screen.has_value()) {
+        run.verdicts().check(false, std::format("{}: KWin would not say what it shows", what));
+        return;
+    }
+    const double scale = run.desktop().scale();
+    const int left = static_cast<int>(std::lround((shown->x - x) * scale));
+    const int top = static_cast<int>(std::lround((shown->y - y) * scale));
+    const std::uint32_t corner = screen->at(left + kCornerPixel, top + kCornerPixel);
+    const std::uint32_t inside = screen->at(left + kInsidePixel, top + kInsidePixel);
+    const std::uint32_t under = run.guest().colour_of(below);
+    const std::uint32_t own = run.guest().colour_of(id);
+    run.verdicts().check(same_colour(corner, under) && same_colour(inside, own),
+                         std::format("{}: its corner shows {:#08x}, the window under it {:#08x}; inside it {:#08x}, "
+                                     "its own {:#08x}",
+                                     what, corner & 0xFFFFFF, under & 0xFFFFFF, inside & 0xFFFFFF, own & 0xFFFFFF));
 }
 
 void welcome(Case& run, Corners corners) {
@@ -1103,8 +1173,10 @@ void welcome(Case& run, Corners corners) {
     owned_in_front(run, kWelcome, kWelcomeTitle, corners,
                    "the welcome is above the main window, transient for it, and active");
     if (corners == Corners::Square) return;
-    judge_no_ring(run, kAppId, "the main window");
-    judge_no_ring(run, kWelcome, "the welcome");
+    judge_on_gpu(run, kAppId, kAppTitle, "the main window");
+    judge_on_gpu(run, kWelcome, kWelcomeTitle, "the welcome");
+    judge_corner(run, kAppTitle, kAppId, kMainId, "the main window over the harness's window");
+    judge_corner(run, kWelcomeTitle, kWelcome, kAppId, "the welcome over the main window");
 }
 
 // The main window closed here: the guest is asked to close it, and the
@@ -1130,7 +1202,9 @@ void close_confirmation(Case& run, Corners corners) {
     constexpr WindowId kConfirm{0x2e0018, 23};
     owned_in_front(run, kConfirm, kConfirmTitle, corners,
                    "the close confirmation is above the main window, transient for it, and active");
-    if (corners == Corners::Rounded) judge_no_ring(run, kConfirm, "the close confirmation");
+    if (corners == Corners::Square) return;
+    judge_on_gpu(run, kConfirm, kConfirmTitle, "the close confirmation");
+    judge_corner(run, kConfirmTitle, kConfirm, kAppId, "the close confirmation over the main window");
 }
 
 void welcome_in_front(Case& run) { welcome(run, Corners::Square); }

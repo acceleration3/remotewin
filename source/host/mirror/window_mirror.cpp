@@ -12,7 +12,6 @@
 #include "host/mirror/popup_stack.hpp"
 #include "host/placement/placement_sync.hpp"
 #include "host/wayland/activation.hpp"
-#include "host/wayland/picture_cutout.hpp"
 #include "host/wayland/globals.hpp"
 #include "host/wayland/key_press.hpp"
 #include "host/wayland/seat.hpp"
@@ -194,7 +193,7 @@ void WindowMirror::make_surface() {
     surface_->set_opacity(style_.opacity());
     surface_->take_no_input(style_.click_through());
     surface_->shape_input(window_.region());
-    static_cast<void>(surface_->cut_out(color_key(), window_.region()));
+    surface_->shape_opaque(window_.opaque_region(), window_.picture_size());
     make_role();
     show_last_frame();
 }
@@ -219,15 +218,6 @@ void WindowMirror::make_role() {
             RWIN_INFO("mirror", "{} is a part of {}", window(), parent_->window());
             return;
     }
-}
-
-std::optional<std::string_view> WindowMirror::why_pixels() const {
-    return PictureCutout{color_key(), window_.region()}.why_pixels(window_.picture_size());
-}
-
-std::optional<std::uint32_t> WindowMirror::color_key() const {
-    if (!style_.color_keyed()) return std::nullopt;
-    return style_.color_key();
 }
 
 void WindowMirror::show_last_frame() {
@@ -380,7 +370,7 @@ void WindowMirror::follow(const GuestWindow& window) {
     surface_->set_opacity(style_.opacity());
     surface_->take_no_input(style_.click_through());
     surface_->shape_input(window.region());
-    if (surface_->cut_out(color_key(), window.region())) show_last_frame();
+    surface_->shape_opaque(window.opaque_region(), window.picture_size());
     if (toplevel_ != nullptr) {
         if (std::string now = caption(); now != caption_) {
             caption_ = std::move(now);
@@ -893,6 +883,7 @@ MirrorState WindowMirror::state() const {
     state.role = role_;
     state.shown = surface_ != nullptr;
     state.mapped = mapped();
+    state.on_gpu = surface_ != nullptr && surface_->on_gpu();
     state.activated = configure_.activated;
     state.maximized = configure_.maximized;
     state.fullscreen = configure_.fullscreen;

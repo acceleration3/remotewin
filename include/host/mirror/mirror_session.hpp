@@ -93,10 +93,6 @@ private:
     void arrange_one(const GuestWindow& window, std::vector<WindowId>& arranging);
     [[nodiscard]] WindowMirror* find(WindowId window) const;
     WindowMirror& open(const GuestWindow& window);
-    // A window whose pictures only pixels can show has them sent as pixels
-    // before any is sent on the GPU: one refused is a picture lost, and
-    // Windows' capture sends the next only when the window changes.
-    void route_frames(const WindowMirror& mirror);
     void close(WindowId window);
     void release_closed();
     void follow_placement(WindowMirror& mirror, const GuestWindow& window);

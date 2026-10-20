@@ -4,9 +4,9 @@
 #include "host/export/export_request.hpp"
 #include "host/export/exported_layout.hpp"
 
+#include <fcntl.h>
 #include <poll.h>
 #include <sys/eventfd.h>
-#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -49,7 +49,7 @@ Number get(std::span<const std::uint8_t> bytes, std::size_t at) {
 }  // namespace
 
 FakeExportDevice::FakeExportDevice(host::EventLoop& loop, std::string path, std::optional<host::PciAddress> gpu)
-    : loop_(loop), path_(std::move(path)), gpu_(gpu) {
+    : loop_(loop), path_(std::move(path)), gpu_(gpu), udmabuf_(::open("/dev/udmabuf", O_RDWR | O_CLOEXEC)) {
     sockaddr_un address{};
     address.sun_family = AF_UNIX;
     if (path_.size() >= sizeof address.sun_path) {
@@ -68,11 +68,15 @@ FakeExportDevice::FakeExportDevice(host::EventLoop& loop, std::string path, std:
 }
 
 void FakeExportDevice::made(std::uint64_t surface, std::uint32_t width, std::uint32_t height) {
-    surfaces_.push_back(Surface{surface, width, height, 0});
+    surfaces_.push_back(Surface{surface, width, height, 0, SurfaceBuffer{udmabuf_.get(), width, height}});
 }
 
-void FakeExportDevice::copied(std::uint64_t id) {
-    if (Surface* known = surface(id)) ++known->copies;
+void FakeExportDevice::copied(std::uint64_t id, std::span<const std::uint8_t> picture, std::uint32_t width,
+                              std::uint32_t height) {
+    Surface* known = surface(id);
+    if (known == nullptr) return;
+    known->buffer.copy(picture, width, height);
+    ++known->copies;
 }
 
 FakeExportDevice::Surface* FakeExportDevice::surface(std::uint64_t id) {
@@ -121,17 +125,14 @@ void FakeExportDevice::answer(std::span<const std::uint8_t> request) {
         }
         case Operation::Export: {
             const Surface* known = surface(id);
-            if (known == nullptr) break;
-            host::UniqueFd memory{::memfd_create("rwin-integration-surface", MFD_CLOEXEC)};
-            const std::uint32_t stride = known->width * 4;
-            if (!memory.valid() || ::ftruncate(memory.get(), static_cast<off_t>(stride) * known->height) != 0) break;
+            if (known == nullptr || !known->buffer.valid()) break;
             put(std::span(body), 0, known->width);
             put(std::span(body), 4, known->height);
             put(std::span(body), 8, host::ExportedLayout::kArgb8888);
-            put(std::span(body), 12, stride);
+            put(std::span(body), 12, known->buffer.stride());
             put(std::span(body), 24, std::uint64_t{0});
             ++exports_;
-            send(operation, ExportAnswer::Status::Ok, id, tag, body, memory.get());
+            send(operation, ExportAnswer::Status::Ok, id, tag, body, known->buffer.handed());
             return;
         }
         case Operation::Sync: {

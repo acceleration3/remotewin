@@ -44,7 +44,7 @@ add_test(NAME rwin_slot_ledger_test COMMAND rwin_slot_ledger_test)
 # The host half: what knows nothing of a window system against the link
 # library, what does against the host library.
 if(TARGET rwin_link)
-    foreach(name export_wire latency mirror_scope picture_limits emulated_cursor unit_padding screen_mapping
+    foreach(name export_wire guest_window latency mirror_scope picture_limits emulated_cursor unit_padding screen_mapping
                  native_cursor_shape
                  view_mapping)
         add_executable(rwin_${name}_test ${name}_test.cpp)
@@ -54,7 +54,7 @@ if(TARGET rwin_link)
 endif()
 
 if(TARGET rwin_host)
-    foreach(name win32_style guest_button key_translator popup_layout picture_cutout link_lifecycle state_sync
+    foreach(name win32_style guest_button key_translator popup_layout link_lifecycle state_sync
                  move_requests kwin_tag)
         add_executable(rwin_${name}_test ${name}_test.cpp)
         target_link_libraries(rwin_${name}_test PRIVATE rwin::host)

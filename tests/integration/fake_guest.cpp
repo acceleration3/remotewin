@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -38,6 +39,8 @@ namespace {
 
 constexpr std::size_t kChunk = 256 * 1024;
 constexpr std::uint32_t kPictureColour = 0xFF3060A0;
+// The other windows' colours, one each in the order they are shown.
+constexpr std::array<std::uint32_t, 4> kOtherColours{0xFFC05020, 0xFF30A050, 0xFF9040C0, 0xFFD0B030};
 // What Windows' capture hands over of a window as it is minimised: its
 // minimised stub (measured on build 26200: 185x27 for Notepad).
 constexpr Rect kMinimizedStub{0, 0, 185, 27};
@@ -259,22 +262,42 @@ void FakeGuest::send_frame() {
 }
 
 void FakeGuest::send_picture(std::uint32_t width, std::uint32_t height) {
-    send_picture_of(id_, width, height);
-    pictured_.push_back(Pictured{host::now_ns(), width, height});
-}
-
-void FakeGuest::send_picture_of(WindowId id, std::uint32_t width, std::uint32_t height) {
     const std::size_t count = static_cast<std::size_t>(width) * height;
     if (pixels_.size() != count * 4) {
         pixels_.resize(count * 4);
         for (std::size_t at = 0; at < count; ++at) std::memcpy(pixels_.data() + at * 4, &kPictureColour, 4);
     }
+    send_pixels(id_, width, height, pixels_);
+    pictured_.push_back(Pictured{host::now_ns(), width, height});
+}
+
+void FakeGuest::send_pixels(WindowId id, std::uint32_t width, std::uint32_t height,
+                            const std::vector<std::uint8_t>& pixels) {
     MessageWriter out{MessageId::Frame};
     id.write(out);
     out.put_u32(width);
     out.put_u32(height);
-    out.put_bytes(pixels_.data(), pixels_.size());
+    out.put_bytes(pixels.data(), pixels.size());
     send(out.take());
+}
+
+// The picture is the frame (played_window), so the region's rectangles,
+// relative to the frame, are the picture's.
+void FakeGuest::paint(const Other& played, std::uint32_t width, std::uint32_t height) {
+    other_pixels_.assign(static_cast<std::size_t>(width) * height * 4, 0);
+    const std::vector<Rect>& region = played.said.geometry.region;
+    const auto fill = [&](std::int64_t left, std::int64_t top, std::int64_t right, std::int64_t bottom) {
+        for (std::int64_t y = std::max<std::int64_t>(top, 0); y < std::min<std::int64_t>(bottom, height); ++y) {
+            for (std::int64_t x = std::max<std::int64_t>(left, 0); x < std::min<std::int64_t>(right, width); ++x) {
+                std::memcpy(other_pixels_.data() + (static_cast<std::size_t>(y) * width + x) * 4, &played.colour, 4);
+            }
+        }
+    };
+    if (region.empty()) {
+        fill(0, 0, width, height);
+        return;
+    }
+    for (const Rect& rect : region) fill(rect.x, rect.y, rect.x + rect.width, rect.y + rect.height);
 }
 
 FakeGuest::Other* FakeGuest::other(WindowId id) {
@@ -294,11 +317,12 @@ void FakeGuest::picture_other(Other& played) {
         || picture.height == 0) {
         return;
     }
+    paint(played, picture.width, picture.height);
     if (shared_ && !played.pixels_only) {
         copy_into_ring(played, picture.width, picture.height);
         return;
     }
-    send_picture_of(played.id, picture.width, picture.height);
+    send_pixels(played.id, picture.width, picture.height, other_pixels_);
 }
 
 // A ring is made the first time, or again when the picture outgrows it.
@@ -320,7 +344,7 @@ void FakeGuest::copy_into_ring(Other& played, std::uint32_t width, std::uint32_t
         send(made.take());
     }
     // Slot 0, every time: the host frees it before the next.
-    device_->copied(played.slot_surface);
+    device_->copied(played.slot_surface, other_pixels_, width, height);
     MessageWriter out{MessageId::FrameInSlot};
     FrameInSlot{played.id, played.ring, 0, width, height, ++played.copies, 0, 0, 0}.write(out);
     send(out.take());
@@ -336,8 +360,15 @@ bool FakeGuest::sent_back_to_pixels(WindowId id) const {
     return found != others_.end() && found->pixels_only;
 }
 
+std::uint32_t FakeGuest::colour_of(WindowId id) const {
+    if (id == id_) return kPictureColour;
+    const auto found = std::find_if(others_.begin(), others_.end(), [id](const Other& o) { return o.id == id; });
+    return found == others_.end() ? 0 : found->colour;
+}
+
 void FakeGuest::show_window(WindowId id, const WindowFields& fields) {
-    others_.push_back(Other{id, fields, false});
+    others_.push_back(Other{id, fields, kOtherColours[shown_ % kOtherColours.size()]});
+    ++shown_;
     MessageWriter made{MessageId::WindowNew};
     id.write(made);
     fields.write(made, WindowFields::kAll);

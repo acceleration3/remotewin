@@ -22,7 +22,6 @@
 #include <cstring>
 #include <limits>
 #include <string>
-#include <string_view>
 #include <utility>
 
 namespace rwin::host {
@@ -176,11 +175,11 @@ void MirrorSurface::set_opacity(std::uint8_t alpha) {
     commit();
 }
 
-bool MirrorSurface::cut_out(std::optional<std::uint32_t> color_key, std::vector<Box> region) {
-    PictureCutout cutout{color_key, std::move(region)};
-    if (cutout == cutout_) return false;
-    cutout_ = std::move(cutout);
-    return true;
+void MirrorSurface::shape_opaque(std::vector<Box> picture_rects, Size of) {
+    if (picture_rects == opaque_rects_ && of == opaque_for_) return;
+    opaque_rects_ = std::move(picture_rects);
+    opaque_for_ = of;
+    commit();
 }
 
 void MirrorSurface::allow_commits() {
@@ -198,6 +197,7 @@ void MirrorSurface::commit() {
     if (!commits_allowed_ || attaching_) return;
     apply_view();
     apply_input();
+    apply_opaque();
     wl_surface_commit(surface_);
 }
 
@@ -226,6 +226,23 @@ void MirrorSurface::apply_input() {
     wl_region_destroy(region);
 }
 
+// Whole logical units only: a unit partly over a transparent pixel, said to
+// be opaque, would be drawn black there.
+void MirrorSurface::apply_opaque() {
+    if (opaque_rects_.empty() || opaque_for_ != picture_) {
+        wl_surface_set_opaque_region(surface_, nullptr);
+        return;
+    }
+    wl_region* region = wl_compositor_create_region(kit_.globals.compositor());
+    const ViewMapping view = mapping();
+    for (const Box& rect : opaque_rects_) {
+        const Box units = view.logical_box_inside(rect.intersected(Box::of(Point{}, picture_)));
+        if (!units.empty()) wl_region_add(region, units.x, units.y, units.width, units.height);
+    }
+    wl_surface_set_opaque_region(surface_, region);
+    wl_region_destroy(region);
+}
+
 void MirrorSurface::show(const PixelsView& pixels) {
     // A surface going back to pixels from the GPU is no longer explicitly
     // synced: a shared-memory buffer cannot be.
@@ -246,7 +263,6 @@ void MirrorSurface::show(const PixelsView& pixels) {
         std::memcpy(into.data() + static_cast<std::size_t>(row) * buffer->stride(),
                     pixels.bgra + static_cast<std::size_t>(row) * pixels.stride, row_bytes);
     }
-    cutout_.apply(into, buffer->stride(), size);
     const bool resized = size != picture_;
     picture_ = size;
     pixels_waiting_ = buffer;
@@ -260,16 +276,13 @@ void MirrorSurface::attach_pixels() {
     ShmBuffer* buffer = std::exchange(pixels_waiting_, nullptr);
     if (buffer == nullptr) return;
     buffer->attached();
+    on_gpu_ = false;
     commit_attached(buffer->buffer(), pixels_stamps_);
 }
 
 // The newest frame wins: one that comes while another still waits for its
 // buffer or its copy replaces it, and the replaced one's slot goes back.
 void MirrorSurface::show(const SharedFrame& frame) {
-    if (const std::optional<std::string_view> why = cutout_.why_pixels(frame.size())) {
-        shared_refused(std::string(*why));
-        return;
-    }
     pixels_waiting_ = nullptr;
     frame_dropped_ = false;
     fence_watch_.reset();
@@ -346,6 +359,7 @@ void MirrorSurface::attach_shared(wl_buffer* buffer) {
         wp_linux_drm_syncobj_surface_v1_set_release_point(sync_->synced, sync_->release.timeline(), high, low);
         held.released = sync_->release.when_signalled(point);
     }
+    on_gpu_ = true;
     commit_attached(buffer, frame.stamps);
     // Let go of whatever the compositor held of this buffer before: it is
     // the same slot, which the guest does not fill again until let go of.

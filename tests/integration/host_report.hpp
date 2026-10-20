@@ -30,6 +30,8 @@ public:
         std::string role;
         bool shown = false;
         bool mapped = false;
+        // Its last picture came on the GPU, not as pixels.
+        bool on_gpu = false;
         Picture picture;
     };
 

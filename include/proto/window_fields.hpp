@@ -73,6 +73,8 @@ struct WindowFields {
         static constexpr std::uint32_t kCaption = 0x00C00000;
         static constexpr std::uint32_t kTransparent = 0x00000020;
         static constexpr std::uint32_t kContextHelp = 0x00000400;
+        // WS_EX_LAYERED, one of RAIL's: the window's alpha is its own.
+        static constexpr std::uint32_t kLayered = 0x00080000;
         static constexpr std::uint32_t kStyleMask = kRailStyle | kCaption;
         static constexpr std::uint32_t kExtendedMask = kRailExtended | kTransparent | kContextHelp;
 

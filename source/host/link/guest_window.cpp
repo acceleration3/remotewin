@@ -46,4 +46,9 @@ std::vector<Box> GuestWindow::region() const {
     return region;
 }
 
+std::vector<Box> GuestWindow::opaque_region() const {
+    if ((fields_.style.extended & WindowFields::Style::kLayered) != 0) return {};
+    return region();
+}
+
 }  // namespace rwin::host

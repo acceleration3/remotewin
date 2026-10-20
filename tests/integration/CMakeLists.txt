@@ -26,10 +26,12 @@ add_executable(rwin_resize_integration
     resize_integration.cpp
     child_process.cpp
     fake_export_device.cpp
+    surface_buffer.cpp
     fake_guest.cpp
     fake_pointer.cpp
     host_report.cpp
     kwin_view.cpp
+    screen_capture.cpp
     model_window.cpp
     test_desktop.cpp
     "${fake_input_dir}/fake-input-client-protocol.h"

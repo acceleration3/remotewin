@@ -7,6 +7,7 @@
 #include "host_report.hpp"
 #include "kwin_view.hpp"
 #include "model_window.hpp"
+#include "screen_capture.hpp"
 
 #include "host/dbus/bus_connection.hpp"
 #include "host/loop/poll_loop.hpp"
@@ -54,6 +55,9 @@ public:
     [[nodiscard]] FakePointer& pointer() noexcept { return *pointer_; }
     [[nodiscard]] KWinView& kwin() noexcept { return *kwin_; }
     [[nodiscard]] HostReport& host_report() noexcept { return *report_; }
+    [[nodiscard]] ScreenCapture& screen() noexcept { return *screen_; }
+    // The played GPU device's surfaces are dma-bufs the compositor shows.
+    [[nodiscard]] bool gpu_frames_shown() const noexcept { return device_ != nullptr && device_->showable(); }
     [[nodiscard]] double scale() const noexcept { return layout_.scale; }
     [[nodiscard]] const std::string& host_log() const noexcept { return host_log_; }
 
@@ -90,6 +94,7 @@ private:
     std::uint16_t port_ = 0;
     std::unique_ptr<KWinView> kwin_;
     std::unique_ptr<HostReport> report_;
+    std::unique_ptr<ScreenCapture> screen_;
     std::unique_ptr<ModelWindow> window_;
     std::unique_ptr<FakeGuest> guest_;
     bool ready_ = false;

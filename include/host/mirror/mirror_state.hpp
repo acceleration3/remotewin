@@ -19,6 +19,8 @@ struct MirrorState {
     // A surface made for it, and a buffer committed to that.
     bool shown = false;
     bool mapped = false;
+    // Its picture came last on the GPU (a dma-buf), not as pixels.
+    bool on_gpu = false;
     // What the compositor last said of a toplevel.
     bool activated = false;
     bool maximized = false;

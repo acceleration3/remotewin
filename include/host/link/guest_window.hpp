@@ -70,6 +70,13 @@ public:
     // The window's own shape in the picture's pixels; empty when it is its
     // frame.
     [[nodiscard]] std::vector<Box> region() const;
+    // What of the picture is opaque, as far as its fields tell: the region
+    // of a window that has one and draws no alpha of its own (not
+    // WS_EX_LAYERED) - Windows' capture leaves what is outside it clear, and
+    // what is inside it is the window's redirected, opaque, picture. Empty
+    // when that cannot be told: a Windows 11 frame's corners and edge are
+    // translucent in its capture, and a layered window's alpha is anyone's.
+    [[nodiscard]] std::vector<Box> opaque_region() const;
 
     [[nodiscard]] const std::optional<MinMax>& limits() const noexcept { return limits_; }
     void limit(const MinMax& limits) noexcept { limits_ = limits; }

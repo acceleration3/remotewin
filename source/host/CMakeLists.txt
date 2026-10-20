@@ -125,7 +125,6 @@ add_library(rwin_host STATIC
     wayland/keyboard_events.cpp
     wayland/locked_pointer.cpp
     wayland/mirror_surface.cpp
-    wayland/picture_cutout.cpp
     wayland/pointer_cursor.cpp
     wayland/pointer_events.cpp
     wayland/popup_role.cpp

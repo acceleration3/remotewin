@@ -179,6 +179,7 @@ bool TestDesktop::start_host(const std::string& host_binary) {
     }
     kwin_ = std::make_unique<KWinView>(loop_, *bus_, host_->pid());
     report_ = std::make_unique<HostReport>(*bus_, host_->pid());
+    screen_ = std::make_unique<ScreenCapture>(*bus_);
     if (!settle([this] { return kwin_->watching(); }, kStartWait, kTick).has_value()) {
         std::fprintf(stderr, "setup: KWin never ran the watching script\n");
         return false;

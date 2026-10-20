@@ -44,8 +44,12 @@ class FakeExportDevice;
 // ring of three surfaces made on the device, and each picture copied into a
 // slot of it. A window the host sends back to pixels (WindowPixels) is
 // captured afresh, and its picture sent as pixels at once. The
-// ModelWindow's pictures always go as pixels: the device's surfaces are no
-// memory a compositor can show.
+// ModelWindow's pictures always go as pixels.
+//
+// Each other window's picture is a colour of its own, and what lies outside
+// its region is clear (premultiplied 0), as Windows' capture hands over a
+// window with one: measured on WPF's rounded WindowChrome, and on a colour
+// key, whose texels come as clear too.
 class FakeGuest {
 public:
     struct Timing {
@@ -113,6 +117,8 @@ public:
     // host sent back to pixels.
     [[nodiscard]] std::size_t rings_made(WindowId id) const;
     [[nodiscard]] bool sent_back_to_pixels(WindowId id) const;
+    // The colour a window's picture is, 0xAARRGGBB; 0 for none known.
+    [[nodiscard]] std::uint32_t colour_of(WindowId id) const;
 
     [[nodiscard]] const std::vector<Asked>& asked() const noexcept { return asked_; }
     [[nodiscard]] const std::vector<Placed>& placed() const noexcept { return placed_; }
@@ -125,6 +131,7 @@ private:
     struct Other {
         WindowId id;
         WindowFields said;
+        std::uint32_t colour = 0;
         bool subscribed = false;
         bool pixels_only = false;
         std::uint32_t ring = 0;
@@ -148,8 +155,11 @@ private:
     void report();
     void send_frame();
     void send_picture(std::uint32_t width, std::uint32_t height);
-    void send_picture_of(WindowId id, std::uint32_t width, std::uint32_t height);
+    void send_pixels(WindowId id, std::uint32_t width, std::uint32_t height, const std::vector<std::uint8_t>& pixels);
     void picture_other(Other& other);
+    // ``other``'s picture, as Windows' capture would hand it over, into
+    // other_pixels_.
+    void paint(const Other& other, std::uint32_t width, std::uint32_t height);
     void copy_into_ring(Other& other, std::uint32_t width, std::uint32_t height);
     [[nodiscard]] Other* other(WindowId id);
     void send(const std::vector<std::uint8_t>& bytes);
@@ -166,6 +176,7 @@ private:
     FrameDecoder decoder_;
     std::vector<std::uint8_t> chunk_;
     std::vector<std::uint8_t> pixels_;
+    std::vector<std::uint8_t> other_pixels_;
     std::deque<Due> due_;
     WindowFields said_;
     bool subscribed_ = false;
@@ -177,6 +188,8 @@ private:
     // The next frame is the one captured as the window was minimised.
     bool stale_frame_ = false;
     std::vector<Other> others_;
+    // Other windows shown so far: each is the next colour.
+    std::size_t shown_ = 0;
     std::vector<Activate> activations_;
     std::vector<Asked> asked_;
     std::vector<Placed> placed_;

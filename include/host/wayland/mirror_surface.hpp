@@ -7,7 +7,6 @@
 #include "host/geometry/point_f.hpp"
 #include "host/geometry/size.hpp"
 #include "host/geometry/view_mapping.hpp"
-#include "host/wayland/picture_cutout.hpp"
 #include "host/link/pixels_view.hpp"
 #include "host/loop/event_loop.hpp"
 #include "host/loop/signal.hpp"
@@ -83,6 +82,9 @@ public:
     [[nodiscard]] Size picture_size() const noexcept { return picture_; }
     // A buffer has been committed.
     [[nodiscard]] bool mapped() const noexcept { return mapped_; }
+    // The buffer committed last is the guest's own on the GPU (a dma-buf),
+    // not pixels copied here.
+    [[nodiscard]] bool on_gpu() const noexcept { return on_gpu_; }
 
     // One guest pixel to one device pixel (the default); the same, cropped
     // to at most ``logical`` units; or stretched over ``logical`` units.
@@ -102,13 +104,12 @@ public:
     void take_no_input(bool none);
     // A layered window's constant alpha, where the compositor can apply it.
     void set_opacity(std::uint8_t alpha);
-    // What of the picture is not seen: texels of ``color_key`` (a COLORREF,
-    // SetLayeredWindowAttributes' LWA_COLORKEY), and whatever lies outside
-    // ``region`` (picture rectangles, SetWindowRgn; empty for no region).
-    // Only a picture in pixels is cut: while either is set a frame on the
-    // GPU is refused (shared_refused), and the window goes to pixels. True
-    // when it changed, for the picture shown to be shown again.
-    bool cut_out(std::optional<std::uint32_t> color_key, std::vector<Box> region);
+    // What of a picture ``of`` that size is opaque, in picture rectangles
+    // (empty: none is said to be), for the compositor to draw without
+    // blending. Said only while the picture shown is that size: a window's
+    // region comes before the frame of its new size, and claimed against
+    // the old one it would make the old one's transparent corners black.
+    void shape_opaque(std::vector<Box> picture_rects, Size of);
 
     // The role was configured: buffers may be committed from now on.
     void allow_commits();
@@ -154,6 +155,7 @@ private:
     void buffer_released(wl_buffer* buffer);
     void apply_view();
     void apply_input();
+    void apply_opaque();
     void commit_attached(wl_buffer* buffer, const FrameStamps& stamps);
     void announce_resize();
     [[nodiscard]] bool explicitly_synced();
@@ -176,11 +178,13 @@ private:
     std::optional<Size> cropped_;
     std::vector<Box> input_rects_;
     bool no_input_ = false;
-    PictureCutout cutout_;
+    std::vector<Box> opaque_rects_;
+    Size opaque_for_;
     bool commits_allowed_ = false;
     // A new picture's size is being said: nothing commits before its buffer.
     bool attaching_ = false;
     bool mapped_ = false;
+    bool on_gpu_ = false;
     // A pixel frame copied and not yet committed.
     ShmBuffer* pixels_waiting_ = nullptr;
     bool frame_dropped_ = false;

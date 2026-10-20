@@ -89,6 +89,7 @@ void mirror_of(JsonText& json, const MirrorState& state) {
     name(json, state.role.parent);
     json.key("shown").value(state.shown);
     json.key("mapped").value(state.mapped);
+    json.key("on_gpu").value(state.on_gpu);
     json.key("activated").value(state.activated);
     json.key("maximized").value(state.maximized);
     json.key("fullscreen").value(state.fullscreen);
