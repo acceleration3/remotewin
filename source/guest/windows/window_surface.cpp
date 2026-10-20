@@ -47,6 +47,7 @@ WindowSurface::WindowSurface(std::uint64_t window_handle)
     auto window = static_cast<HWND>(handle_);
     if (::IsWindow(window) == FALSE) return;
     minimized_ = ::IsIconic(window) != FALSE;
+    shown_ = ::IsWindowVisible(window) != FALSE;
 
     RECT rect{};
     if (::GetWindowRect(window, &rect) == FALSE) return;

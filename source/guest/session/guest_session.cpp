@@ -40,6 +40,7 @@
 
 #include <array>
 #include <thread>
+#include <utility>
 
 namespace rwin::guest {
 
@@ -583,12 +584,21 @@ void GuestSession::send_frames() {
 
 // A capture that fails is not the window gone - that is WindowGone's to say
 // - and the window is captured afresh a while later, without being asked.
+// A window that is hidden or has no size is no failure: there is nothing to
+// capture yet (a WinUI popup is shown at 0x0 and sized a frame later), and
+// it is captured as soon as there is.
 void GuestSession::send_window_frame(WindowId id, Subscription& subscription) {
     const WindowSurface surface{static_cast<std::uint64_t>(id.hwnd)};
     if (surface.minimized()) {
         if (subscription.capture != nullptr) subscription.capture->minimized();
         return;
     }
+    if (!surface.capturable()) {
+        if (!subscription.unseen) subscription.capture = std::make_unique<WindowCapture>(graphics_, frames_);
+        subscription.unseen = true;
+        return;
+    }
+    if (std::exchange(subscription.unseen, false)) subscription.lost = false;
     const Clock::time_point now = Clock::now();
     if (subscription.lost) {
         if (now < subscription.retry_at) return;

@@ -73,6 +73,9 @@ private:
     struct Subscription {
         std::unique_ptr<WindowCapture> capture;
         bool lost = false;
+        // Hidden, or of no size: not captured until it is shown again, and
+        // then captured afresh.
+        bool unseen = false;
         Clock::time_point retry_at{};
     };
 

@@ -24,6 +24,10 @@ public:
     // Nothing to capture, and nowhere meaningful to put a pointer: a
     // minimised window is parked far off-screen.
     [[nodiscard]] bool minimized() const noexcept { return minimized_; }
+    // Something Windows.Graphics.Capture can be given: shown, and of some
+    // size. It refuses a hidden window with E_INVALIDARG, and WinUI shows
+    // its popups at 0x0 before it sizes them and hides them between uses.
+    [[nodiscard]] bool capturable() const noexcept { return valid_ && shown_; }
     // Whether a transparent band round the picture is room the window
     // reserved (a WinUI menu leaves ten pixels for a shadow it does not
     // draw) rather than a part of the window that happens to be clear.
@@ -66,6 +70,7 @@ private:
     std::uint32_t border_width_ = 0;
     std::uint32_t border_height_ = 0;
     bool minimized_ = false;
+    bool shown_ = false;
     bool margin_is_reserved_ = false;
     bool valid_ = false;
 };
