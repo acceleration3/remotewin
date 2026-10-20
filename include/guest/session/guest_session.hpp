@@ -116,6 +116,9 @@ private:
     // Every capture made afresh, so each sends a frame again however still
     // it sits: the host may not have the ones it was sent.
     void recapture();
+    // One window's (or the monitor's), for the same reason: the host refused
+    // the frame it was sent on the GPU (WindowPixels).
+    void recapture(WindowId window);
     void note_drawn(WindowId id, const WindowCapture& capture, const WindowSurface& surface);
     [[nodiscard]] SurfaceRing& ring_for(WindowId window);
     [[nodiscard]] PictureEdges& edges_for(WindowId window);

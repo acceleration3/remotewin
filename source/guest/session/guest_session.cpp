@@ -260,6 +260,7 @@ void GuestSession::handle_frames(MessageReader& message) {
                 RWIN_WARN("shared", "{}: the host draws this window's frames from pixels from here on", *window);
                 pixels_only_.insert(window->key());
                 rings_.erase(window->key());
+                recapture(*window);
             }
             return;
         default:
@@ -523,14 +524,22 @@ void GuestSession::stop_sharing() {
 }
 
 void GuestSession::recapture() {
-    for (auto& [key, subscription] : subscriptions_) {
-        subscription.capture = std::make_unique<WindowCapture>(graphics_, frames_);
-        subscription.lost = false;
-    }
-    if (monitor_ != nullptr) {
+    for (auto& [key, subscription] : subscriptions_) recapture(WindowId::of_key(key));
+    recapture(kMonitorWindow);
+}
+
+// A capture's first frame comes at once, the window still or not.
+void GuestSession::recapture(WindowId window) {
+    if (window == kMonitorWindow) {
+        if (monitor_ == nullptr) return;
         monitor_ = std::make_unique<MonitorCapture>(graphics_, frames_);
         monitor_tiles_ = ChangedTiles{};
+        return;
     }
+    const auto subscription = subscriptions_.find(window.key());
+    if (subscription == subscriptions_.end()) return;
+    subscription->second.capture = std::make_unique<WindowCapture>(graphics_, frames_);
+    subscription->second.lost = false;
 }
 
 PictureEdges& GuestSession::edges_for(WindowId window) {
