@@ -21,6 +21,11 @@ public:
     // Every popup ``mirror``'s own surface is a parent of, however far
     // down, goes - and everything made after the first of them.
     void closing_under(const WindowMirror& mirror);
+    // A popup outside ``parent``'s chain is open: one opening from
+    // ``parent`` may not grab, since only the topmost popup may
+    // (not_the_topmost_popup). Taking that one down instead would bring it
+    // back while the guest still shows it, and take this one down in turn.
+    [[nodiscard]] bool open_beside(const WindowMirror& parent) const;
 
 private:
     void close_from(std::size_t first);

@@ -14,11 +14,19 @@
 
 namespace rwin::host {
 
+namespace {
+
+// Numbers the roles made, so a parent is told apart from one freed before
+// it at the same address.
+std::uint64_t roles_made = 0;
+
+}  // namespace
+
 ToplevelRole::ToplevelRole(const Globals& globals, MirrorSurface& surface, ToplevelEvents& events,
                            bool server_decorated)
     : globals_(globals), surface_(surface), events_(events),
       xdg_surface_(xdg_wm_base_get_xdg_surface(globals.wm_base(), surface.surface())),
-      toplevel_(xdg_surface_get_toplevel(xdg_surface_)) {
+      toplevel_(xdg_surface_get_toplevel(xdg_surface_)), serial_(++roles_made) {
     static constexpr xdg_surface_listener kSurface{&ToplevelRole::surface_configured};
     xdg_surface_add_listener(xdg_surface_, &kSurface, this);
     static constexpr xdg_toplevel_listener kToplevel{&ToplevelRole::toplevel_configured, &ToplevelRole::closed,
@@ -85,8 +93,9 @@ void ToplevelRole::set_title(const std::string& title) { xdg_toplevel_set_title(
 void ToplevelRole::set_app_id(const std::string& app_id) { xdg_toplevel_set_app_id(toplevel_, app_id.c_str()); }
 
 void ToplevelRole::set_parent(const ToplevelRole* parent) {
-    if (parent == parent_) return;
-    parent_ = parent;
+    const std::uint64_t serial = parent != nullptr ? parent->serial_ : 0;
+    if (serial == parent_) return;
+    parent_ = serial;
     xdg_toplevel_set_parent(toplevel_, parent != nullptr ? parent->toplevel_ : nullptr);
 }
 

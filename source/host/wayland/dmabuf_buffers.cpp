@@ -81,18 +81,30 @@ void DmabufBuffers::released(void* self, wl_buffer* buffer) { static_cast<Dmabuf
 // The least lately used whose making is over; a buffer the compositor
 // still holds is destroyed all the same - it keeps its own hold on the
 // memory until it is done.
+// Memory no ring holds any more (its window's ring was made again) goes
+// first, whatever room there is: kept, it would keep the old ring's GPU
+// memory alive.
 void DmabufBuffers::evict() {
+    std::erase_if(entries_, [this](Entry& entry) {
+        if (entry.memory.use_count() != 1) return false;
+        forget(entry);
+        return true;
+    });
     while (entries_.size() >= kMost) {
         const auto oldest = std::min_element(entries_.begin(), entries_.end(), [](const Entry& a, const Entry& b) {
             if ((a.params == nullptr) != (b.params == nullptr)) return a.params == nullptr;
             return a.used < b.used;
         });
-        if (oldest->params != nullptr) zwp_linux_buffer_params_v1_destroy(oldest->params);
-        if (oldest->buffer != nullptr) {
-            released_(oldest->buffer);
-            wl_buffer_destroy(oldest->buffer);
-        }
+        forget(*oldest);
         entries_.erase(oldest);
+    }
+}
+
+void DmabufBuffers::forget(Entry& entry) {
+    if (entry.params != nullptr) zwp_linux_buffer_params_v1_destroy(entry.params);
+    if (entry.buffer != nullptr) {
+        released_(entry.buffer);
+        wl_buffer_destroy(entry.buffer);
     }
 }
 

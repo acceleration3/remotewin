@@ -136,6 +136,9 @@ public:
     // measured against a surface a frame behind it.
     void follow_relative_motion(bool follows) noexcept { relative_motion_ = follows; }
     void held_motion(PointF logical);
+    // The pointer is locked on this window: the compositor's shortcuts are
+    // the guest's while it is.
+    void hold_shortcuts_for_lock(bool held);
 
     [[nodiscard]] MirrorState state() const;
 
@@ -189,6 +192,7 @@ private:
     void ask_guest_for(Size picture);
     void apply_cursor();
     [[nodiscard]] bool covers_monitor() const noexcept;
+    void inhibit_shortcuts();
     [[nodiscard]] std::optional<Point> picture_point(PointF at) const noexcept;
     [[nodiscard]] Size logical_of(Size picture) const noexcept;
     void send_button(std::uint8_t button, Point at, bool pressed);
@@ -203,8 +207,10 @@ private:
     Win32Style style_;
     MirrorRole role_;
     WindowMirror* parent_ = nullptr;
-    // The parent's surface this one was made against.
-    wl_surface* made_against_ = nullptr;
+    // This one's surface, and the parent's this one was made against, by
+    // the number each was made with: an address can be reused.
+    std::uint64_t surface_serial_ = 0;
+    std::uint64_t made_against_ = 0;
     std::unique_ptr<MirrorSurface> surface_;
     std::unique_ptr<ToplevelRole> toplevel_;
     std::unique_ptr<PopupRole> popup_;
@@ -212,6 +218,7 @@ private:
     std::unique_ptr<Backdrop> backdrop_;
     std::unique_ptr<ToplevelIcon> icon_;
     std::unique_ptr<ShortcutsInhibitor> inhibitor_;
+    bool lock_holds_shortcuts_ = false;
     SizeRequests sizes_;
     ResizeBorder border_;
     HeldKeys held_keys_;
@@ -225,6 +232,9 @@ private:
     bool minimize_owed_ = false;
     bool guest_active_ = false;
     Box placed_;
+    // Where its window geometry begins on its surface: above and left of
+    // the picture when the picture is centred over a backdrop.
+    Point geometry_corner_;
     // The guest's cursor, as last worn; hidden when the guest has none.
     const CursorLook* look_ = nullptr;
     std::size_t step_ = 0;

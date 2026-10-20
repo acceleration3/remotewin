@@ -33,6 +33,12 @@ void PopupStack::closing_under(const WindowMirror& mirror) {
     if (first != open_.end()) close_from(static_cast<std::size_t>(first - open_.begin()));
 }
 
+bool PopupStack::open_beside(const WindowMirror& parent) const {
+    return std::any_of(open_.begin(), open_.end(), [&](const WindowMirror* popup) {
+        return popup != &parent && !descends_from(parent, *popup);
+    });
+}
+
 // Topmost first, as the compositor wants them.
 void PopupStack::close_from(std::size_t first) {
     while (open_.size() > first) {

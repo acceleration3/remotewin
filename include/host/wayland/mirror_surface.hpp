@@ -120,6 +120,10 @@ public:
     // A picture of another size is about to be committed: what goes with it
     // - a window geometry, a place - is to be said now.
     Signal<> picture_resized;
+    // A frame in pixels was dropped, every buffer being held, and one is
+    // free now: the last frame is to be shown again, since the guest sends
+    // none until its window changes.
+    Signal<> frame_owed;
 
 private:
     struct Held {
@@ -173,6 +177,10 @@ private:
     bool mapped_ = false;
     // A pixel frame copied and not yet committed.
     ShmBuffer* pixels_waiting_ = nullptr;
+    bool frame_dropped_ = false;
+    // Asks for the dropped frame after the release event that freed a
+    // buffer, not within it.
+    std::unique_ptr<EventLoop::Timer> owed_;
     FrameStamps pixels_stamps_;
     // The newest frame on the GPU not yet committed: its buffer is being
     // made, its copy waited for, or the role is not configured yet.

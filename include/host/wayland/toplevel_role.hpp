@@ -79,7 +79,10 @@ private:
     xdg_toplevel* toplevel_;
     zxdg_toplevel_decoration_v1* decoration_ = nullptr;
     xdg_dialog_v1* dialog_ = nullptr;
-    const ToplevelRole* parent_ = nullptr;
+    // The parent's serial (0 for none): a role made where a freed one was is
+    // a new parent, and is said again.
+    std::uint64_t parent_ = 0;
+    std::uint64_t serial_;
     ToplevelConfigure pending_;
     ToplevelConfigure last_;
     bool configured_ = false;

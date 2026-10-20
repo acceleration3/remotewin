@@ -2,6 +2,7 @@
 
 #include "host/export/unique_fd.hpp"
 #include "host/geometry/size.hpp"
+#include "host/loop/signal.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -18,8 +19,9 @@ namespace rwin::host {
 // it is done (wl_buffer.release); written again only after.
 class ShmBuffer {
 public:
-    // Throws std::runtime_error when the memory cannot be had.
-    ShmBuffer(wl_shm* shm, Size size);
+    // Throws std::runtime_error when the memory cannot be had. ``freed``, if
+    // any, is told each time the compositor lets go of it.
+    ShmBuffer(wl_shm* shm, Size size, const Signal<>* freed = nullptr);
     ~ShmBuffer();
 
     ShmBuffer(const ShmBuffer&) = delete;
@@ -39,6 +41,7 @@ public:
 private:
     static void released(void* self, wl_buffer* buffer);
 
+    const Signal<>* freed_;
     Size size_;
     std::size_t bytes_;
     UniqueFd memory_;

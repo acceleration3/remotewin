@@ -44,6 +44,10 @@ constexpr std::int64_t kGrabPressNs = 2'000'000'000;
 // application's, is that press.
 constexpr std::chrono::milliseconds kDismissingPress{80};
 
+// Every surface made gets the next number: a surface made where a freed one
+// was is still told apart from it.
+std::uint64_t surfaces_made = 0;
+
 bool opened_by_press(Popup::Kind kind) {
     return kind == Popup::Kind::MenuBar || kind == Popup::Kind::Submenu || kind == Popup::Kind::Combo
            || kind == Popup::Kind::Context;
@@ -101,7 +105,7 @@ Size WindowMirror::logical_of(Size picture) const noexcept {
 // and is only placed again.
 void WindowMirror::show_as(const MirrorRole& role, WindowMirror* parent) {
     const bool same = surface_ != nullptr && role == role_ && parent == parent_
-                      && (parent == nullptr || parent->surface() == made_against_);
+                      && (parent == nullptr || (parent->shown() && parent->surface_serial_ == made_against_));
     role_ = role;
     parent_ = parent;
     if (dismissed_) return;
@@ -139,20 +143,22 @@ void WindowMirror::drop_popup() {
     popup_.reset();
     kit_.activation.forget(surface_->surface());
     surface_.reset();
-    made_against_ = nullptr;
+    made_against_ = 0;
     pointer_.reset();
     dropped(window());
 }
 
 void WindowMirror::make_surface() {
     surface_ = std::make_unique<MirrorSurface>(kit_.surfaces, *this);
-    made_against_ = parent_ != nullptr ? parent_->surface() : nullptr;
+    surface_serial_ = ++surfaces_made;
+    made_against_ = parent_ != nullptr ? parent_->surface_serial_ : 0;
     if (parent_ != nullptr) surface_->fall_back_to(parent_->scale());
     surface_->rescaled.connect([this] { picture_changed(); });
     surface_->picture_resized.connect([this] { picture_changed(); });
     surface_->shared_refused.connect([this](const std::string& why) { shared_refused(window(), why); });
     surface_->presented.connect([this](const FrameStamps& stamps) { presented(stamps); });
     surface_->first_mapped.connect([this] { mapped_now(window()); });
+    surface_->frame_owed.connect([this] { show_last_frame(); });
     surface_->set_opacity(style_.opacity());
     surface_->take_no_input(style_.click_through());
     surface_->shape_input(window_.region());
@@ -208,13 +214,15 @@ void WindowMirror::drop_surface() {
     buttons_held_ = 0;
     held_at_.reset();
     inhibitor_.reset();
+    lock_holds_shortcuts_ = false;
     backdrop_.reset();
+    geometry_corner_ = Point{};
     popup_.reset();
     subsurface_.reset();
     toplevel_.reset();
     kit_.activation.forget(surface_->surface());
     surface_.reset();
-    made_against_ = nullptr;
+    made_against_ = 0;
     pointer_.reset();
     configure_ = ToplevelConfigure{};
     asked_minimized_ = false;
@@ -240,7 +248,9 @@ void WindowMirror::place_popup() {
     if (owner == nullptr || owner->xdg() == nullptr) return;
     PopupPlacement placement =
         popup_layout(window_, parent_->window_, parent_->mapping(), logical_of(window_.picture_size()));
-    placement.anchor = placement.anchor.translated(offset);
+    // A positioner's anchor is on its parent's window geometry, which on a
+    // picture centred in a larger window starts left of and above it.
+    placement.anchor = placement.anchor.translated(offset - owner->geometry_corner_);
     if (popup_ != nullptr) {
         if (popup_->repositions()) popup_->reposition(placement);
         return;
@@ -248,7 +258,8 @@ void WindowMirror::place_popup() {
     const Popup::Kind kind = window_.fields().popup.kind;
     const InputSerial& press = kit_.surfaces.seat.last_press();
     const bool may_grab = owner->toplevel_ != nullptr || owner->grabs();
-    const bool grab = opened_by_press(kind) && may_grab && press.valid() && now_ns() - press.at < kGrabPressNs;
+    const bool grab = opened_by_press(kind) && may_grab && press.valid() && now_ns() - press.at < kGrabPressNs
+                      && !kit_.popups.open_beside(*parent_);
     popup_ = std::make_unique<PopupRole>(kit_.surfaces.globals, *surface_, owner->xdg(), placement,
                                          kit_.surfaces.seat.seat(), grab ? press.serial : 0, *this);
     kit_.popups.opened(*this);
@@ -365,12 +376,27 @@ void WindowMirror::follow_state() {
     if (full != asked_fullscreen_) {
         asked_fullscreen_ = full;
         toplevel_->fullscreen(full);
-        inhibitor_.reset();
-        if (full && kit_.surfaces.globals.shortcuts_inhibit() != nullptr) {
-            inhibitor_ = std::make_unique<ShortcutsInhibitor>(kit_.surfaces.globals.shortcuts_inhibit(), surface(),
-                                                              kit_.surfaces.seat.seat());
-        }
+        inhibit_shortcuts();
         RWIN_INFO("mirror", "{} {} fullscreen", window(), full ? "is" : "is no longer");
+    }
+}
+
+void WindowMirror::hold_shortcuts_for_lock(bool held) {
+    lock_holds_shortcuts_ = held;
+    inhibit_shortcuts();
+}
+
+// One inhibitor a surface and seat, whichever reasons want it: a second is
+// a protocol error (already_inhibited), and fullscreen with the pointer
+// locked - a game - is both.
+void WindowMirror::inhibit_shortcuts() {
+    const bool wanted = surface_ != nullptr && (asked_fullscreen_ || lock_holds_shortcuts_)
+                        && kit_.surfaces.globals.shortcuts_inhibit() != nullptr;
+    if (!wanted) {
+        inhibitor_.reset();
+    } else if (inhibitor_ == nullptr) {
+        inhibitor_ = std::make_unique<ShortcutsInhibitor>(kit_.surfaces.globals.shortcuts_inhibit(), surface(),
+                                                          kit_.surfaces.seat.seat());
     }
 }
 
@@ -405,6 +431,7 @@ void WindowMirror::fit_into(const ToplevelConfigure& configure) {
     const Size picture = surface_->picture_size().empty() ? window_.picture_size() : surface_->picture_size();
     const Size natural = logical_of(picture);
     const bool given = configure.maximized || configure.fullscreen;
+    geometry_corner_ = Point{};
     if (!given || configure.size.empty()) {
         backdrop_.reset();
         surface_->fit_one_to_one();
@@ -427,6 +454,7 @@ void WindowMirror::fit_into(const ToplevelConfigure& configure) {
         if (backdrop_ == nullptr) backdrop_ = std::make_unique<Backdrop>(kit_.surfaces.globals, surface());
         backdrop_->cover(whole);
         toplevel_->set_window_geometry(whole);
+        geometry_corner_ = whole.corner();
     } else {
         backdrop_.reset();
         surface_->fit_to(configure.size);

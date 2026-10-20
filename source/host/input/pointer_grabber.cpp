@@ -99,9 +99,7 @@ void PointerGrabber::hold() {
         relative_ = std::make_unique<RelativePointer>(globals_.relative_pointer(), pointer,
                                                       [this](PointF unaccelerated, PointF) { moved(unaccelerated); });
     }
-    if (globals_.shortcuts_inhibit() != nullptr) {
-        inhibitor_ = std::make_unique<ShortcutsInhibitor>(globals_.shortcuts_inhibit(), surface, seat_.seat());
-    }
+    mirror_->hold_shortcuts_for_lock(true);
     RWIN_INFO("pointer", "asked the compositor to lock the pointer on {}", grab_.window);
 }
 
@@ -110,7 +108,7 @@ void PointerGrabber::let_go() {
     RWIN_INFO("pointer", "let go of the pointer on {}", grab_.window);
     lock_.reset();
     confinement_.reset();
-    inhibitor_.reset();
+    if (mirror_ != nullptr) mirror_->hold_shortcuts_for_lock(false);
     owed_x_ = 0.0;
     owed_y_ = 0.0;
 }

@@ -264,6 +264,10 @@ int main(int argc, char** argv) {
     int status = EXIT_SUCCESS;
     const std::optional<Options> options = parse(argc, argv, status);
     if (!options.has_value()) return status;
+    // A write to a parent or a guest that has gone is an error to handle,
+    // not the end of the process: the scripts loaded into KWin are unloaded
+    // on the way out.
+    std::signal(SIGPIPE, SIG_IGN);
     rwin::Logger::instance().opened("remotewin");
     RWIN_INFO("boot", "wire 6");
     try {

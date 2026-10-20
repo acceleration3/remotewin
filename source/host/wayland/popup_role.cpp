@@ -75,7 +75,13 @@ void PopupRole::surface_configured(void* self, xdg_surface* surface, std::uint32
     const bool first = !role->configured_;
     role->configured_ = true;
     role->events_.popup_placed(role->placed_);
-    if (first) role->surface_.allow_commits();
+    // A configure after the first is a reposition: it takes effect with a
+    // commit, and a menu that does not change sends no frame to bring one.
+    if (first) {
+        role->surface_.allow_commits();
+    } else {
+        role->surface_.commit();
+    }
 }
 
 void PopupRole::popup_configured(void* self, xdg_popup* /*popup*/, std::int32_t x, std::int32_t y,

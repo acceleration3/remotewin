@@ -18,8 +18,10 @@
 #include <poll.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 namespace rwin::host {
 
@@ -70,6 +72,10 @@ MirrorSurface::MirrorSurface(const SurfaceKit& kit, SurfaceInput& input)
                                                   &MirrorSurface::preferred_buffer_scale,
                                                   &MirrorSurface::preferred_buffer_transform};
     wl_surface_add_listener(surface_, &kSurface, this);
+    owed_ = kit.loop.timer([this] { frame_owed(); });
+    shm_.freed.connect([this] {
+        if (std::exchange(frame_dropped_, false)) owed_->start(std::chrono::milliseconds::zero(), false);
+    });
     if (kit.globals.fractional_scale() != nullptr) {
         fractional_ = wp_fractional_scale_manager_v1_get_fractional_scale(kit.globals.fractional_scale(), surface_);
         static constexpr wp_fractional_scale_v1_listener kFractional{&MirrorSurface::preferred_scale};
@@ -223,8 +229,10 @@ void MirrorSurface::show(const PixelsView& pixels) {
     ShmBuffer* buffer = shm_.free_buffer(size);
     if (buffer == nullptr) {
         RWIN_TRACE("surface", "every buffer is held: a frame is dropped");
+        frame_dropped_ = true;
         return;
     }
+    frame_dropped_ = false;
     const std::span<std::uint8_t> into = buffer->pixels();
     const auto row_bytes = static_cast<std::size_t>(pixels.width) * 4;
     for (int row = 0; row < pixels.height; ++row) {
@@ -257,6 +265,7 @@ void MirrorSurface::show(const SharedFrame& frame) {
         return;
     }
     pixels_waiting_ = nullptr;
+    frame_dropped_ = false;
     fence_watch_.reset();
     shared_waiting_ = frame;
     shared_waiting_->stamps.note_now(FrameStamps::Stage::Shown);

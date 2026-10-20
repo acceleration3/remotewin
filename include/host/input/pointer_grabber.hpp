@@ -5,7 +5,6 @@
 #include "host/wayland/confined_pointer.hpp"
 #include "host/wayland/locked_pointer.hpp"
 #include "host/wayland/relative_pointer.hpp"
-#include "host/wayland/shortcuts_inhibitor.hpp"
 #include "proto/pointer_grab.hpp"
 
 #include <cstdint>
@@ -80,7 +79,6 @@ private:
     std::unique_ptr<LockedPointer> lock_;
     std::unique_ptr<ConfinedPointer> confinement_;
     std::unique_ptr<RelativePointer> relative_;
-    std::unique_ptr<ShortcutsInhibitor> inhibitor_;
     bool escaped_ = false;
     bool swallow_escape_release_ = false;
     // Motion under a whole count, carried to the next.

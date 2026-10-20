@@ -69,6 +69,14 @@ void a_stretched_picture_maps_by_its_own_ratio() {
           "the whole picture");
 }
 
+void a_side_under_one_unit_shows_its_own_pixels() {
+    const ViewMapping view = ViewMapping::one_to_one(Size{1, 40}, 1.2);
+    check(view.logical() == (Size{1, 33}), "a 1x40 picture at 1.2 shows on 1x33 units");
+    check(view.source_width() <= 1.0 && std::abs(view.source_width() - 1.0) < 1e-9,
+          "its one pixel across is the source, not 1.2 of a 1-pixel buffer");
+    check(std::abs(view.source_height() - 39.6) < 1e-9, "down it is one to one as before");
+}
+
 }  // namespace
 
 int main() {
@@ -77,6 +85,7 @@ int main() {
     a_pixel_is_found_where_it_is_shown();
     rectangles_round_outward_and_inward();
     a_stretched_picture_maps_by_its_own_ratio();
+    a_side_under_one_unit_shows_its_own_pixels();
     if (failures != 0) {
         std::printf("%d check(s) failed\n", failures);
         return EXIT_FAILURE;

@@ -5,6 +5,8 @@
 
 #include <wayland-client.h>
 
+#include <poll.h>
+
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -18,7 +20,7 @@ WaylandDisplay::WaylandDisplay(PollLoop& loop) : loop_(loop), display_(wl_displa
                                  + std::strerror(errno));
     }
     loop_.wrap_waits(
-        wl_display_get_fd(display_), [this] { before_wait(); }, [this](bool readable) { after_wait(readable); });
+        wl_display_get_fd(display_), [this] { return before_wait(); }, [this](bool readable) { after_wait(readable); });
 }
 
 WaylandDisplay::~WaylandDisplay() {
@@ -26,20 +28,21 @@ WaylandDisplay::~WaylandDisplay() {
     wl_display_disconnect(display_);
 }
 
-void WaylandDisplay::before_wait() {
+short WaylandDisplay::before_wait() {
     while (wl_display_prepare_read(display_) != 0) {
         if (wl_display_dispatch_pending(display_) < 0) {
             check();
-            return;
+            return POLLIN;
         }
     }
     reading_ = true;
-    // EAGAIN: the socket is full; what is left goes after the next wait.
-    if (wl_display_flush(display_) < 0 && errno != EAGAIN) {
-        wl_display_cancel_read(display_);
-        reading_ = false;
-        check();
-    }
+    if (wl_display_flush(display_) >= 0) return POLLIN;
+    // EAGAIN: the socket is full; the rest goes once it can be written.
+    if (errno == EAGAIN) return POLLIN | POLLOUT;
+    wl_display_cancel_read(display_);
+    reading_ = false;
+    check();
+    return POLLIN;
 }
 
 void WaylandDisplay::after_wait(bool readable) {

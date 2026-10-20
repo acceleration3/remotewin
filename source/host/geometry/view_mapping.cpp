@@ -19,9 +19,15 @@ int ceil_of(double value) { return static_cast<int>(std::ceil(value - kWhole)); 
 
 }  // namespace
 
+// A side of fewer pixels than the scale covers no whole unit: it shows on
+// one unit, over its own pixels and no more, or the viewport's source would
+// reach past the buffer (wp_viewport.out_of_buffer, which ends the client).
 ViewMapping ViewMapping::one_to_one(Size picture, double scale) noexcept {
-    const Size logical{std::max(1, floor_of(picture.width / scale)), std::max(1, floor_of(picture.height / scale))};
-    return ViewMapping{logical, scale, scale};
+    const int width = floor_of(picture.width / scale);
+    const int height = floor_of(picture.height / scale);
+    return ViewMapping{Size{std::max(1, width), std::max(1, height)},
+                       width >= 1 ? scale : static_cast<double>(std::max(1, picture.width)),
+                       height >= 1 ? scale : static_cast<double>(std::max(1, picture.height))};
 }
 
 ViewMapping ViewMapping::stretched(Size picture, Size logical) noexcept {

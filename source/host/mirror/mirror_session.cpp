@@ -264,7 +264,14 @@ void MirrorSession::release_closed() {
     std::erase_if(releasing_, [](const std::unique_ptr<WindowMirror>& mirror) { return !mirror->holds_press(); });
 }
 
+// What the guest hid goes before anything is shown: a menu bar's next menu
+// opens while the last one closes, and a grabbing popup made while another
+// chain still grabs is one the compositor refuses (not_the_topmost_popup).
 void MirrorSession::arrange() {
+    for (const GuestWindow* window : windows().stacked()) {
+        if (!window->hidden()) continue;
+        if (WindowMirror* mirror = find(window->id())) mirror->hide();
+    }
     std::vector<WindowId> arranging;
     for (const GuestWindow* window : windows().stacked()) {
         if (find(window->id()) == nullptr) continue;

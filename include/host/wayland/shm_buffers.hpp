@@ -1,6 +1,7 @@
 #pragma once
 
 #include "host/geometry/size.hpp"
+#include "host/loop/signal.hpp"
 #include "host/wayland/shm_buffer.hpp"
 
 #include <memory>
@@ -21,6 +22,11 @@ public:
     // One of ``size`` the compositor does not hold; null when it holds every
     // one there may be, and the frame waits.
     [[nodiscard]] ShmBuffer* free_buffer(Size size);
+
+    // The compositor let go of one. Told from its release event, so whoever
+    // hears it writes no buffer then and there: one could be freed under
+    // the event.
+    Signal<> freed;
 
 private:
     static constexpr std::size_t kMost = 3;

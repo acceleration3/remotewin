@@ -52,6 +52,8 @@ private:
     static void released(void* self, wl_buffer* buffer);
     void make(Entry& entry);
     void evict();
+    // Its buffer, or the making of it, ends.
+    void forget(Entry& entry);
 
     // Two rings' worth: the one shown and the one replacing it on a resize.
     static constexpr std::size_t kMost = 6;

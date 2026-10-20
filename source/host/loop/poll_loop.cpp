@@ -90,7 +90,7 @@ std::unique_ptr<EventLoop::Timer> PollLoop::timer(std::function<void()> fired) {
     return std::make_unique<PollTimer>(*this, std::move(fired));
 }
 
-void PollLoop::wrap_waits(int fd, std::function<void()> before, std::function<void(bool)> after) {
+void PollLoop::wrap_waits(int fd, std::function<short()> before, std::function<void(bool)> after) {
     wrapped_fd_ = fd;
     before_wait_ = std::move(before);
     after_wait_ = std::move(after);
@@ -126,12 +126,12 @@ int PollLoop::timeout_ms() const {
 }
 
 void PollLoop::wait_once() {
-    if (before_wait_) before_wait_();
+    const short wrapped_events = before_wait_ ? before_wait_() : POLLIN;
     if (!running_) return;
     polled_.clear();
     polled_ids_.clear();
     if (wrapped_fd_ >= 0) {
-        polled_.push_back(pollfd{wrapped_fd_, POLLIN, 0});
+        polled_.push_back(pollfd{wrapped_fd_, wrapped_events, 0});
         polled_ids_.push_back(0);
     }
     for (const auto& [id, watched] : watched_) {

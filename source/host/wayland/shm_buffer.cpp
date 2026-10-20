@@ -12,8 +12,8 @@
 
 namespace rwin::host {
 
-ShmBuffer::ShmBuffer(wl_shm* shm, Size size)
-    : size_(size), bytes_(static_cast<std::size_t>(size.width) * static_cast<std::size_t>(size.height) * 4),
+ShmBuffer::ShmBuffer(wl_shm* shm, Size size, const Signal<>* freed)
+    : freed_(freed), size_(size), bytes_(static_cast<std::size_t>(size.width) * static_cast<std::size_t>(size.height) * 4),
       memory_(::memfd_create("remotewin-shm", MFD_CLOEXEC | MFD_ALLOW_SEALING)) {
     if (!memory_.valid() || ::ftruncate(memory_.get(), static_cast<off_t>(bytes_)) != 0) {
         throw std::runtime_error(std::string("no shared memory for a picture: ") + std::strerror(errno));
@@ -34,6 +34,10 @@ ShmBuffer::~ShmBuffer() {
     if (pixels_ != nullptr) ::munmap(pixels_, bytes_);
 }
 
-void ShmBuffer::released(void* self, wl_buffer* /*buffer*/) { static_cast<ShmBuffer*>(self)->held_ = false; }
+void ShmBuffer::released(void* self, wl_buffer* /*buffer*/) {
+    auto* buffer = static_cast<ShmBuffer*>(self);
+    buffer->held_ = false;
+    if (buffer->freed_ != nullptr) (*buffer->freed_)();
+}
 
 }  // namespace rwin::host

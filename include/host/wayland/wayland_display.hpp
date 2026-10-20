@@ -25,7 +25,9 @@ public:
     [[nodiscard]] wl_display* display() const noexcept { return display_; }
 
 private:
-    void before_wait();
+    // What the connection is waited for: POLLIN, and POLLOUT while a flush
+    // is short.
+    short before_wait();
     void after_wait(bool readable);
     void check();
 

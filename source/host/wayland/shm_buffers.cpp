@@ -12,7 +12,7 @@ ShmBuffer* ShmBuffers::free_buffer(Size size) {
         if (!buffer->held()) return buffer.get();
     }
     if (buffers_.size() >= kMost) return nullptr;
-    buffers_.push_back(std::make_unique<ShmBuffer>(shm_, size));
+    buffers_.push_back(std::make_unique<ShmBuffer>(shm_, size, &freed));
     return buffers_.back().get();
 }
 

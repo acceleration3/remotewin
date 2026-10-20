@@ -32,9 +32,10 @@ public:
     [[nodiscard]] std::unique_ptr<Watch> watch(int fd, short events, Ready ready) override;
     [[nodiscard]] std::unique_ptr<Timer> timer(std::function<void()> fired) override;
 
-    // ``before`` runs before every wait; ``after`` after it, told whether
-    // ``fd`` became readable.
-    void wrap_waits(int fd, std::function<void()> before, std::function<void(bool)> after);
+    // ``before`` runs before every wait and says what ``fd`` is waited for
+    // (POLLIN, and POLLOUT while there is more to write); ``after`` runs
+    // after it, told whether ``fd`` became readable.
+    void wrap_waits(int fd, std::function<short()> before, std::function<void(bool)> after);
 
     // Until quit; the status quit was given.
     int run();
@@ -61,7 +62,7 @@ private:
     std::vector<PollTimer*> timers_;
     std::vector<PollTimer*> due_;
     int wrapped_fd_ = -1;
-    std::function<void()> before_wait_;
+    std::function<short()> before_wait_;
     std::function<void(bool)> after_wait_;
     // Reused wait to wait.
     std::vector<pollfd> polled_;
