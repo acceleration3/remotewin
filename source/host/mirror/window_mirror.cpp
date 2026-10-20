@@ -78,6 +78,7 @@ WindowMirror::WindowMirror(const MirrorKit& kit, const GuestWindow& window)
           [this](bool minimized) { minimize_here(minimized); }),
       dismissal_(kit.surfaces.loop.timer([this] { dismiss_in_guest(); })) {
     limits_ = window.limits();
+    picture_ = window.picture_size();
     moves_.reported(window.frame());
 }
 
@@ -121,7 +122,7 @@ Size WindowMirror::shown_picture() const noexcept {
     return surface_ != nullptr && !surface_->picture_size().empty() ? surface_->picture_size() : window_.picture_size();
 }
 
-Size WindowMirror::window_size() const noexcept { return wanted_.value_or(mapping().logical()); }
+Size WindowMirror::window_size() const noexcept { return wanted_.value_or(logical_of(picture_)); }
 
 // The same role against the same parent's same surface keeps its surface,
 // and is only placed again.
@@ -301,18 +302,10 @@ void WindowMirror::place_subsurface() {
     if (subsurface_->place(at) && parent_->surface_ != nullptr) parent_->surface_->commit();
 }
 
-// A picture of another size has come, or the scale changed: the size the
-// compositor gave, once the guest shows it, is the window's own; a size the
-// guest took by itself is the window's from now on.
+// A frame of another size has come, or the scale changed: it is shown
+// within the window as it is.
 void WindowMirror::picture_changed() {
     if (toplevel_ != nullptr) {
-        const Size natural = logical_of(shown_picture());
-        if (wanted_.has_value() && natural == *wanted_) {
-            wanted_.reset();
-        } else if (!wanted_.has_value() && toplevel_->configured() && !configure_.size.empty() && !configure_.maximized
-                   && !configure_.fullscreen && natural != configure_.size) {
-            resized_by_guest(window());
-        }
         apply_limits();
         if (toplevel_->configured()) fit_into(configure_);
     }
@@ -332,9 +325,29 @@ void WindowMirror::rescaled() {
     picture_changed();
 }
 
+// The guest said its window is another size: the size the compositor gave,
+// once the guest has it, is the window's own; a size the guest took by
+// itself is the window's from now on.
+void WindowMirror::resized_in_guest() {
+    if (toplevel_ == nullptr || !toplevel_->configured()) return;
+    const Size natural = logical_of(picture_);
+    if (wanted_.has_value() && natural == *wanted_) {
+        wanted_.reset();
+    } else if (!wanted_.has_value() && !configure_.size.empty() && !configure_.maximized && !configure_.fullscreen
+               && !window_.maximized() && natural != configure_.size) {
+        resized_by_guest(window());
+    }
+    apply_limits();
+    fit_into(configure_);
+}
+
 void WindowMirror::follow(const GuestWindow& window) {
     const std::string title = window_.title();
     window_ = window;
+    // A minimised window's frame is the stub Windows parks off screen: the
+    // window keeps the size it had.
+    const Size before = picture_;
+    if (!window.minimized() && !window.picture_size().empty()) picture_ = window.picture_size();
     style_ = Win32Style{window};
     limits_ = window.limits();
     moves_.reported(window.frame());
@@ -353,6 +366,7 @@ void WindowMirror::follow(const GuestWindow& window) {
         toplevel_->set_modal(parent_ != nullptr && parent_->style_.disabled() && !style_.disabled());
         apply_limits();
         follow_state();
+        if (picture_ != before) resized_in_guest();
         ask_for_wanted();
     }
     if (popup_ != nullptr) place_popup();
@@ -370,7 +384,7 @@ void WindowMirror::apply_limits() {
         toplevel_->limit(Size{}, Size{});
         return;
     }
-    const Size picture = shown_picture();
+    const Size picture = picture_;
     if (!style_.sizable()) {
         const Size fixed = logical_of(picture);
         toplevel_->limit(fixed, fixed);
@@ -491,7 +505,7 @@ void WindowMirror::take_size(const ToplevelConfigure& configure, const ToplevelC
 // the window in a state it is leaving.
 void WindowMirror::ask_for_wanted() {
     if (!wanted_.has_value() || toplevel_ == nullptr) return;
-    if (logical_of(shown_picture()) == *wanted_) {
+    if (logical_of(picture_) == *wanted_) {
         wanted_.reset();
         return;
     }
@@ -512,33 +526,30 @@ void WindowMirror::answered(const Box& asked, const Box& got) {
     if (toplevel_ != nullptr && toplevel_->configured()) fit_into(configure_);
 }
 
-// One to one, the window as large as its picture. Maximised or fullscreen
-// the compositor's size is the window's: the picture is centred on it, over
-// black bars, where the guest window is not that size. A size the compositor
-// gave and the guest has not answered yet is the window's too, meanwhile:
-// the picture is shown from its corner, cropped where the window is smaller
-// and over the bars where it is larger - the window follows the compositor
-// at once, and the guest's picture catches up within it.
+// The window is as large as the guest says its picture is, and the frames
+// are shown in it one to one from its corner: cropped where a frame is
+// larger, over black bars where it is smaller - a frame from before a
+// resize, one Windows captured as the window was minimised. A size the
+// compositor gave and the guest has not answered yet is the window's,
+// meanwhile, the same way: the window follows the compositor at once, and
+// the guest's picture catches up within it. Maximised or fullscreen the
+// compositor's size is the window's, the frame centred on it.
 void WindowMirror::fit_into(const ToplevelConfigure& configure) {
     if (toplevel_ == nullptr || surface_ == nullptr) return;
-    const Size natural = logical_of(shown_picture());
+    const Size shown = logical_of(shown_picture());
     geometry_corner_ = Point{};
     if ((configure.maximized || configure.fullscreen) && !configure.size.empty()) {
-        fit_given(configure.size, natural);
-    } else if (wanted_.has_value()) {
-        const Size window = *wanted_;
+        fit_given(configure.size, shown);
+    } else {
+        const Size window = window_size();
         surface_->crop_to(window);
-        if (natural.width < window.width || natural.height < window.height) {
+        if (shown.width < window.width || shown.height < window.height) {
             if (backdrop_ == nullptr) backdrop_ = std::make_unique<Backdrop>(kit_.surfaces.globals, surface());
             backdrop_->cover(Box::of(Point{}, window));
         } else {
             backdrop_.reset();
         }
         toplevel_->set_window_geometry(Box::of(Point{}, window));
-    } else {
-        backdrop_.reset();
-        surface_->fit_one_to_one();
-        toplevel_->set_window_geometry(Box::of(Point{}, natural));
     }
     surface_->commit();
 }
@@ -604,7 +615,17 @@ void WindowMirror::ask_guest_for(const Box& frame) {
                                               static_cast<std::uint32_t>(frame.height)});
 }
 
+// Not while either side has the window in a state, or is on its way into
+// or out of one: the frame a state gives is no place for the guest window,
+// which Windows keeps one of its own for. KWin reports a maximised frame
+// before its maximise mode, so its report alone cannot tell.
 void WindowMirror::move_guest_to(Point picture_corner) {
+    if (configure_.maximized || configure_.fullscreen || window_.maximized() || window_.minimized()
+        || maximize_.guest_heading() || minimize_.guest_heading()) {
+        RWIN_DEBUG("placement", "{} is in a state, or on its way to one: not moved to {},{}", window(),
+                   picture_corner.x, picture_corner.y);
+        return;
+    }
     moves_.want_corner(picture_corner - window_.picture_offset());
 }
 

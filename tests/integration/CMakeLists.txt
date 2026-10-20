@@ -39,7 +39,7 @@ target_compile_definitions(rwin_resize_integration PRIVATE RWIN_HOST_BINARY="$<T
 add_dependencies(rwin_resize_integration remotewin)
 
 foreach(case maximize-here maximize-in-guest minimize-here minimize-in-guest drag-corner drag-corner-slow-guest
-             drag-corner-in drag-top drag-left resize-by-compositor resize-in-guest)
+             drag-corner-sluggish-guest drag-corner-in drag-top drag-left resize-by-compositor resize-in-guest)
     add_test(NAME rwin_integration_${case} COMMAND rwin_resize_integration ${case})
     set_tests_properties(rwin_integration_${case} PROPERTIES LABELS integration SKIP_RETURN_CODE 77 TIMEOUT 30)
 endforeach()

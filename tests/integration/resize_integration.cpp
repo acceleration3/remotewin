@@ -56,6 +56,9 @@ constexpr milliseconds kHold{250};
 // A drag's pointer steps: a pointer reports about this often.
 constexpr milliseconds kDragStep{8};
 constexpr double kNear = 1.01;
+// How long KWin has to say it ran a command, and how often it is asked.
+constexpr milliseconds kKWinAnswer{500};
+constexpr int kKWinAttempts = 3;
 
 // One case's verdicts, said as they are reached.
 class Verdicts {
@@ -91,6 +94,18 @@ public:
     KWinView& kwin() { return desktop_.kwin(); }
     FakeGuest& guest() { return desktop_.guest(); }
     ModelWindow& window() { return desktop_.window(); }
+
+    // Has KWin carry ``command`` out (a KWinView call), asking again when it
+    // does not say it did: KWin now and then fails to open a script's file
+    // and says nothing of it.
+    void in_kwin(const std::function<void(KWinView&)>& command) {
+        for (int attempt = 0; attempt < kKWinAttempts; ++attempt) {
+            const std::size_t done = kwin().done();
+            command(kwin());
+            if (desktop_.settle([&] { return kwin().done() > done; }, kKWinAnswer, milliseconds(0)).has_value()) return;
+            verdicts_.note("KWin did not carry the command out; asking again");
+        }
+    }
 
     // Marks where the journals stand, so what follows is judged alone.
     void mark() {
@@ -147,6 +162,19 @@ public:
         return others;
     }
 
+    // Frames KWin had for the window since the mark at another size than
+    // ``width`` by ``height`` - a state's aside.
+    [[nodiscard]] int resized_since_mark(double width, double height) const {
+        int resized = 0;
+        const auto& journal = desktop_.kwin().journal();
+        for (std::size_t at = kwin_mark_; at < journal.size(); ++at) {
+            const KWinView::Seen& seen = journal[at];
+            if (seen.maximize_mode != 0 || seen.minimized) continue;
+            resized += !near(seen.width, width) || !near(seen.height, height);
+        }
+        return resized;
+    }
+
     [[nodiscard]] std::size_t kwin_mark() const noexcept { return kwin_mark_; }
     [[nodiscard]] std::size_t pictured_mark() const noexcept { return pictured_mark_; }
 
@@ -186,7 +214,7 @@ void maximize_here(Case& run) {
     const Rect guest_before = run.window().frame();
     const Rect area = run.window().work_area();
     run.mark();
-    run.kwin().maximize(true);
+    run.in_kwin([](KWinView& kwin) { kwin.maximize(true); });
     const auto maximized = run.desktop().settle(
         [&] {
             const auto& now = run.kwin().now();
@@ -202,10 +230,13 @@ void maximize_here(Case& run) {
     const std::vector<Rect> stray = run.placed_other_than({guest_before, area});
     run.verdicts().check(stray.empty(), std::format("the guest window was only where it was or maximised{}",
                                                     stray.empty() ? "" : ", not at " + rect_text(stray.front())));
+    const std::vector<Rect> moved = run.moves_asked();
+    run.verdicts().check(moved.empty(), std::format("the guest window was not moved as it maximised{}",
+                                                    moved.empty() ? "" : " (" + rect_text(moved.front()) + ")"));
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 
     run.mark();
-    run.kwin().maximize(false);
+    run.in_kwin([](KWinView& kwin) { kwin.maximize(false); });
     const auto restored = run.desktop().settle(
         [&] {
             const auto& now = run.kwin().now();
@@ -273,7 +304,7 @@ void minimize_here(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     const Rect guest_before = run.window().frame();
     run.mark();
-    run.kwin().minimize(true);
+    run.in_kwin([](KWinView& kwin) { kwin.minimize(true); });
     const auto minimized_now = run.desktop().settle(
         [&] { return run.kwin().now()->minimized && run.window().minimized(); }, kSettleWait, kHold);
     run.judge_settled(minimized_now, "minimise from the compositor");
@@ -285,7 +316,7 @@ void minimize_here(Case& run) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 
     run.mark();
-    run.kwin().minimize(false);
+    run.in_kwin([](KWinView& kwin) { kwin.minimize(false); });
     const auto back = run.desktop().settle(
         [&] {
             const auto& now = run.kwin().now();
@@ -305,6 +336,8 @@ void minimize_here(Case& run) {
     run.verdicts().check(run.commands_asked(Command::Restore) == 1 && run.commands_asked(Command::Minimize) == 0,
                          std::format("the guest was asked to restore once ({}) and never to minimise ({})",
                                      run.commands_asked(Command::Restore), run.commands_asked(Command::Minimize)));
+    const int resized = run.resized_since_mark(before.width, before.height);
+    run.verdicts().check(resized == 0, std::format("the mirror kept its size coming back ({} other sizes)", resized));
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
@@ -342,6 +375,8 @@ void minimize_in_guest(Case& run) {
     run.verdicts().check(run.commands_asked(Command::Minimize) + run.commands_asked(Command::Restore) == 0
                              && run.window().frame() == guest_before,
                          std::format("nothing was asked back of the guest, which is at {}", rect_text(run.window().frame())));
+    const int resized = run.resized_since_mark(before.width, before.height);
+    run.verdicts().check(resized == 0, std::format("the mirror kept its size coming back ({} other sizes)", resized));
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
@@ -660,14 +695,18 @@ struct Named {
 };
 
 // The guest's timing: an application that lays itself out in 25 ms and a
-// capture a frame later; and one five times as slow.
+// capture a frame later; one five times as slow; and one slower than the
+// host's wait for an answer.
 constexpr FakeGuest::Timing kQuick{milliseconds(25), milliseconds(16)};
 constexpr FakeGuest::Timing kSlow{milliseconds(120), milliseconds(33)};
+// One slower than the host waits for an answer: asks overtake answers.
+constexpr FakeGuest::Timing kSluggish{milliseconds(400), milliseconds(33)};
 
 constexpr Named kCases[] = {
     {"maximize-here", &maximize_here, kQuick},       {"maximize-in-guest", &maximize_in_guest, kQuick},
     {"minimize-here", &minimize_here, kQuick},       {"minimize-in-guest", &minimize_in_guest, kQuick},
     {"drag-corner", &drag_corner, kQuick},           {"drag-corner-slow-guest", &drag_corner, kSlow},
+    {"drag-corner-sluggish-guest", &drag_corner, kSluggish},
     {"drag-corner-in", &drag_corner_in, kQuick},     {"drag-top", &drag_top, kQuick},
     {"drag-left", &drag_left, kQuick},               {"resize-by-compositor", &resize_by_compositor, kQuick},
     {"resize-in-guest", &resize_in_guest, kQuick},

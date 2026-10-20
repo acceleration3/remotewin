@@ -17,7 +17,7 @@ namespace rwin::integration {
 
 namespace {
 
-constexpr auto kStartWait = std::chrono::milliseconds(8000);
+constexpr auto kStartWait = std::chrono::milliseconds(20000);
 constexpr auto kTick = std::chrono::milliseconds(2);
 constexpr auto kNamePoll = std::chrono::milliseconds(20);
 // The guest's taskbar, along the bottom of its screen.

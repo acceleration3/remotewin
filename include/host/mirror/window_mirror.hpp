@@ -203,6 +203,7 @@ private:
     void place_popup();
     void place_subsurface();
     void picture_changed();
+    void resized_in_guest();
     void rescaled();
     void apply_limits();
     void follow_state();
@@ -215,8 +216,9 @@ private:
     void fit_given(Size given, Size natural);
     void ask_guest_for(const Box& frame);
     [[nodiscard]] Size shown_picture() const noexcept;
-    // The window's size here: the size the compositor gave while the guest
-    // has not answered it, else the picture's.
+    // The window's size here, logical units: the size the compositor gave
+    // while the guest has not answered it, else the picture's as the guest
+    // says it.
     [[nodiscard]] Size window_size() const noexcept;
     void apply_cursor();
     [[nodiscard]] bool covers_monitor() const noexcept;
@@ -259,6 +261,9 @@ private:
     // own: the window is this size meanwhile, the picture it has cropped or
     // over the backdrop. Logical units.
     std::optional<Size> wanted_;
+    // The picture's size as the guest last said it of the window not
+    // minimised: the window's size, which frames are shown within.
+    Size picture_;
     // The edges a resize the compositor runs for this mirror moves: the
     // others are kept where the guest window has them.
     std::uint32_t resize_edges_ = 0;

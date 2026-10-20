@@ -24,6 +24,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <utility>
 
 namespace rwin::integration {
 
@@ -31,6 +32,9 @@ namespace {
 
 constexpr std::size_t kChunk = 256 * 1024;
 constexpr std::uint32_t kPictureColour = 0xFF3060A0;
+// What Windows' capture hands over of a window as it is minimised: its
+// minimised stub (measured on build 26200: 185x27 for Notepad).
+constexpr Rect kMinimizedStub{0, 0, 185, 27};
 
 // What this guest speaks: everything a pixel-path guest does.
 Hello hello() {
@@ -95,6 +99,7 @@ bool FakeGuest::dial(std::uint16_t port) {
 }
 
 void FakeGuest::act(SysCommand::Command command) {
+    stale_frame_ = window_.minimized() && command == SysCommand::Command::Restore;
     window_.command(command);
     report();
 }
@@ -180,6 +185,7 @@ void FakeGuest::apply(const Request& request) {
     if (const auto* frame = std::get_if<Rect>(&request)) {
         window_.place(*frame);
     } else if (const auto* command = std::get_if<SysCommand::Command>(&request)) {
+        stale_frame_ = window_.minimized() && *command == SysCommand::Command::Restore;
         window_.command(*command);
     } else if (const auto* kind = std::get_if<MoveSizeKind>(&request)) {
         looping_ = *kind;
@@ -213,19 +219,27 @@ void FakeGuest::report() {
 
 void FakeGuest::send_frame() {
     if (window_.minimized() || fd_ < 0) return;
-    const Rect frame = window_.frame();
-    const std::size_t count = static_cast<std::size_t>(frame.width) * frame.height;
+    if (std::exchange(stale_frame_, false)) {
+        send_picture(kMinimizedStub.width, kMinimizedStub.height);
+        capture_->start(timing_.frame, false);
+        return;
+    }
+    send_picture(window_.frame().width, window_.frame().height);
+}
+
+void FakeGuest::send_picture(std::uint32_t width, std::uint32_t height) {
+    const std::size_t count = static_cast<std::size_t>(width) * height;
     if (pixels_.size() != count * 4) {
         pixels_.resize(count * 4);
         for (std::size_t at = 0; at < count; ++at) std::memcpy(pixels_.data() + at * 4, &kPictureColour, 4);
     }
     MessageWriter out{MessageId::Frame};
     id_.write(out);
-    out.put_u32(frame.width);
-    out.put_u32(frame.height);
+    out.put_u32(width);
+    out.put_u32(height);
     out.put_bytes(pixels_.data(), pixels_.size());
     send(out.take());
-    pictured_.push_back(Pictured{host::now_ns(), frame.width, frame.height});
+    pictured_.push_back(Pictured{host::now_ns(), width, height});
 }
 
 void FakeGuest::send(const std::vector<std::uint8_t>& bytes) {

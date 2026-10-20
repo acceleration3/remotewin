@@ -30,6 +30,9 @@ namespace rwin::integration {
 // what came of it: a WindowChanged, then a frame of the window's new size
 // by the pixel path. A press where Windows would begin a move or size loop
 // is answered with MinMax and MoveSizeStart, its release with MoveSizeEnd.
+// A window brought back from minimised sends first the frame Windows'
+// capture took of it as it went, the size of its minimised stub, as
+// Windows.Graphics.Capture hands one over.
 class FakeGuest {
 public:
     struct Timing {
@@ -97,6 +100,7 @@ private:
     void apply(const Request& request);
     void report();
     void send_frame();
+    void send_picture(std::uint32_t width, std::uint32_t height);
     void send(const std::vector<std::uint8_t>& bytes);
 
     host::EventLoop& loop_;
@@ -114,6 +118,8 @@ private:
     WindowFields said_;
     bool subscribed_ = false;
     std::optional<MoveSizeKind> looping_;
+    // The next frame is the one captured as the window was minimised.
+    bool stale_frame_ = false;
     std::vector<Asked> asked_;
     std::vector<Placed> placed_;
     std::vector<Pictured> pictured_;

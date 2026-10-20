@@ -73,15 +73,46 @@ void nothing_to_ask() {
     check(guest.asked.empty() && guest.moves.idle(), "a frame the guest already has is not asked for");
 }
 
+void turn(PollLoop& loop, int ms) {
+    const auto stop = loop.timer([&] { loop.quit(0); });
+    stop->start(std::chrono::milliseconds(ms), false);
+    static_cast<void>(loop.run());
+}
+
 void unanswered_is_given_up() {
     Guest guest;
     guest.moves.want_size(Size{810, 600}, ResizeBorder::kRight);
     guest.moves.want_size(Size{820, 600}, ResizeBorder::kRight);
-    const auto stop = guest.loop.timer([&] { guest.loop.quit(0); });
-    stop->start(std::chrono::milliseconds(400), false);
-    static_cast<void>(guest.loop.run());
+    turn(guest.loop, 400);
     check(guest.asked.size() == 2 && guest.asked[1] == Box{100, 100, 820, 600},
           "after the wait the next is asked regardless");
+    turn(guest.loop, 400);
+    check(guest.asked.size() == 2, "and nothing more while nothing new is wanted");
+}
+
+// A slow guest's answer to an older ask, landing after the wait let a newer
+// one go out, is not its answer to the newer: the size it reports was asked,
+// not chosen by the guest instead.
+void late_answer_is_not_a_refusal() {
+    Guest guest;
+    guest.moves.want_size(Size{810, 600}, ResizeBorder::kRight);
+    guest.moves.want_size(Size{820, 600}, ResizeBorder::kRight);
+    turn(guest.loop, 400);
+    guest.moves.reported(Box{100, 100, 810, 600});
+    check(guest.answered.empty() && !guest.moves.idle(), "the older ask landing answers nothing yet");
+    guest.moves.reported(Box{100, 100, 820, 600});
+    check(guest.answered.size() == 1 && guest.answered[0] == Box{100, 100, 820, 600} && guest.moves.idle(),
+          "the newest landing does");
+}
+
+// A guest that makes the window another size than asked (its smallest) is
+// heard as answering with that size.
+void refusal_is_an_answer() {
+    Guest guest;
+    guest.moves.want_size(Size{200, 100}, ResizeBorder::kRight);
+    guest.moves.reported(Box{100, 100, 300, 200});
+    check(guest.answered.size() == 1 && guest.answered[0] == Box{100, 100, 300, 200} && guest.moves.idle(),
+          "the size the guest chose is the answer");
 }
 
 }  // namespace
@@ -92,6 +123,8 @@ int main() {
     size_and_place_together();
     nothing_to_ask();
     unanswered_is_given_up();
+    late_answer_is_not_a_refusal();
+    refusal_is_an_answer();
     if (failures == 0) std::printf("move_requests: all passed\n");
     return failures == 0 ? 0 : 1;
 }

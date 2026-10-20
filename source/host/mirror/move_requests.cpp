@@ -2,31 +2,45 @@
 
 #include "host/chrome/resize_border.hpp"
 
+#include <algorithm>
+#include <iterator>
 #include <utility>
 
 namespace rwin::host {
 
 MoveRequests::MoveRequests(EventLoop& loop, Ask ask, Answered answered)
-    : ask_(std::move(ask)), answered_(std::move(answered)), answer_due_(loop.timer([this] { settle(); })) {}
+    : ask_(std::move(ask)), answered_(std::move(answered)), answer_due_(loop.timer([this] { overdue(); })) {}
 
-// The guest applies what it is sent in order, so any change to the frame is
-// the end of the last ask, whatever it came out as; a report that leaves
-// the frame as it was (a new title) is not.
+// The guest applies what it is sent in order: a frame it reports that is
+// one asked is that ask landing, and every one before it with it; any other
+// change of the frame is the end of the newest ask, whatever it came out
+// as. A report that leaves the frame as it was (a new title) is neither.
 void MoveRequests::reported(const Box& frame) {
     reported_ = frame;
-    if (asked_.has_value() && frame != reported_when_asked_) settle();
+    if (outstanding_.empty()) return;
+    const auto landed = std::find(outstanding_.begin(), outstanding_.end(), frame);
+    if (landed != outstanding_.end()) {
+        const bool newest = std::next(landed) == outstanding_.end();
+        outstanding_.erase(outstanding_.begin(), std::next(landed));
+        if (newest) settle(frame);
+        return;
+    }
+    if (frame == reported_when_asked_) return;
+    const Box newest = outstanding_.back();
+    outstanding_.clear();
+    settle(newest);
 }
 
 void MoveRequests::want_size(Size frame, std::uint32_t moving) {
     if (frame.empty()) return;
     size_ = frame;
     moving_ = moving;
-    if (!asked_.has_value()) ask_next();
+    if (outstanding_.empty()) ask_next();
 }
 
 void MoveRequests::want_corner(Point corner) {
     corner_ = corner;
-    if (!asked_.has_value()) ask_next();
+    if (outstanding_.empty()) ask_next();
 }
 
 // Measured from the frame the guest has now: the last ask's answer.
@@ -44,18 +58,22 @@ void MoveRequests::ask_next() {
     }
     size_.reset();
     corner_.reset();
-    if (target == reported_) return;
-    asked_ = target;
+    if (target == reported_ || (!outstanding_.empty() && target == outstanding_.back())) return;
+    outstanding_.push_back(target);
+    if (outstanding_.size() > kMostOutstanding) outstanding_.pop_front();
     reported_when_asked_ = reported_;
     answer_due_->start(kAnswerWait, false);
     ask_(target);
 }
 
-void MoveRequests::settle() {
-    if (!asked_.has_value()) return;
+// The newest ask has not landed in time: what waits is asked regardless,
+// and the asks still out may land yet.
+void MoveRequests::overdue() {
+    if (size_.has_value() || corner_.has_value()) ask_next();
+}
+
+void MoveRequests::settle(const Box& asked) {
     answer_due_->stop();
-    const Box asked = *asked_;
-    asked_.reset();
     if (size_.has_value() || corner_.has_value()) ask_next();
     answered_(asked, reported_);
 }
