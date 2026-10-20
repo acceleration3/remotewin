@@ -343,8 +343,8 @@ larger than that (maximised, tiled, fullscreen) gets the picture centred
 over a black one-pixel subsurface scaled behind it (`Backdrop`). No host
 GL context exists anywhere. A layered window's constant alpha is the
 compositor's (`wp_alpha_modifier_v1`); a colour key and a window region
-are cut out of the pixels (`PictureCutout`), so a window with either
-goes as pixels.
+come cut already - Windows' capture hands their outside over clear - so a
+window with either stays on the GPU (rail-model.md §7.10).
 
 ### Roles, popups and input
 

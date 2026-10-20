@@ -98,10 +98,15 @@ the host: the compositor composes the guest's buffer, or scans it out.
 The picture lands where the pixel path's `wl_shm` buffer does: one picture
 pixel to one device pixel, through `wp_viewporter`, at the scale
 `wp_fractional_scale_v1` gives. A layered window's alpha is applied by
-the compositor (`wp_alpha_modifier_v1`); a colour key or a window region
-is cut out of the pixels, so such a window goes as pixels. Windows that
-leave a margin round themselves (menus, tooltips) still go as pixels:
-what they draw is found by looking at their pixels.
+the compositor (`wp_alpha_modifier_v1`). A window region (WPF's rounded
+`WindowChrome`, `SetWindowRgn`) and a colour key (`LWA_COLORKEY`) need no
+cutting: Windows' capture hands over what lies outside the region, and
+the keyed texels, as clear (premultiplied 0), the ring's textures and the
+dma-bufs are ARGB8888, so such a window stays on the GPU and its corners
+show the desktop. A region of a window that is not layered is its
+surface's opaque region, so the compositor blends only the corners.
+Windows that leave a margin round themselves (menus, tooltips) still go
+as pixels: what they draw is found by looking at their pixels.
 
 A failure of the connection to the GPU device - no socket, another GPU,
 the connection lost - sends the guest back to pixels for every window,
@@ -142,7 +147,11 @@ window's new fields and a frame of its new size by the pixel path. The
 pointer is KWin's fake input; KWin's view of the window comes from a
 watching KWin script, the host's from its `Describe`. Cases ending in
 `-rounded` also play the GPU device's export socket, so the guest's
-pictures of its other windows go on the GPU as the real guest's do. Each
+pictures of its other windows go on the GPU as the real guest's do: in
+dma-bufs KWin shows (udmabufs of the harness's memory, where
+`/dev/udmabuf` opens), clear outside their region as Windows' capture
+hands them over, and read back off KWin's screen (`ScreenShot2`) to see
+the corners show what is under them. Each
 case takes about a second; all of them about 25 s one after another (`-j`
 runs them side by side). They are skipped (exit 77) where `kwin_wayland` or
 `dbus-run-session` is not installed. One case alone, with its verdicts

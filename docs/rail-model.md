@@ -1509,8 +1509,10 @@ FocusWindow, and no code path for a version-5 peer.
   on, once after the hello. Drop shadows are per window, in FRAME.
 - **Frames**: `WindowPixels{window}` (host to guest, id 27) sends one
   window back to pixels, and the guest captures it afresh, so its picture
-  comes again however still it sits (§7.10); the host sends it before
-  `Subscribe` for a window whose picture only pixels can show.
+  comes again however still it sits (§7.10). A window region or a colour
+  key sends nothing to pixels: Windows' capture hands their outside over
+  clear, the ring's textures and dma-bufs are ARGB8888, and a region is
+  the surface's opaque region (§7.10).
   `FrameRoute{shared}` said again after a GPU
   device reset makes every ring afresh and forgets the per-window
   fallbacks. `SurfaceLost{window}` stops a window's frames without its
@@ -1826,6 +1828,69 @@ PowerShell: the host before this logged "a window region, cut out on
 pixels" for each and, with the guest before this, never mapped them; with
 both halves of this branch both map with no ring, the dialog transient for
 the main window and active.
+
+#### Kept on the GPU
+
+The fix above sent every rounded window to pixels from the start, and a
+WPF application of rounded windows - Affinity, a 1920x1010 main window -
+went through readback, the link and a copy here on every frame. It felt
+slow, and was: measured live on a WPF window of that size with
+`WindowChrome`, no glass frame, and an animation drawing every frame,
+15.5 frames a second.
+
+What Windows' capture hands over for such a window was then measured in
+the guest (a capture of its own through `CaptureStream`, per-monitor
+aware): the region's outside comes clear, premultiplied (0,0,0,0), pixel
+for pixel what `GetWindowRgn` says - 40 pixels of a 1125x750 window's
+four 5,2,1,1,1 corners, everything inside opaque (255). A colour-keyed
+layered window's keyed texels come clear too; a window's `LWA_ALPHA` is
+not in the capture (its pixels are 255), as `wp_alpha_modifier_v1` wants.
+A Windows 11 frame's own rounded corners come clear and its one-pixel
+edge translucent (alpha 102). So nothing has to be cut, by either side:
+
+- **Nothing cut.** `PictureCutout` is gone: no frame is refused for a
+  region or a key, nothing is sent to pixels before it is subscribed, and
+  a frame in pixels is shown as it came. The ring's textures are
+  B8G8R8A8 and the device exports them as ARGB8888 (`AR24`), premultiplied
+  as Wayland's are, so the corners show what is under them. Nothing is
+  left on pixels for a cutout; a window that leaves a margin round itself
+  still goes as pixels, to be trimmed.
+- **Opaque where it can be told.** A window with a region that is not
+  `WS_EX_LAYERED` has its region as its surface's opaque region
+  (`GuestWindow::opaque_region`), in whole logical units inside it
+  (`ViewMapping::logical_box_inside`), so the compositor blends only the
+  corners. It is said only while the picture shown is the size the region
+  was read with: a region comes before the frame of its new size, and
+  claimed against the old picture it would draw its corners black. A
+  window without a region gets none - a Windows 11 frame's corners and
+  edge are translucent - and neither does a layered one, whose alpha is
+  its own. An opaque format (XRGB8888) for any of them would draw those
+  corners black, so the format stays ARGB8888.
+- **Seen.** A mirror's `on_gpu` in `Describe` says whether its last
+  picture came on the GPU.
+
+Measured live, the same window and guest, a private headless KWin, ten
+seconds of the animation each:
+
+| | before (pixels) | after (GPU) |
+|---|---|---|
+| frames shown | 15.5 a second | 56.2 a second |
+| host CPU | 26 % of a core, 16.9 ms a frame | 0.7 %, 0.12 ms a frame |
+| guest half's CPU | 11.9 %, 7.6 ms a frame | 2.3 %, 0.42 ms a frame |
+| capture to presented | - | 6.0-7.5 ms median (copy 0.03 ms) |
+
+KWin's capture of the mirror (`ScreenShot2.CaptureActiveWindow`) has the
+same 40 clear corner pixels the guest's capture has, and `on_gpu` true.
+
+Checked: the integration cases `welcome-in-front-rounded` and
+`close-confirmation-in-front-rounded` now play the GPU device with
+dma-bufs KWin shows (udmabufs of the harness's memory) and pictures clear
+outside their region, and judge that each rounded window gets a ring, is
+never sent back to pixels and is shown from the GPU, and that KWin's
+screen (`ScreenShot2.CaptureArea`) shows the window under it in its
+corner and its own colour inside. Against the host before this they fail
+on the GPU route; with an opaque region claiming the whole picture they
+fail on the corners, drawn black.
 
 ## Appendix: binaries, symbols, method
 
