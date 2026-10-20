@@ -39,9 +39,10 @@ public:
 
     [[nodiscard]] bool active() const noexcept { return kwin_.active(); }
 
-    // What the mirror of ``window`` is known to the compositor by: a suffix
-    // of its title, or nothing where nothing is placed.
-    [[nodiscard]] std::string tag_for(WindowId window) const;
+    // What the mirror of ``window`` is known to the compositor by, and which
+    // of its lists it is left out of: a suffix of its title, or nothing
+    // where nothing is placed.
+    [[nodiscard]] std::string caption_tag(WindowId window, KWinPlacement::Skips skips) const;
 
     // Where the guest window's picture is, as the guest last said, for a
     // toplevel mirror whose surface is the ``generation``-th made for it.

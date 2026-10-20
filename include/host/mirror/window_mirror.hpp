@@ -229,6 +229,7 @@ private:
     void send_button(std::uint8_t button, Point at, bool pressed);
     [[nodiscard]] bool pressed_into() const noexcept;
     [[nodiscard]] FocusCause focus_cause() noexcept;
+    [[nodiscard]] std::string caption() const;
     void show_last_frame();
     // The colour Windows does not draw (LWA_COLORKEY), if the window has one.
     [[nodiscard]] std::optional<std::uint32_t> color_key() const;
@@ -312,6 +313,8 @@ private:
     // come to it since.
     std::int64_t mapped_at_ = 0;
     bool focused_since_mapped_ = false;
+    // The title the toplevel was last given.
+    std::string caption_;
     // Waits to see whether the press that dismissed the popup was one of
     // this application's, which the guest closes the popup for by itself.
     std::unique_ptr<EventLoop::Timer> dismissal_;

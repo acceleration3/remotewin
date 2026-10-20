@@ -15,6 +15,7 @@ Win32Style::Win32Style(const GuestWindow& window) noexcept
              .band = window.fields().band,
              .owned = !window.owner().none(),
              .taskbar_button = (window.fields().taskbar & WindowFields::kTaskbarButton) != 0,
+             .in_switchers = (window.fields().taskbar & WindowFields::kInSwitchers) != 0,
              .shaded = (window.fields().frame & WindowFields::kDropShadow) != 0} {}
 
 }  // namespace rwin::host

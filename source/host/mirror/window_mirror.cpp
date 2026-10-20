@@ -256,6 +256,7 @@ void WindowMirror::drop_surface() {
     made_against_ = 0;
     pointer_.reset();
     configure_ = ToplevelConfigure{};
+    caption_.clear();
     asked_fullscreen_ = false;
     minimize_owed_ = false;
     wanted_.reset();
@@ -264,8 +265,8 @@ void WindowMirror::drop_surface() {
 
 void WindowMirror::dress_toplevel() {
     if (!kit_.app_id.empty()) toplevel_->set_app_id(kit_.app_id);
-    toplevel_->set_title((window_.title().empty() ? std::string("Guest window") : window_.title())
-                         + kit_.placement.tag_for(window()));
+    caption_ = caption();
+    toplevel_->set_title(caption_);
     toplevel_->set_parent(parent_ != nullptr ? parent_->toplevel_.get() : nullptr);
     apply_limits();
     if (icon_ != nullptr) icon_->put_on(*toplevel_);
@@ -273,6 +274,13 @@ void WindowMirror::dress_toplevel() {
     maximize_.compositor_anew(now);
     minimize_.compositor_anew(now);
     follow_state();
+}
+
+// The title, and the tag the compositor knows the window by, saying
+// whether this desktop's taskbar and switcher leave it out.
+std::string WindowMirror::caption() const {
+    return (window_.title().empty() ? std::string("Guest window") : window_.title())
+           + kit_.placement.caption_tag(window(), KWinPlacement::Skips{style_.off_taskbar(), style_.off_switcher()});
 }
 
 void WindowMirror::place_popup() {
@@ -350,7 +358,6 @@ void WindowMirror::resized_in_guest() {
 }
 
 void WindowMirror::follow(const GuestWindow& window) {
-    const std::string title = window_.title();
     window_ = window;
     // A minimised window's frame is the stub Windows parks off screen: the
     // window keeps the size it had.
@@ -370,7 +377,10 @@ void WindowMirror::follow(const GuestWindow& window) {
     surface_->shape_input(window.region());
     if (surface_->cut_out(color_key(), window.region())) show_last_frame();
     if (toplevel_ != nullptr) {
-        if (window.title() != title) toplevel_->set_title(window.title() + kit_.placement.tag_for(this->window()));
+        if (std::string now = caption(); now != caption_) {
+            caption_ = std::move(now);
+            toplevel_->set_title(caption_);
+        }
         toplevel_->set_modal(parent_ != nullptr && parent_->style_.disabled() && !style_.disabled());
         apply_limits();
         follow_state();

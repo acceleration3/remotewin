@@ -37,14 +37,25 @@ constexpr int kDigitCount = 32;
 
 // Finds this process's windows by their tag, and reports where each is
 // put - not during a drag, which is reported once, where it ends - and
-// when it is maximised, made fullscreen or minimised.
+// when it is maximised, made fullscreen or minimised. Leaves a window out of
+// the taskbar and the switcher as the character after its tag says.
 constexpr const char* kWatcher = R"JS(
 const service = "{0}";
 const marker = String.fromCharCode(0x2063);
+const digits = [0x200B, 0x200C, 0x200D, 0x2060];
+const tagLength = 33;
 function tagOf(w) {{
     const caption = w.captionNormal || "";
     const at = caption.indexOf(marker);
-    return at < 0 ? "" : caption.substring(at);
+    return at < 0 ? "" : caption.substring(at, at + tagLength);
+}}
+function present(w) {{
+    const caption = w.captionNormal || "";
+    const at = caption.indexOf(marker);
+    const skips = at < 0 ? -1 : digits.indexOf(caption.charCodeAt(at + tagLength));
+    if (skips < 0) return;
+    w.skipTaskbar = (skips & 1) !== 0;
+    w.skipSwitcher = (skips & 2) !== 0;
 }}
 function report(w, dragged) {{
     const tag = tagOf(w);
@@ -58,10 +69,11 @@ function watch(w) {{
     if (w.pid !== {3}) return;
     w.frameGeometryChanged.connect(function() {{ if (!w.move && !w.resize) report(w, false); }});
     w.interactiveMoveResizeFinished.connect(function() {{ report(w, true); }});
-    w.captionChanged.connect(function() {{ report(w, false); }});
+    w.captionChanged.connect(function() {{ present(w); report(w, false); }});
     w.maximizedChanged.connect(function() {{ report(w, false); }});
     w.fullScreenChanged.connect(function() {{ report(w, false); }});
     w.minimizedChanged.connect(function() {{ report(w, false); }});
+    present(w);
     report(w, false);
 }}
 workspace.windowList().forEach(watch);
@@ -225,6 +237,12 @@ std::string KWinPlacement::tag_for(std::uint64_t window) {
     std::string tag;
     append_utf8(tag, kMarker);
     for (int digit = kDigitCount - 1; digit >= 0; --digit) append_utf8(tag, kDigits[(window >> (digit * 2)) & 0x3]);
+    return tag;
+}
+
+std::string KWinPlacement::caption_tag(std::uint64_t window, Skips skips) {
+    std::string tag = tag_for(window);
+    append_utf8(tag, kDigits[(skips.taskbar ? 1 : 0) | (skips.switcher ? 2 : 0)]);
     return tag;
 }
 

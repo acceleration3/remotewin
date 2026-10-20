@@ -59,6 +59,8 @@ public:
         bool popup = false;
         bool transient = false;
         bool active = false;
+        bool skip_taskbar = false;
+        bool skip_switcher = false;
         double x = 0;
         double y = 0;
         double width = 0;

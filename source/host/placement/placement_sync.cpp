@@ -27,8 +27,8 @@ PlacementSync::PlacementSync(EventLoop& loop, BusConnection& bus) : kwin_(loop, 
         [this](std::uint64_t key, const KWinPlacement::Report& report) { moved(key, report); });
 }
 
-std::string PlacementSync::tag_for(WindowId window) const {
-    return active() ? KWinPlacement::tag_for(window.key()) : std::string();
+std::string PlacementSync::caption_tag(WindowId window, KWinPlacement::Skips skips) const {
+    return active() ? KWinPlacement::caption_tag(window.key(), skips) : std::string();
 }
 
 void PlacementSync::follow_guest(const GuestWindow& window, std::uint32_t generation, bool placeable,

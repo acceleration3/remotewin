@@ -943,6 +943,41 @@ void map_keeps_guest_active(Case& run) {
     run.verdicts().check(!stolen, "the guest was not asked to activate the panel for being mapped");
 }
 
+// Windows' taskbar rule, worked out in the guest (TASKBAR), on this
+// desktop's taskbar and switcher: a tool window of its own is on neither,
+// the application's window on both - and a window the guest gives a button
+// later is put on them.
+void taskbar_presence(Case& run) {
+    const Rect main = run.window().frame();
+    constexpr WindowId kPalette{0x50a70, 2};
+    WindowFields palette = played_window(run.window(), "Played palette", "RemotewinIntegrationWindow",
+                                         kWsPopup | kWsVisible | kWsClipSiblings | kWsCaption | kWsSysMenu,
+                                         kWsExToolWindow, Rect{main.x + 700, main.y, 240, 400}, WindowId{});
+    palette.taskbar = 0;
+    run.guest().show_window(kPalette, palette);
+    const auto left_out = stacking_settles(
+        run,
+        [](const Stacking& stacking) {
+            const KWinView::Stacked* shown = stacked(stacking, "Played palette");
+            const KWinView::Stacked* app = stacked(stacking, kMainTitle);
+            return shown != nullptr && app != nullptr && shown->skip_taskbar && shown->skip_switcher
+                   && !app->skip_taskbar && !app->skip_switcher;
+        },
+        kHold);
+    judge_stacking(run, left_out, "the tool window is off the taskbar and the switcher, the main window on both");
+    palette.style.extended = 0;
+    palette.taskbar = WindowFields::kTaskbarButton | WindowFields::kInSwitchers;
+    run.guest().change_window(kPalette, palette);
+    const auto put_on = stacking_settles(
+        run,
+        [](const Stacking& stacking) {
+            const KWinView::Stacked* shown = stacked(stacking, "Played palette");
+            return shown != nullptr && !shown->skip_taskbar && !shown->skip_switcher;
+        },
+        kHold);
+    judge_stacking(run, put_on, "given a button, it is on both");
+}
+
 // Focus going to another mirror by other means than a press (Alt+Tab, the
 // taskbar) is said to the guest; the guest's own activation of a window is
 // followed here while the user is in one of these mirrors.
@@ -1004,7 +1039,7 @@ constexpr Named kCases[] = {
     {"resize-in-guest", &resize_in_guest, kQuick},
     {"dialog-in-front", &dialog_in_front, kQuick},   {"menus-in-front", &menus_in_front, kQuick},
     {"winui-popup", &winui_popup, kQuick},           {"activation-both-ways", &activation_both_ways, kQuick},
-    {"map-keeps-guest-active", &map_keeps_guest_active, kQuick},
+    {"map-keeps-guest-active", &map_keeps_guest_active, kQuick}, {"taskbar-presence", &taskbar_presence, kQuick},
 };
 
 bool on_path(const std::string& program) {

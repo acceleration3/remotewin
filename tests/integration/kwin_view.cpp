@@ -47,7 +47,8 @@ callDBus("$SERVICE", "$PATH", "$INTERFACE", "done", "");
 )JS";
 
 // Every window of the host's, popups and dialogs too, bottom to top: title,
-// popup, transient, active and frame, a window a line.
+// popup, transient, active, left off the taskbar and the switcher, and frame,
+// a window a line.
 constexpr std::string_view kSurvey = R"JS(
 const marker = String.fromCharCode(0x2063);
 const lines = workspace.stackingOrder.filter(function(w) { return w.pid === $PID; }).map(function(w) {
@@ -55,7 +56,8 @@ const lines = workspace.stackingOrder.filter(function(w) { return w.pid === $PID
     const at = caption.indexOf(marker);
     const g = w.frameGeometry;
     return [at < 0 ? caption : caption.substring(0, at), w.popupWindow ? 1 : 0, w.transient ? 1 : 0,
-            workspace.activeWindow === w ? 1 : 0, g.x, g.y, g.width, g.height].join("\t");
+            workspace.activeWindow === w ? 1 : 0, w.skipTaskbar ? 1 : 0, w.skipSwitcher ? 1 : 0,
+            g.x, g.y, g.width, g.height].join("\t");
 });
 callDBus("$SERVICE", "$PATH", "$INTERFACE", "surveyed", lines.join("\n"));
 )JS";
@@ -167,9 +169,10 @@ void KWinView::surveyed(std::string_view report) {
             if (tab == std::string_view::npos) break;
             rest.remove_prefix(tab + 1);
         }
-        if (parts.size() == 8) {
+        if (parts.size() == 10) {
             stacking_.push_back(Stacked{std::string(parts[0]), parts[1] == "1", parts[2] == "1", parts[3] == "1",
-                                        number(parts[4]), number(parts[5]), number(parts[6]), number(parts[7])});
+                                        parts[4] == "1", parts[5] == "1", number(parts[6]), number(parts[7]),
+                                        number(parts[8]), number(parts[9])});
         }
         if (end == std::string_view::npos) break;
         report.remove_prefix(end + 1);

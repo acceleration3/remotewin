@@ -58,9 +58,10 @@ public:
         std::uint32_t band = kBandDesktop;
         // Owned by a window, rather than by none or by the hidden owner.
         bool owned = false;
-        // The TASKBAR field's button bit: the taskbar's rule as Windows
-        // applies it, immersive windows and ShowInSwitchers included.
+        // The TASKBAR field's bits: the taskbar's rule as Windows applies
+        // it, immersive windows and ShowInSwitchers included.
         bool taskbar_button = false;
+        bool in_switchers = false;
         // The FRAME field's shadow bit: CS_DROPSHADOW or a frame DWM draws,
         // and the desktop's "Show shadows under windows" on.
         bool shaded = false;
@@ -170,6 +171,14 @@ public:
 
     // Whether the taskbar gives it a button of its own.
     [[nodiscard]] constexpr bool in_taskbar() const noexcept { return words_.taskbar_button; }
+
+    // Left off this desktop's taskbar, or out of its window switcher: a
+    // window of its own that Windows' rule gives no button (a tool window, a
+    // WS_EX_NOACTIVATE one, one the shell refuses), as RAIL's server forces
+    // WS_EX_TOOLWINDOW on it for its client's taskbar to leave it out. An
+    // owned window is left to the compositor, which keeps it with its owner.
+    [[nodiscard]] constexpr bool off_taskbar() const noexcept { return !words_.owned && !words_.taskbar_button; }
+    [[nodiscard]] constexpr bool off_switcher() const noexcept { return !words_.owned && !words_.in_switchers; }
 
 private:
     [[nodiscard]] constexpr bool has(std::uint32_t bit) const noexcept {

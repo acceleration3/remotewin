@@ -51,7 +51,19 @@ public:
     // watching script running.
     [[nodiscard]] bool active() const noexcept { return watcher_ != nullptr && watcher_->running(); }
 
+    // Which of KWin's lists a window is left out of (skipTaskbar,
+    // skipSwitcher).
+    struct Skips {
+        bool taskbar = false;
+        bool switcher = false;
+    };
+
     [[nodiscard]] static std::string tag_for(std::uint64_t window);
+    // tag_for, then one character more that says ``skips``: the watching
+    // script reads it whenever the caption changes and leaves the window out
+    // of the taskbar or the switcher, the one thing about a window's place
+    // on a desktop xdg-shell has no word for.
+    [[nodiscard]] static std::string caption_tag(std::uint64_t window, Skips skips);
     [[nodiscard]] static std::optional<std::uint64_t> window_of(std::string_view tag);
 
     // How KWin has a window, as its watching script reports it.

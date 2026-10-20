@@ -145,11 +145,25 @@ void equality_is_over_every_word() {
 
 }  // namespace
 
+// RAIL's server forces WS_EX_TOOLWINDOW on a window the taskbar rule gives
+// no button, so its client's taskbar leaves it out: here, a window of its
+// own with no button is left off this desktop's taskbar and switcher. An
+// owned one is the compositor's to keep with its owner.
+void off_this_taskbar() {
+    check(Win32Style{Words{}}.off_taskbar() && Win32Style{Words{}}.off_switcher(),
+          "a window of its own the guest gives no button: off the taskbar and the switcher");
+    const Win32Style button{Words{.taskbar_button = true, .in_switchers = true}};
+    check(!button.off_taskbar() && !button.off_switcher(), "a button and a switcher entry: on both");
+    const Win32Style owned{Words{.owned = true}};
+    check(!owned.off_taskbar() && !owned.off_switcher(), "owned: left to the compositor");
+}
+
 int main() {
     plain_words_are_a_plain_toplevel();
     window_style_bits();
     extended_style_bits();
     the_taskbar_is_the_guests_to_say();
+    off_this_taskbar();
     class_style_bits();
     shading_is_the_guests_to_say();
     layering();

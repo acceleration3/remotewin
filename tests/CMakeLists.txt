@@ -55,7 +55,7 @@ endif()
 
 if(TARGET rwin_host)
     foreach(name win32_style guest_button key_translator popup_layout picture_cutout link_lifecycle state_sync
-                 move_requests)
+                 move_requests kwin_tag)
         add_executable(rwin_${name}_test ${name}_test.cpp)
         target_link_libraries(rwin_${name}_test PRIVATE rwin::host)
         add_test(NAME rwin_${name}_test COMMAND rwin_${name}_test)
