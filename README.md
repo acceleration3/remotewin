@@ -117,6 +117,10 @@ both list it, and every message belongs to one (docs/rail-model.md §4,
 §7). A peer that does not speak `windows` is refused: the host logs what
 it lacks and exits with status 3, a guest half logs it and ends.
 
+How closely the two halves keep RAIL's rules - MS-RDPERP's and those of
+Windows' own RAIL server - is reviewed rule by rule in
+docs/rail-conformance.md.
+
 ## Building
 
     cmake -S . -B build -G Ninja

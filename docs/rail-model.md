@@ -14,6 +14,9 @@ decisions after Microsoft's RemoteApp protocol, RAIL (MS-RDPERP).
 - §6 is the open questions, and what became of each.
 - §7 is wire 6 as built.
 
+docs/rail-conformance.md checks the built code against every rule here and
+in MS-RDPERP, row by row.
+
 Marks used throughout:
 
 - **[S]** the published spec says it, with its section number.
@@ -759,7 +762,7 @@ every action is a `PostMessage`, never a send:
 | Command | Action |
 |---|---|
 | SC_SIZE, SC_MOVE, SC_MINIMIZE, SC_MAXIMIZE, **SC_CLOSE**, SC_DEFAULT | `WM_SYSCOMMAND(cmd, 0)` |
-| SC_KEYMENU | first `WM_SYSCHAR(' ', 0x2039001)` (an Alt+Space keystroke), then `WM_SYSCOMMAND(SC_KEYMENU, ' ')` |
+| SC_KEYMENU | first `WM_SYSCHAR(' ', 0x20390001)` (an Alt+Space keystroke), then `WM_SYSCOMMAND(SC_KEYMENU, ' ')` |
 | SC_RESTORE | if the window is minimized **and disabled** (it owns a modal dialog, so it ignores WM_SYSCOMMAND), `ShowWindowAsync(SW_RESTORE)`; otherwise `WM_SYSCOMMAND(SC_RESTORE)` |
 | anything else | ignored |
 
@@ -1555,7 +1558,7 @@ compositor (§6.5); it re-applies its transient parent when a restyle
 remakes its surface, and the session places a remade surface again. In
 `--managed` mode the host prints `APP <aumid>` for each AppUserModelID it
 claims. (That was the Qt host; §7.6 is the one that replaced it, with
-`WindowMirror` in `MirrorWindow`'s place.)
+`WindowMirror` in `MirrorWindow`'s place, which sends no SysMenu: §7.9.)
 
 ### 7.4 Checked
 
@@ -1734,6 +1737,51 @@ guest, driven through KWin's scripting: a 20-step grow, maximise,
 restore, minimise, unminimise and a 20-step shrink settled each within
 70-330 ms with no stray move, no stub frame and no snap-back; the
 capture made 4 sessions and 4 rings for it (87 and 16 before).
+
+### 7.9 Decisions the conformance review wrote down
+
+docs/rail-conformance.md found these to be the code's deliberate
+behaviour, never stated here. Each is now a decision, for the reason given.
+
+- **Z-order** (row 49). The host does not apply the guest's stacking to
+  its toplevels: a Wayland client cannot stack them. ZOrder serves the
+  activation rule (the marker) and the order windows are walked in.
+  Popups and parts stack with what they belong to.
+- **SysMenu** (row 65). The native host never sends it. It has no bars of
+  its own to right-click, and the compositor's window menu tells a client
+  nothing. The guest still carries it out.
+- **Move/size end** (row 72). The host logs MoveSizeEnd and does not move
+  its mirror to it. The button-up goes at once (§6.5), so the end arrives
+  as the compositor's drag *begins*, and its corner is where the drag
+  started. Positions come from the GEOMETRY deltas.
+- **Move/size start position** (row 67). For kinds other than Move,
+  MoveSizeStart's point is the cursor as the event is heard, not RAIL's
+  last button-down: the guest half has no RDP stack to record one. The
+  host reads it for no kind.
+- **WindowMove** (row 73). The guest does nothing to a minimized or
+  maximized window (Windows keeps those by their state). It holds a new
+  size to the work area, moving the window in by as much as it would hang
+  past it.
+- **Icons** (row 29). WindowIcon is sent only for a window with a taskbar
+  button: no other window has an icon anyone sees.
+- **What Explorer does already** (rows 11 and 34). The guest sets no
+  `ARW_HIDE` and sends no `TaskbarButtonCreated`: Explorer runs in this
+  guest and does both (§5.9 had planned them).
+
+Fixed rather than written down (rows 7, 9, 18, 39, 51, 56, 75 and 88):
+
+- windows made children are forgotten;
+- a ghost belongs to its hung window's application;
+- the TASKBAR rule reaches KWin's taskbar and switcher;
+- mirrors are opened only for shown windows, and given surfaces only once
+  sized;
+- the guest's active window is followed once its mirror maps;
+- a compositor's focus on map is not sent as an activation;
+- MinMax is applied side by side;
+- WinUI's 0×0-then-sized popups are captured.
+
+Open: the host's resize band lies inside the window, not outside it as
+MS-RDPERP 1.3.4 has it (row 25).
 
 ## Appendix: binaries, symbols, method
 
