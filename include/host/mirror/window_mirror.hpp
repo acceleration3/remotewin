@@ -225,6 +225,7 @@ private:
     void inhibit_shortcuts();
     [[nodiscard]] std::optional<Point> picture_point(PointF at) const noexcept;
     [[nodiscard]] Size logical_of(Size picture) const noexcept;
+    [[nodiscard]] Size logical_limit(Size picture) const noexcept;
     void send_button(std::uint8_t button, Point at, bool pressed);
     [[nodiscard]] bool pressed_into() const noexcept;
     [[nodiscard]] FocusCause focus_cause() noexcept;

@@ -7,6 +7,7 @@
 #include "host/latency/frame_stamps.hpp"
 #include "host/link/guest_link.hpp"
 #include "host/mirror/guest_desktop.hpp"
+#include "host/mirror/picture_limits.hpp"
 #include "host/mirror/popup_layout.hpp"
 #include "host/mirror/popup_stack.hpp"
 #include "host/placement/placement_sync.hpp"
@@ -56,8 +57,6 @@ bool opened_by_press(Popup::Kind kind) {
     return kind == Popup::Kind::MenuBar || kind == Popup::Kind::Submenu || kind == Popup::Kind::Combo
            || kind == Popup::Kind::Context;
 }
-
-Size at_least_nothing(Size size) { return Size{std::max(0, size.width), std::max(0, size.height)}; }
 
 }  // namespace
 
@@ -383,40 +382,28 @@ void WindowMirror::follow(const GuestWindow& window) {
     surface_->commit();
 }
 
-// MinMax's track sizes are the window's whole rectangle, its invisible
-// borders included; the picture is the frame within them, less any margin
-// the guest trims. Held to the guest's work area, so a drag stops where the
-// guest window would have stopped.
+// What the window answered WM_GETMINMAXINFO, applied side by side
+// (PictureLimits); a fixed size for a window with no sizing border.
 void WindowMirror::apply_limits() {
     if (toplevel_ == nullptr) return;
     if (window_.maximized() || asked_fullscreen_ || configure_.maximized || configure_.fullscreen) {
         toplevel_->limit(Size{}, Size{});
         return;
     }
-    const Size picture = picture_;
     if (!style_.sizable()) {
-        const Size fixed = logical_of(picture);
+        const Size fixed = logical_of(picture_);
         toplevel_->limit(fixed, fixed);
         return;
     }
-    const GuestWindow::Margins margins = window_.margins();
-    const Size borders{margins.left + margins.right, margins.top + margins.bottom};
-    const Size padding = window_.picture_padding();
-    Size smallest;
-    Size largest = kit_.desktop.work_area.size();
-    if (!largest.empty()) largest = Size{largest.width - padding.width, largest.height - padding.height};
-    if (limits_.has_value()) {
-        smallest = at_least_nothing(Size{limits_->min_track_width - borders.width - padding.width,
-                                         limits_->min_track_height - borders.height - padding.height});
-        if (limits_->max_track_width > 0 && limits_->max_track_height > 0) {
-            const Size track{limits_->max_track_width - borders.width - padding.width,
-                             limits_->max_track_height - borders.height - padding.height};
-            largest = largest.empty() ? track
-                                      : Size{std::min(largest.width, track.width), std::min(largest.height, track.height)};
-        }
-    }
-    toplevel_->limit(smallest.empty() ? Size{} : logical_of(smallest),
-                     largest.empty() ? Size{} : logical_of(at_least_nothing(largest)));
+    const PictureLimits picture =
+        PictureLimits::of(limits_, window_.margins(), window_.picture_padding(), kit_.desktop.work_area.size());
+    toplevel_->limit(logical_limit(picture.smallest), logical_limit(picture.largest));
+}
+
+// A side of no limit stays one: logical_of makes the least picture a unit.
+Size WindowMirror::logical_limit(Size picture) const noexcept {
+    const Size logical = logical_of(picture);
+    return Size{picture.width > 0 ? logical.width : 0, picture.height > 0 ? logical.height : 0};
 }
 
 // The guest window's state, asked of the compositor: minimised, maximised,

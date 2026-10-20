@@ -82,6 +82,7 @@ add_library(rwin_link STATIC
     link/guest_windows.cpp
     loop/deferred.cpp
     mirror/mirror_scope.cpp
+    mirror/picture_limits.cpp
 )
 add_library(rwin::link ALIAS rwin_link)
 target_link_libraries(rwin_link PUBLIC rwin::proto rwin::logging)
