@@ -28,6 +28,12 @@ bool rich_edit_dropdown(HWND window) {
     return std::wcscmp(name, L"REComboBox20W") == 0 || std::wcscmp(name, L"REListBox20W") == 0;
 }
 
+// rdpshell spares this class when it is made a child (OnHookEventParentChange).
+bool spared_as_child(HWND window) {
+    wchar_t name[16] = {};
+    return ::GetClassNameW(window, name, 16) > 0 && std::wcscmp(name, L"WBPOPUP") == 0;
+}
+
 // The style words as sent, against the window's now, the tool-window bit
 // RAIL forces aside.
 bool restyled(HWND window, const WindowFields::Style& sent) {
@@ -100,8 +106,10 @@ void WindowTracker::changed(void* window, Change change) {
             refresh(window);
             return;
         case Change::Reparented:
-            if (known && !WindowReader::top_level(window)) {
-                forget(window);
+            // Made a child (RAIL deletes it), or a child of something else:
+            // nothing that was or is to be admitted.
+            if (!WindowReader::top_level(window)) {
+                if (known && !spared_as_child(static_cast<HWND>(window))) forget(window);
                 return;
             }
             break;
@@ -156,7 +164,7 @@ void WindowTracker::sweep() {
     std::vector<void*> changed;
     for (const auto& [window, record] : records_) {
         const auto hwnd = static_cast<HWND>(window);
-        if (::IsWindow(hwnd) == FALSE) {
+        if (::IsWindow(hwnd) == FALSE || (!WindowReader::top_level(window) && !spared_as_child(hwnd))) {
             gone.push_back(window);
         } else if (::GetWindow(hwnd, GW_OWNER) != record.owner || restyled(hwnd, record.sent.style)) {
             changed.push_back(window);

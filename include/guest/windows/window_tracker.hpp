@@ -51,9 +51,9 @@ public:
     // Re-read a tracked window, saying what differs; every one of them.
     void refresh(void* window);
     void refresh_all();
-    // Windows destroyed without their event reaching this, and windows
-    // given another owner or other styles: SetWindowLongPtr and
-    // SetWindowPos(HWND_TOPMOST) raise no event at all.
+    // Windows destroyed or made children without their event reaching
+    // this, and windows given another owner or other styles:
+    // SetWindowLongPtr and SetWindowPos(HWND_TOPMOST) raise no event at all.
     void sweep();
 
     [[nodiscard]] std::optional<WindowId> id_of(void* window) const;

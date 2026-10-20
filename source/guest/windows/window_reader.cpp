@@ -32,6 +32,7 @@ constexpr std::wstring_view kOwnClassPrefix = L"rwin-guest-";
 // Office's frame-shadow windows, which RAIL keeps next to their neighbours.
 constexpr std::wstring_view kOfficeBorderClass = L"MSO_BORDEREFFECT_WINDOW_CLASS";
 constexpr std::wstring_view kMenuClass = L"#32768";
+constexpr std::wstring_view kGhostClass = L"Ghost";
 constexpr std::size_t kClassChars = 256;
 constexpr std::size_t kTitleChars = 1024;
 
@@ -299,7 +300,27 @@ void WindowReader::read_owner(void* window, Reading& into) const {
     into.owner = owner;
 }
 
-WindowFields::AppId WindowReader::read_app_id(void* window) const {
+namespace {
+
+// The window a ghost stands in for while it does not answer: Windows shows
+// its ghost (class "Ghost", in DWM's process) in place of a hung window.
+// HungWindowFromGhostWindow is exported by user32 and declared by no header.
+HWND hung_behind(HWND window) {
+    if (class_of(window) != kGhostClass) return nullptr;
+    using HungWindowFromGhostFn = HWND(WINAPI*)(HWND);
+    static const auto hung_window_from_ghost = reinterpret_cast<HungWindowFromGhostFn>(reinterpret_cast<void*>(
+        ::GetProcAddress(::GetModuleHandleW(L"user32.dll"), "HungWindowFromGhostWindow")));
+    return hung_window_from_ghost != nullptr ? hung_window_from_ghost(window) : nullptr;
+}
+
+}  // namespace
+
+// A ghost is the hung window's application's (rdpshell's
+// WindowGetAppIDOrder asks again for the hung window): its mirror stands in
+// for the hung window's, in the same application.
+WindowFields::AppId WindowReader::read_app_id(void* shown) const {
+    HWND hung = hung_behind(static_cast<HWND>(shown));
+    void* window = hung != nullptr ? static_cast<void*>(hung) : shown;
     WindowFields::AppId app;
     app.aumid = app_ids_.app_id_of(window);
     DWORD process_id = 0;

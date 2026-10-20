@@ -65,8 +65,11 @@ thread_local WindowWatch* listening = nullptr;
 void CALLBACK on_event(HWINEVENTHOOK /*hook*/, DWORD event, HWND window, LONG object, LONG child,
                        DWORD /*thread*/, DWORD /*time*/) {
     if (object != OBJID_WINDOW || window == nullptr || listening == nullptr) return;
-    // A destroyed window answers no question about itself.
-    if (event != EVENT_OBJECT_DESTROY && !WindowReader::top_level(window)) return;
+    // A destroyed window answers no question about itself, and one made a
+    // child is no longer top-level: the tracker forgets it if it had it.
+    if (event != EVENT_OBJECT_DESTROY && event != EVENT_OBJECT_PARENTCHANGE && !WindowReader::top_level(window)) {
+        return;
+    }
     listening->heard(event, window, child);
 }
 
