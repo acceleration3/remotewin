@@ -8,6 +8,7 @@ add_executable(remotewin-guest
     capture/graphics_device.cpp
     capture/monitor_capture.cpp
     capture/picture_edges.cpp
+    capture/picture_room.cpp
     capture/slot_ledger.cpp
     capture/surface_id_reader.cpp
     capture/surface_ring.cpp

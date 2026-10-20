@@ -6,6 +6,7 @@
 #include "host/export/shared_frame.hpp"
 #include "host/export/pci_address.hpp"
 #include "host/export/window_ring.hpp"
+#include "host/geometry/size.hpp"
 #include "host/latency/display_lock.hpp"
 #include "host/latency/guest_clock.hpp"
 #include "host/latency/latency_log.hpp"
@@ -92,6 +93,8 @@ private:
         WindowId window;
         std::uint32_t ring;
         std::uint32_t slot;
+        // The picture, at the surface's top left.
+        Size picture;
         std::uint64_t order;
         CopyWait wait;
         std::shared_ptr<const SlotLease> lease;

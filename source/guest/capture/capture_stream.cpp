@@ -233,12 +233,46 @@ bool CaptureStream::open_monitor(void* monitor, Extent size) {
 
 bool CaptureStream::open(void* item, Extent size) {
     item_ = item;
-    if (resize(size)) return true;
+    if (start(size)) return true;
     close();
     return false;
 }
 
+// The pool made again at another size keeps the session capturing into it,
+// which is a good deal cheaper than a new session; a new pool and session
+// are made only where that is refused.
 bool CaptureStream::resize(Extent size) {
+    if (pool_ != nullptr && session_ != nullptr && recreate(size)) return true;
+    return start(size);
+}
+
+bool CaptureStream::capture_afresh(Extent size) { return start(size); }
+
+bool CaptureStream::recreate(Extent size) {
+    ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* wrapped = nullptr;
+    if (FAILED(device_.winrt_device()->QueryInterface(
+            __uuidof(ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice),
+            reinterpret_cast<void**>(&wrapped)))) {
+        return false;
+    }
+    const ABI::Windows::Graphics::SizeInt32 pool_size{static_cast<INT32>(size.width),
+                                                      static_cast<INT32>(size.height)};
+    const HRESULT recreated = static_cast<IDirect3D11CaptureFramePool*>(pool_)->Recreate(
+        wrapped, static_cast<ABI::Windows::Graphics::DirectX::DirectXPixelFormat>(kBgra8), kPoolBuffers,
+        pool_size);
+    wrapped->Release();
+    if (FAILED(recreated)) {
+        RWIN_WARN("capture", "the frame pool would not be made {}x{} again: {:#010x}; capturing afresh", size.width,
+                  size.height, static_cast<unsigned>(recreated));
+        return false;
+    }
+    size_ = size;
+    outgrown_.reset();
+    RWIN_DEBUG("capture", "capturing {}x{} in the same session", size_.width, size_.height);
+    return true;
+}
+
+bool CaptureStream::start(Extent size) {
     IDirect3D11CaptureFramePoolStatics2* statics = nullptr;
     if (FAILED(activation_factory(
             RuntimeClass_Windows_Graphics_Capture_Direct3D11CaptureFramePool,
@@ -320,6 +354,7 @@ bool CaptureStream::resize(Extent size) {
         return false;
     }
     size_ = size;
+    outgrown_.reset();
     release(&staging_);
     RWIN_DEBUG("capture", "capturing {}x{}", size_.width, size_.height);
     return true;
@@ -443,9 +478,18 @@ std::optional<CaptureStream::Frame> CaptureStream::next_frame() {
         content = {static_cast<INT32>(size_.width), static_cast<INT32>(size_.height)};
     }
     // The picture is in the top left of the buffer, as large as the frame
-    // says it is, as far as the buffer holds it.
+    // says it is. One the buffer does not hold is cropped: not sent, and
+    // the frames made large enough for the next.
     D3D11_TEXTURE2D_DESC described{};
     texture->GetDesc(&described);
+    if (content.Width > 0 && content.Height > 0
+        && (static_cast<UINT>(content.Width) > described.Width || static_cast<UINT>(content.Height) > described.Height)) {
+        texture->Release();
+        outgrown_ = Extent{static_cast<std::uint32_t>(content.Width), static_cast<std::uint32_t>(content.Height)};
+        RWIN_DEBUG("capture", "a {}x{} picture in {}x{} frames: dropped", content.Width, content.Height,
+                   described.Width, described.Height);
+        return std::nullopt;
+    }
     const Extent picture{std::min(static_cast<std::uint32_t>(std::max(content.Width, 0)), described.Width),
                          std::min(static_cast<std::uint32_t>(std::max(content.Height, 0)), described.Height)};
     held.texture_ = texture;

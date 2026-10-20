@@ -361,6 +361,8 @@ void a_frame_in_a_slot_crosses_whole() {
     const rwin::FrameInSlot frame{.window = rwin::WindowId{0xFFFF, 0x1234},
                                   .ring = 3,
                                   .slot = 2,
+                                  .width = 1001,
+                                  .height = 77,
                                   .copies = 0x1'0000'0001ULL,
                                   .composed = 0x7FFF'0000'0000'0001LL,
                                   .taken = 3,
@@ -371,19 +373,28 @@ void a_frame_in_a_slot_crosses_whole() {
 
     rwin::MessageWriter pinned{rwin::MessageId::FrameInSlot};
     rwin::FrameInSlot{
-        .window = rwin::WindowId{0, 5}, .ring = 0x0102, .slot = 1, .copies = 0x0304, .composed = 0x0506, .taken = 0x0607, .copied = 0x0708}
+        .window = rwin::WindowId{0, 5}, .ring = 0x0102, .slot = 1, .width = 0x0A0B, .height = 0x0C0D, .copies = 0x0304,
+        .composed = 0x0506, .taken = 0x0607, .copied = 0x0708}
         .write(pinned);
-    const std::vector<std::uint8_t> expected{0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 1, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3, 4,
-                                             0, 0, 0, 0, 0, 0, 5, 6, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0, 0, 0, 7, 8};
+    const std::vector<std::uint8_t> expected{0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 1, 2, 0, 0, 0, 1, 0, 0, 0x0A, 0x0B,
+                                             0, 0, 0x0C, 0x0D, 0, 0, 0, 0, 0, 0, 3, 4, 0, 0, 0, 0, 0, 0, 5, 6,
+                                             0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0, 0, 0, 7, 8};
     check(body_of(std::move(pinned)) == expected,
-          "window hwnd u32 serial u32, ring u32, slot u32, copies u64, composed i64, taken i64, copied i64");
+          "window hwnd u32 serial u32, ring u32, slot u32, width u32, height u32, copies u64, composed i64, taken "
+          "i64, copied i64");
 
     rwin::MessageWriter outside{rwin::MessageId::FrameInSlot};
-    rwin::FrameInSlot{.window = rwin::WindowId{0, 5}, .ring = 1, .slot = 3, .copies = 1}.write(outside);
+    rwin::FrameInSlot{.window = rwin::WindowId{0, 5}, .ring = 1, .slot = 3, .width = 1, .height = 1, .copies = 1}
+        .write(outside);
     check(!read_back<rwin::FrameInSlot>(outside.take()).has_value(), "a slot past the ring is refused");
     rwin::MessageWriter uncopied{rwin::MessageId::FrameInSlot};
-    rwin::FrameInSlot{.window = rwin::WindowId{0, 5}, .ring = 1, .slot = 0, .copies = 0}.write(uncopied);
+    rwin::FrameInSlot{.window = rwin::WindowId{0, 5}, .ring = 1, .slot = 0, .width = 1, .height = 1, .copies = 0}
+        .write(uncopied);
     check(!read_back<rwin::FrameInSlot>(uncopied.take()).has_value(), "copy 0 is no frame and is refused");
+    rwin::MessageWriter empty{rwin::MessageId::FrameInSlot};
+    rwin::FrameInSlot{.window = rwin::WindowId{0, 5}, .ring = 1, .slot = 0, .width = 0, .height = 4, .copies = 1}
+        .write(empty);
+    check(!read_back<rwin::FrameInSlot>(empty.take()).has_value(), "a picture of no pixels is refused");
 }
 
 void a_clock_echo_crosses_whole() {

@@ -50,9 +50,13 @@ constexpr std::array<std::pair<DWORD, DWORD>, 8> kHookedEvents{{
 // often; a hook's events are posted messages, and a full queue drops them.
 constexpr std::chrono::milliseconds kSweepEvery{1000};
 // DWM updates a window's extended frame bounds after the move that raised
-// the location event, so a frame read at the event can be the old one; a
-// moved window is read again this much later.
-constexpr std::chrono::milliseconds kFrameSettles{60};
+// the location event - at its next composition, as a rule - so a frame read
+// at the event can be the old one; a moved window is read again a
+// composition later, and once more after that for a DWM running late. A
+// resize is answered no sooner than its frame is read: the host asks for
+// the next size only then.
+constexpr std::chrono::milliseconds kFrameSettles{20};
+constexpr std::chrono::milliseconds kFrameSettlesLate{40};
 
 // The hook is a plain function with no argument of its own, and runs on
 // the thread that set it.
@@ -113,8 +117,14 @@ struct WindowWatch::Parts {
     ZOrderReport zorder;
     MoveSizeReport movesize;
     std::vector<Event> serving;
-    // Moved windows to read again, and when.
-    std::vector<std::pair<void*, Clock::time_point>> settling;
+    // Moved windows to read again, and when; ``again`` for the first look,
+    // which is followed by a late one.
+    struct Settling {
+        void* window = nullptr;
+        Clock::time_point due;
+        bool again = false;
+    };
+    std::vector<Settling> settling;
     Clock::time_point next_sweep = Clock::now() + kSweepEvery;
     bool restack = false;
 };
@@ -173,7 +183,7 @@ void WindowWatch::serve(Parts& parts) {
         const Clock::time_point now = Clock::now();
         Clock::time_point until = parts.next_sweep;
         if (const auto due = parts.zorder.due()) until = std::min(until, *due);
-        for (const auto& [window, due] : parts.settling) until = std::min(until, due);
+        for (const Parts::Settling& entry : parts.settling) until = std::min(until, entry.due);
         const auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(until - now).count();
         ::MsgWaitForMultipleObjectsEx(1, &wake, static_cast<DWORD>(std::max<long long>(wait, 0)), QS_ALLINPUT,
                                       MWMO_INPUTAVAILABLE);
@@ -239,8 +249,8 @@ void WindowWatch::take(Parts& parts, const Event& event) {
         case EVENT_OBJECT_LOCATIONCHANGE:
             parts.tracker.changed(event.window, Change::Moved);
             if (std::none_of(parts.settling.begin(), parts.settling.end(),
-                             [&](const auto& entry) { return entry.first == event.window; })) {
-                parts.settling.emplace_back(event.window, Clock::now() + kFrameSettles);
+                             [&](const Parts::Settling& entry) { return entry.window == event.window; })) {
+                parts.settling.push_back(Parts::Settling{event.window, Clock::now() + kFrameSettles, true});
             }
             return;
         case EVENT_OBJECT_STATECHANGE:
@@ -267,11 +277,17 @@ void WindowWatch::take(Parts& parts, const Event& event) {
 void WindowWatch::settle(Parts& parts) {
     const Clock::time_point now = Clock::now();
     for (auto entry = parts.settling.begin(); entry != parts.settling.end();) {
-        if (now < entry->second) {
+        if (now < entry->due) {
             ++entry;
             continue;
         }
-        parts.tracker.refresh(entry->first);
+        parts.tracker.refresh(entry->window);
+        if (entry->again) {
+            entry->due = now + kFrameSettlesLate;
+            entry->again = false;
+            ++entry;
+            continue;
+        }
         entry = parts.settling.erase(entry);
     }
 }

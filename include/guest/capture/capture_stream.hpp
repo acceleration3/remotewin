@@ -83,10 +83,18 @@ public:
     [[nodiscard]] bool open_window(void* window, Extent size);
     [[nodiscard]] bool open_monitor(void* monitor, Extent size);
 
-    // Frames of another size from here on: what is captured has changed
-    // size, and frames of the old one would crop it or pad it.
+    // Frames of another size from here on, in the same session: what is
+    // captured leaves too much of them unused.
     [[nodiscard]] bool resize(Extent size);
+    // Frames of another size from here on, in a new session: what is
+    // captured has outgrown them. A new session's first frame comes at once;
+    // a pool made again in the same one is not promised another frame until
+    // what it captures changes, and the frame it has is cropped.
+    [[nodiscard]] bool capture_afresh(Extent size);
     [[nodiscard]] Extent size() const noexcept { return size_; }
+    // What is captured was larger than the frames the last time one came:
+    // that frame was cropped and dropped, and this is the size it needed.
+    [[nodiscard]] const std::optional<Extent>& outgrown() const noexcept { return outgrown_; }
 
     // The next frame the compositor has, if it has one: its content, from
     // the top left of the buffer, copied into ``into`` with its rows packed
@@ -104,6 +112,10 @@ public:
 
 private:
     [[nodiscard]] bool open(void* item, Extent size);
+    // A pool and a session made anew, at ``size``.
+    [[nodiscard]] bool start(Extent size);
+    // The pool made again at ``size``, in the same session.
+    [[nodiscard]] bool recreate(Extent size);
     // Closing is what stops the compositor filling the pool. Releasing
     // alone leaves the session running, and the next one cannot be made
     // while the old is still capturing the same thing.
@@ -122,6 +134,7 @@ private:
     // The pool's FrameArrived registration, while it has one.
     std::optional<std::int64_t> arrival_token_;
     Extent size_;
+    std::optional<Extent> outgrown_;
     FrameTiming timing_{"capture"};
     std::uint64_t captured_ = 0;
     void* sample_ = nullptr;

@@ -585,7 +585,10 @@ void GuestSession::send_frames() {
 // - and the window is captured afresh a while later, without being asked.
 void GuestSession::send_window_frame(WindowId id, Subscription& subscription) {
     const WindowSurface surface{static_cast<std::uint64_t>(id.hwnd)};
-    if (surface.minimized()) return;
+    if (surface.minimized()) {
+        if (subscription.capture != nullptr) subscription.capture->minimized();
+        return;
+    }
     const Clock::time_point now = Clock::now();
     if (subscription.lost) {
         if (now < subscription.retry_at) return;

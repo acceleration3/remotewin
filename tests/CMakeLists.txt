@@ -28,6 +28,13 @@ add_executable(rwin_changed_tiles_test
 target_link_libraries(rwin_changed_tiles_test PRIVATE rwin::proto)
 add_test(NAME rwin_changed_tiles_test COMMAND rwin_changed_tiles_test)
 
+add_executable(rwin_picture_room_test
+    picture_room_test.cpp
+    "${PROJECT_SOURCE_DIR}/source/guest/capture/picture_room.cpp")
+target_link_libraries(rwin_picture_room_test PRIVATE rwin::logging)
+target_include_directories(rwin_picture_room_test PRIVATE "${RWIN_INCLUDE_DIR}")
+add_test(NAME rwin_picture_room_test COMMAND rwin_picture_room_test)
+
 add_executable(rwin_slot_ledger_test
     slot_ledger_test.cpp
     "${PROJECT_SOURCE_DIR}/source/guest/capture/slot_ledger.cpp")

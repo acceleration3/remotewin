@@ -21,9 +21,10 @@ namespace rwin::guest {
 class GraphicsDevice;
 class SurfaceIdReader;
 
-// One window's frames, kept on the GPU: a ring of shared textures the
-// picture's size, which the host imports from the GPU device's export
-// socket, and each frame copied into one the host is not reading.
+// One window's frames, kept on the GPU: a ring of shared textures with room
+// for the picture (picture_room.hpp), which the host imports from the GPU
+// device's export socket, and each frame copied to the top left of one the
+// host is not reading.
 //
 // A frame costs one copy on the guest's GPU and a few bytes on the wire,
 // where read back as pixels it was the whole picture through QEMU's user
@@ -57,10 +58,10 @@ public:
     // and a window sitting still sends no other.
     [[nodiscard]] bool has_free_slot() const noexcept;
 
-    // ``frame``'s picture copied into a free slot, the ring made afresh at
-    // the picture's size first when that changed. Nothing when the shared
-    // textures cannot be made or their ids read: this guest cannot share
-    // frames, and they go as pixels.
+    // ``frame``'s picture copied into a free slot, the ring made afresh
+    // first when its room no longer holds the picture. Nothing when the
+    // shared textures cannot be made or their ids read: this guest cannot
+    // share frames, and they go as pixels.
     // Consumes the frame only after a successful copy submission.
     [[nodiscard]] std::optional<Delivery> copy(CaptureStream::Frame& frame);
 

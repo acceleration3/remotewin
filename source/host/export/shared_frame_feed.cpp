@@ -125,7 +125,8 @@ void SharedFrameFeed::take_frame(const FrameInSlot& frame) {
     stamps.note(FrameStamps::Stage::Composed, clock_.to_host(frame.composed).value_or(0));
     stamps.note(FrameStamps::Stage::Taken, clock_.to_host(frame.taken).value_or(0));
     stamps.note(FrameStamps::Stage::Copied, clock_.to_host(frame.copied).value_or(0));
-    ask_sync(PendingFrame{frame.window, frame.ring, frame.slot, order, CopyWait{frame.copies},
+    const Size picture{static_cast<int>(frame.width), static_cast<int>(frame.height)};
+    ask_sync(PendingFrame{frame.window, frame.ring, frame.slot, picture, order, CopyWait{frame.copies},
                           std::move(lease), stamps});
 }
 
@@ -276,9 +277,15 @@ void SharedFrameFeed::synced(const ExportAnswer& answer, UniqueFd fence, Pending
             if (memory == nullptr || !fence.valid() || !ring->show(frame.order)) return;
             timing_.note("ready", frame.order, 0, frame.window.key());
             frame.stamps.note_now(FrameStamps::Stage::Ready);
+            const Size room{static_cast<int>(memory->layout().width), static_cast<int>(memory->layout().height)};
+            if (frame.picture.width > room.width || frame.picture.height > room.height) {
+                RWIN_WARN("export", "{}: a {}x{} picture in a {}x{} surface; frame dropped", frame.window,
+                          frame.picture.width, frame.picture.height, room.width, room.height);
+                return;
+            }
             frame_ready(frame.window, SharedFrame{memory, std::move(frame.lease),
                                                   std::make_shared<UniqueFd>(std::move(fence)), frame.ring,
-                                                  frame.order, frame.stamps});
+                                                  frame.order, frame.picture, frame.stamps});
             return;
         }
         case CopyWait::Verdict::AskAgain:

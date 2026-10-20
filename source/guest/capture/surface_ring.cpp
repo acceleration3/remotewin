@@ -2,6 +2,7 @@
 
 #include "guest/capture/capture_clock.hpp"
 #include "guest/capture/graphics_device.hpp"
+#include "guest/capture/picture_room.hpp"
 #include "guest/capture/surface_id_reader.hpp"
 #include "logging/logger.hpp"
 #include "proto/slot_free.hpp"
@@ -42,8 +43,8 @@ bool SurfaceRing::has_free_slot() const noexcept {
 std::optional<SurfaceRing::Delivery> SurfaceRing::copy(CaptureStream::Frame& frame) {
     const CaptureStream::Extent size = frame.content();
     Delivery delivery;
-    if (textures_[0] == nullptr || size != CaptureStream::Extent{announced_.width, announced_.height}) {
-        if (!remake(size)) return std::nullopt;
+    if (textures_[0] == nullptr || !room_holds(CaptureStream::Extent{announced_.width, announced_.height}, size)) {
+        if (!remake(room_for(size))) return std::nullopt;
         delivery.made = announced_;
     }
     const std::optional<std::uint32_t> slot = ledger_.free_slot();
@@ -64,8 +65,8 @@ std::optional<SurfaceRing::Delivery> SurfaceRing::copy(CaptureStream::Frame& fra
     const std::int64_t composed = frame.source_time() != 0 ? frame.source_time() - composition_period() : 0;
     const std::int64_t taken = frame.taken_time();
     sources_[*slot] = std::move(frame);
-    delivery.frame = FrameInSlot{window_, ledger_.ring(),      *slot, ledger_.filled(*slot),
-                                 composed, taken, capture_clock_now()};
+    delivery.frame = FrameInSlot{window_,          ledger_.ring(), *slot, size.width, size.height,
+                                 ledger_.filled(*slot), composed,     taken, capture_clock_now()};
     return delivery;
 }
 

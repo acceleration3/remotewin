@@ -27,6 +27,9 @@ public:
     // The next frame left on the GPU, in ``frame``: Fresh with it set,
     // Unchanged, or Gone. Nothing below describes it until it is kept.
     [[nodiscard]] CaptureResult grab(const WindowSurface& surface, std::optional<CaptureStream::Frame>& frame);
+    // The window was seen minimised: frames until one is its size again are
+    // what Windows captured of it as it went.
+    void minimized() noexcept;
     // ``frame`` read back and trimmed, as grab keeps every frame: for one
     // taken to stay on the GPU that could not.
     // False when it could not be read back.
@@ -50,7 +53,10 @@ private:
     void keep_drawn(CaptureStream::Extent content, const WindowSurface& surface);
     void keep_whole(CaptureStream::Extent content);
 
+    static constexpr int kMostStaleFrames = 10;
+
     CaptureStream stream_;
+    int stale_frames_ = 0;
     // The frame as it arrived, before trimming; kept so neither
     // buffer is reallocated per frame.
     std::vector<std::uint8_t> scratch_;

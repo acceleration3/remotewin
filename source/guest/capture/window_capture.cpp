@@ -1,6 +1,7 @@
 #include "guest/capture/window_capture.hpp"
 
 #include "guest/capture/content_bounds.hpp"
+#include "guest/capture/picture_room.hpp"
 #include "guest/windows/window_surface.hpp"
 
 #include <cstring>
@@ -21,11 +22,31 @@ CaptureResult WindowCapture::grab(const WindowSurface& surface) {
     return keep(*frame, surface) ? CaptureResult::Fresh : CaptureResult::Unchanged;
 }
 
+// Windows' capture hands over, after a window is restored, the frame it
+// took as the window was minimised: a picture of the minimised stub, which
+// shown would be the window flashing to a sliver. Frames are dropped until
+// one is the window's size, kMostStaleFrames at most.
 CaptureResult WindowCapture::grab(const WindowSurface& surface, std::optional<CaptureStream::Frame>& frame) {
     if (!follow(surface)) return CaptureResult::Gone;
     frame = stream_.next_frame();
-    return frame.has_value() ? CaptureResult::Fresh : CaptureResult::Unchanged;
+    if (!frame.has_value()) {
+        if (const std::optional<CaptureStream::Extent> outgrown = stream_.outgrown()) {
+            if (!stream_.capture_afresh(room_for(*outgrown))) return CaptureResult::Gone;
+        }
+        return CaptureResult::Unchanged;
+    }
+    if (stale_frames_ > 0) {
+        if (frame->content() != CaptureStream::Extent{surface.width(), surface.height()}) {
+            --stale_frames_;
+            frame.reset();
+            return CaptureResult::Unchanged;
+        }
+        stale_frames_ = 0;
+    }
+    return CaptureResult::Fresh;
 }
+
+void WindowCapture::minimized() noexcept { stale_frames_ = kMostStaleFrames; }
 
 bool WindowCapture::keep(const CaptureStream::Frame& frame, const WindowSurface& surface) {
     const std::optional<CaptureStream::Extent> content = stream_.read(frame, scratch_);
@@ -34,8 +55,9 @@ bool WindowCapture::keep(const CaptureStream::Frame& frame, const WindowSurface&
     return true;
 }
 
-// Captured from the window's own first frame, and at its size: frames of
-// another size would crop it or pad it.
+// Captured from the window's own first frame, in frames with room for it
+// (picture_room.hpp): a window being resized is captured into the same pool
+// until it outgrows it.
 bool WindowCapture::follow(const WindowSurface& surface) {
     if (!surface.valid()) return false;
     const auto handle =
@@ -43,10 +65,12 @@ bool WindowCapture::follow(const WindowSurface& surface) {
     const CaptureStream::Extent size{surface.width(), surface.height()};
     if (started_for_ != handle) {
         started_for_ = 0;
-        if (!stream_.open_window(surface.handle(), size)) return false;
+        if (!stream_.open_window(surface.handle(), room_for(size))) return false;
         started_for_ = handle;
     }
-    return stream_.size() == size || stream_.resize(size);
+    if (room_holds(stream_.size(), size)) return true;
+    const bool fits = size.width <= stream_.size().width && size.height <= stream_.size().height;
+    return fits ? stream_.resize(room_for(size)) : stream_.capture_afresh(room_for(size));
 }
 
 // Not a margin (WindowSurface::margin_is_reserved): a shaped window's
