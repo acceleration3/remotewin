@@ -52,3 +52,7 @@ if(TARGET rwin_host)
         add_test(NAME rwin_${name}_test COMMAND rwin_${name}_test)
     endforeach()
 endif()
+
+if(TARGET rwin_host)
+    add_subdirectory(integration)
+endif()
