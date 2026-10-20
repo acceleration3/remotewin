@@ -75,13 +75,15 @@ the one the compositor composes on (the main device of its
 its hello (`FrameRoute`). Then, per window and
 for the desktop:
 
-  * the guest half keeps a ring of three shared B8G8R8A8 textures the
-    picture's size (`SurfaceRing`), made again on a resize, and reads
-    the id the GPU driver gave each from the texture's allocation data
-    through D3DKMT (`SurfaceIdReader`) - announced as `SlotRing`;
-  * each frame is one `CopySubresourceRegion` on the guest's GPU into a
-    slot the host is not reading, flushed, and named by its copy count
-    (`FrameInSlot`);
+  * the guest half keeps a ring of three shared B8G8R8A8 textures with
+    room for the picture (`SurfaceRing`; the picture rounded up to 128
+    pixels and 128 more, so a resize fills the same ring for a while,
+    `picture_room.hpp`), and reads the id the GPU driver gave each from
+    the texture's allocation data through D3DKMT (`SurfaceIdReader`) -
+    announced as `SlotRing`;
+  * each frame is one `CopySubresourceRegion` on the guest's GPU to the
+    top left of a slot the host is not reading, flushed, and named by its
+    copy count and the picture's size (`FrameInSlot`);
   * the host half exports each surface once, asks the device until its
     count of copies reaches the frame's, and attaches the dma-buf it was
     given to the window's surface as a `wl_buffer`, with the copy's
@@ -119,6 +121,35 @@ it lacks and exits with status 3, a guest half logs it and ends.
 
     cmake -S . -B build -G Ninja
     cmake --build build
+
+## Tests
+
+    ctest --test-dir build -LE integration     # the unit tests, instant
+    ctest --test-dir build -L integration      # the integration tests
+
+The integration tests (`tests/integration/`) resize, maximise and
+minimise a mirror end to end with no VM: each case starts a headless KWin
+of its own (`kwin_wayland --virtual`, 1600x1000 at scale 1.2, its own
+config directory) inside a private `dbus-run-session`, runs the
+`remotewin` it was built with as a client of it, and plays the guest half
+- a wire 6 peer over the host's TCP port with one window that answers
+moves and system commands as Windows does, after a delay, with the
+window's new fields and a frame of its new size by the pixel path. The
+pointer is KWin's fake input; KWin's view of the window comes from a
+watching KWin script, the host's from its `Describe`. Each case takes
+about a second; all twelve about 12 s one after another (`-j` runs them
+side by side). They are skipped (exit 77) where `kwin_wayland` or
+`dbus-run-session` is not installed. One case alone, with its verdicts
+and timings:
+
+    build/tests/integration/rwin_resize_integration                 # the cases
+    build/tests/integration/rwin_resize_integration drag-corner
+
+`RWIN_INTEGRATION_HOST=<path>` runs another `remotewin` against them (an
+older build, to see a case fail), `RWIN_INTEGRATION_HOST_LOG=trace` sets
+its log level, and `RWIN_INTEGRATION_WAYLAND_DEBUG=1` adds its Wayland
+traffic to its log. A failing case keeps its KWin and host logs and says
+where.
 
 The guest half cross-builds from Linux with mingw-w64, the same way the
 host half builds natively.

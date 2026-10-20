@@ -1648,6 +1648,7 @@ What does what:
 | `MirrorRole`, `PopupLayout`, `PopupStack` | what a window becomes; a popup's positioner; popups torn down top first |
 | `WindowMirror`, `MirrorSession`, `ActivationSync`, `MonitorSession` | one guest window; one application; focus; the `--desktop` mirror |
 | `BusConnection`, `KWinScript`, `KWinPlacement`, `PlacementSync`, `WindowReport` | sd-bus; first placement through KWin; `Describe` |
+| `MoveRequests`, `StateSync` | a window's moves asked of the guest; maximise and minimise kept in step (§7.8) |
 
 ### 7.7 Checked, native
 
@@ -1672,6 +1673,67 @@ Not checked live: keyboard input (it would have taken the user's focus),
 cursor shapes, pointer lock and confinement, fullscreen, move/resize from
 the guest, the `--desktop` mirror, activation by token, and compositors
 other than KWin.
+
+### 7.8 Resizing, maximising and minimising
+
+Built on branch `resize` (review-and-redesign.md, Part 5, for the causes
+and the measurements).
+
+**Wire.** `FrameInSlot` carries the picture's `width` and `height`
+(u32 each, after `slot`); a frame of no pixels is refused. A ring
+(`SlotRing`) is at least the picture's size, not exactly it: the guest
+copies each frame to a slot's top left, and makes the ring again only
+when the picture outgrows it or leaves more than 512 pixels of a side
+unused (`picture_room.hpp`: the picture rounded up to 128, and 128
+more). The host shows the picture from the buffer's top left through
+its viewport. `SysCommand` SC_MINIMIZE is now sent by the host (the
+compositor minimised the mirror, on KWin).
+
+**Host.**
+
+| Class | What it is |
+|---|---|
+| `MoveRequests` | the only sender of one window's `WindowMove`: one ask out at a time; the newest size and place asked together once the last lands (the frame the guest reports is an ask, or any other change of the frame); a size keeps the edges a resize does not move; a guest slower than 250 ms asked the newest regardless, its late answers not taken for refusals |
+| `StateSync` | one state (maximised, minimised) kept the same on both sides: a change on one side asked of the other; that side's answer not sent back; what a side says while an ask of it is on its way ignored (1 s) |
+
+`WindowMirror`: the window's size is the picture's as the guest reports
+it (kept through a minimise); frames are shown in it one to one from the
+corner, cropped or over the backdrop. A size the compositor gives
+that it did not give before (a drag step, a restore, a tiling) is the
+window's at once and asked of the guest, unless the guest window is
+maximised or minimised or on its way to or from either; an answer of
+another size is the window's. A place KWin reports is asked of the
+guest only while neither side is in a state or on its way.
+`MirrorSurface`'s fit methods leave the commit to the caller, so a
+configure's acknowledgement is followed by one commit carrying its
+geometry.
+
+KWin: the placer moves a window (`frameGeometry` at its own size); the
+watcher reports frame, user's drag ended, maximised or fullscreen, and
+minimised (`maximizedChanged`, `fullScreenChanged`, `minimizedChanged`
+connected). `PlacementSync` emits `moved_here` (the guest window's
+picture to a point) and `minimized_here`, ignores state frames, does not
+follow guest reports that answer the mirror's own moves, and puts KWin's
+own placement back only for a move alone, never a resize or a user's
+drag. A window the guest resized itself, which KWin re-centres, is put
+back at the guest's corner.
+
+**Guest.** The capture pool has the same room as the ring: shrunk with
+`IDirect3D11CaptureFramePool::Recreate` in its session, grown with a new
+session (whose first frame comes at once). A frame larger than its pool
+(captured before it grew) is dropped and the pool made for it. After a
+window is restored, frames are dropped until one is the window's size
+(Windows' capture hands over the frame it took as the window was
+minimised). A moved window's frame is read again 20 ms after the move as
+well as 60 ms.
+
+**Checked.** The integration tests (README, Tests): twelve cases, all
+pass; all twelve fail against the host before this. Live on KDE Plasma
+6.8 at 1.2, frames on the GPU, Notepad (build 26200) with this host and
+guest, driven through KWin's scripting: a 20-step grow, maximise,
+restore, minimise, unminimise and a 20-step shrink settled each within
+70-330 ms with no stray move, no stub frame and no snap-back; the
+capture made 4 sessions and 4 rings for it (87 and 16 before).
 
 ## Appendix: binaries, symbols, method
 

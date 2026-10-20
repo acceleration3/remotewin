@@ -413,9 +413,68 @@ pixels itself, read-only, through `rwin_link`.
 
 ### Left
 
-- The conformance harness, against the new host.
+- The conformance harness, against the new host (Part 5's integration
+  tests cover resizing, maximising and minimising).
 - `xx_zones`, `xdg_toplevel_tag_v1`, `zwp_text_input_v3`, topmost
   (no protocol for keep-above).
 - The desktop preview's frames on the GPU (it takes pixels).
 - Placement on desktops other than KDE needs nothing more for
   correctness; a backend per desktop for first placement is optional.
+
+## Part 5 — resizing, maximising and minimising
+
+Written 2026-10-20 after "resizing is extremely laggy and buggy, even
+maximizing and minimizing". Measured first, with integration tests built
+for it (README, Tests) and a live run on KDE Plasma 6.8 at 1.2 against
+Notepad with frames on the GPU; then fixed, each fix with the case that
+catches it.
+
+### What was wrong
+
+| Cause | Evidence | Fix |
+|---|---|---|
+| A configure was acknowledged and answered by a commit of the old size: the window stayed at the guest's last picture until the guest answered | the mirror's frame followed a drag 55 ms behind (220 ms with a guest answering in 120 ms) | the compositor's size is the window's at once; the picture is shown from its corner, cropped or over the backdrop, until the guest's catches up (0.1 ms behind) |
+| `MirrorSurface::fit_*` committed by themselves, between the acknowledgement and the window geometry | KWin took the configure as answered with the old size and moved the window: the frame jittered 4 units at every step | they only set the view; the caller's commit carries it with the geometry |
+| KWin's placer set the frame's size with its place, from the mirror's last picture | every drag snapped back after the release (KWin's frame 1040x780 back to 800x600); a restore went to the maximised size, then to 400,180 instead of 200,150 | the placer moves only |
+| The "KWin's own placement, put it back" rule fired for maximises and drags within a second of a window appearing | "put at 0,0 by KWin as it was placed; put back" on a maximise | only for a move alone, never a resize, a state or a user's drag |
+| KWin reports a maximised frame before its maximise mode; reports had no state at all | the guest was moved to 0,0 at its old size as it maximised ("frame to 0,0 1505x1040"), and Windows then had it at 1,0 2559x1390 | reports carry maximised, fullscreen and minimised; no place is asked of the guest while either side is in a state or on its way |
+| Sizes and places went to the guest from two senders, each with a stale half (the size request kept the old corner, the placement the old size) | the moves undid each other: a left or top drag ended with the guest window back at its old size or corner | one sender per window (`MoveRequests`): newest size and place asked together once the last ask lands; a resize keeps the edges it does not move |
+| A size request's answer was any report; a timeout let the next out, and a late answer was taken for a refusal | with a guest slower than 250 ms the mirror took an old size as the guest's and snapped back | asks are kept until seen to land; only the newest, or a frame nothing asked for, answers |
+| Maximise and minimise followed by level: a guest report written before the maximise landed undid it, and answers were sent back | ping-pong; the restore cascade above | `StateSync`: changes only, an answer is not a change, nothing believed while an ask is on its way |
+| The compositor's minimise never reached the guest | the guest window stayed shown, captured, behind a minimised mirror | KWin's watcher reports `minimizedChanged`; the guest is sent SC_MINIMIZE and SC_RESTORE |
+| A size the guest took by itself was asked back to the last configure's | an installer page or a dialog's "more" snapped back | the mirror takes it, and goes back to the guest's corner when KWin re-centres it |
+| The mirror took its size from frames | after an unminimise, Windows' capture hands over the 185x27 frame it took as the window went: the mirror shrank to 154x22 and back for 70 ms | the window is the size the guest reports; frames are shown in it |
+| The guest made a new capture session and a new ring at every size | 30-70 ms to the new session, 20-30 ms to the ring, then exports and imports on the host, per step: 87 sessions and 16 rings in one live run | buffers with room (picture rounded up to 128, and 128 more); the pool made again in its session to shrink, a new session to grow: 4 and 4 |
+| A frame captured before the pool grew was cropped and sent | a 1408x1024 picture of a 1491x1030 window | dropped, and the pool made for the size it needed |
+| The guest read a moved window's frame again only 60 ms after the move | each step of a drag waited for it | read again at 20 ms and at 60 ms |
+
+### What the tests do
+
+`tests/integration/`: a headless KWin of the case's own in a private
+D-Bus session, the host under test as its client, KWin's fake input for
+the pointer, a KWin script watching the window, and a played guest
+(`FakeGuest`, `ModelWindow`) answering as Windows does after a set delay.
+Twelve cases: maximise and restore, and minimise and unminimise, each
+from the compositor and from the guest; corner drags out and in, and with
+guests answering in 120 and 400 ms; a top-edge drag that Windows begins
+(MoveSizeStart); a left-edge drag; a resize by KWin's scripting; and an
+application resizing its own window. Each judges where both sides settle
+and how soon, how many times a state changed, whether anything went back
+against a drag, how long the mirror's frame took to follow each pointer
+step, and what the guest was asked. Against the host before these
+fixes, all twelve fail.
+
+### Left
+
+- Frames on the GPU are not in the integration tests (the export socket
+  needs the device); the guest's capture and rings were checked live.
+- The guest's picture still lags a drag by about two of its answer
+  times: one ask is out at a time, so a slow application is not flooded.
+- A maximised guest window is its own work area's size, which is not the
+  compositor's maximised size: it is centred over black bars. Telling
+  the guest the host's work area (RAIL's Client System Parameters)
+  would make them one; every application of the guest shares that
+  setting, so it waits for the one mirror service (R4).
+- Off KWin, minimising a mirror does not reach the guest (xdg-shell says
+  nothing of it), and nothing places a window that resized itself.
+- A `wl_shm` buffer is still made per size on the pixel path.
