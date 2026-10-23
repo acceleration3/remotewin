@@ -38,6 +38,8 @@ add_executable(remotewin-guest
     windows/window_reader.cpp
     windows/window_surface.cpp
     windows/popup_intent.cpp
+    windows/process_tree.cpp
+    windows/session_boundary.cpp
     windows/window_icons.cpp
     windows/window_tracker.cpp
     windows/window_watch.cpp

@@ -5,7 +5,7 @@
 #include "host/loop/event_loop.hpp"
 #include "host/loop/signal.hpp"
 #include "host/placement/kwin_script.hpp"
-#include "host/placement/screen_mapping.hpp"
+#include "host/placement/output_layout.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -87,10 +87,10 @@ public:
     // done as a placement is (window_placed, where its frame then is).
     void send_to_output(std::uint64_t window, const std::string& output);
 
-    // The first output, as KWin lays it out - its primary: its corner and
-    // its scale. Nothing before KWin has said.
-    [[nodiscard]] std::optional<ScreenMapping> primary_output() const;
-    [[nodiscard]] std::string primary_output_name() const;
+    // The outputs as KWin lays them out, and the one that stands for the
+    // guest's monitor (``prefer_output``).
+    [[nodiscard]] const OutputLayout& outputs() const noexcept { return outputs_; }
+    void prefer_output(std::string name) { outputs_.prefer(std::move(name)); }
 
     // The corner the window's frame is at now, and how long it took.
     Signal<std::uint64_t, PointF, std::int64_t> window_placed;
@@ -100,11 +100,6 @@ public:
     Signal<std::uint64_t, const Report&> window_moved;
 
 private:
-    struct Output {
-        std::string name;
-        PointF origin;
-        double scale = 1.0;
-    };
     struct Pending {
         std::uint64_t window = 0;
         std::int64_t since = 0;
@@ -128,7 +123,7 @@ private:
     sd_bus_slot* object_ = nullptr;
     std::unique_ptr<KWinScript> watcher_;
     std::vector<Pending> pending_;
-    std::vector<Output> outputs_;
+    OutputLayout outputs_;
     std::unique_ptr<EventLoop::Timer> expiry_;
     std::unique_ptr<EventLoop::Timer> rewatch_;
     int watch_tries_ = 0;

@@ -54,14 +54,16 @@ void PlacementSync::follow_guest(const GuestWindow& window, std::uint32_t genera
 }
 
 void PlacementSync::place_at_guest(WindowId window, Tracked& tracked, bool remade) {
-    const std::optional<ScreenMapping> screen = guest_screen();
-    if (!screen.has_value()) {
+    const OutputLayout& outputs = kwin_.outputs();
+    if (!outputs.known()) {
         tracked.asked.reset();
         return;
     }
     const Point guest = tracked.guest;
-    if (!remade && tracked.reported.has_value() && screen->guest_point(tracked.reported->corner()) == guest) return;
-    const PointF corner = screen->host_point(guest);
+    if (!remade && tracked.reported.has_value() && outputs.guest_point(*tracked.reported) == guest) return;
+    // On the output the window is on now: a guest move is no move between
+    // outputs.
+    const PointF corner = outputs.host_point(guest, tracked.reported);
     RWIN_DEBUG("placement", "{} to {:.2f},{:.2f} (surface {}{})", window, corner.x, corner.y, tracked.generation,
                remade ? ", new" : "");
     tracked.asked = corner;
@@ -77,8 +79,8 @@ void PlacementSync::keep_on_guest_screen(WindowId window, std::uint32_t generati
     if (!active()) return;
     Tracked& tracked = tracked_[window.key()];
     if (tracked.on_guest_screen == generation) return;
-    const std::string output = kwin_.primary_output_name();
-    if (output.empty()) return;
+    if (!kwin_.outputs().known()) return;
+    const std::string output = kwin_.outputs().guest_output_name();
     tracked.on_guest_screen = generation;
     tracked.pending = true;
     RWIN_DEBUG("placement", "{} maximised on the guest's screen, {}", window, output);
@@ -148,10 +150,9 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
         return;
     }
     if (tracked.pending || !tracked.placeable || report.by_state || report.minimized) return;
-    const std::optional<ScreenMapping> screen = guest_screen();
-    if (!screen.has_value()) return;
-    const Point guest = screen->guest_point(report.frame.corner());
-    if (put_back(key, tracked, report, guest, *screen, before)) return;
+    if (!kwin_.outputs().known()) return;
+    const Point guest = kwin_.outputs().guest_point(report.frame);
+    if (put_back(key, tracked, report, guest, before)) return;
     if (guest == tracked.guest || guest == tracked.awaiting_guest) return;
     const bool resized =
         before.has_value() && (before->width != report.frame.width || before->height != report.frame.height);
@@ -178,11 +179,13 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
 // be reported after this side's: a move alone, of a window placed under a
 // second ago, that its user did not drag.
 bool PlacementSync::put_back(std::uint64_t key, Tracked& tracked, const KWinPlacement::Report& report, Point guest,
-                             const ScreenMapping& screen, const std::optional<BoxF>& before) {
+                             const std::optional<BoxF>& before) {
     const bool moved_alone = before.has_value() && before->width == report.frame.width
                              && before->height == report.frame.height;
     if (report.dragged || !moved_alone || !tracked.asked.has_value() || tracked.put_back || tracked.placed_at == 0
-        || now_ns() - tracked.placed_at >= kCompositorAfterPlacementNs || guest == screen.guest_point(*tracked.asked)) {
+        || now_ns() - tracked.placed_at >= kCompositorAfterPlacementNs
+        || guest == kwin_.outputs().guest_point(BoxF{tracked.asked->x, tracked.asked->y, report.frame.width,
+                                                      report.frame.height})) {
         return false;
     }
     RWIN_INFO("placement", "{} put at {:.2f},{:.2f} by KWin as it was placed; put back", WindowId::of_key(key),

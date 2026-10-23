@@ -783,7 +783,9 @@ void WindowMirror::button(std::uint32_t code, bool pressed) {
         // happens: left out, the guest holds the button down for good.
         if (buttons_held_ == 0) return;
         --buttons_held_;
-        if (held_at_.has_value()) {
+        if (kit_.grabber.locked_on(*this)) {
+            send_button(*guest, pressed_at_, false);
+        } else if (held_at_.has_value()) {
             kit_.link.send_pointer_at(PointerAt{window(), static_cast<std::int32_t>(std::lround(held_at_->x)),
                                                 static_cast<std::int32_t>(std::lround(held_at_->y)), *guest, false});
         } else if (const std::optional<Point> at = picture_point(*pointer_)) {
@@ -817,7 +819,7 @@ void WindowMirror::button(std::uint32_t code, bool pressed) {
     pressed_at_ = *at;
     pressed_button_ = *guest;
     send_button(*guest, *at, true);
-    if (relative_motion_ && !held_at_.has_value()) {
+    if (relative_motion_ && !kit_.grabber.locked_on(*this) && !held_at_.has_value()) {
         const Point screen = window_.picture_origin() + *at;
         held_at_ = PointF{static_cast<double>(screen.x), static_cast<double>(screen.y)};
     }

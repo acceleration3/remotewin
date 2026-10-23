@@ -50,11 +50,20 @@ std::vector<std::uint8_t> answer(std::uint32_t operation, std::uint32_t status, 
 void a_request_is_laid_out_as_the_device_reads_it() {
     const std::array<std::uint8_t, 32> bytes =
         ExportRequest{ExportRequest::Operation::Sync, 0x0102'0304'0506'0708ULL, 0x1122'3344'5566'7788ULL}.encode();
-    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    1,    0,    3,    0,    0,
+    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    3,    0,    3,    0,    0,
                                                 0,    0,    0,    0,    0,    0x08, 0x07, 0x06, 0x05, 0x04, 0x03,
                                                 0x02, 0x01, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
-    check(bytes == expected, "magic AVXQ, major 1, minor 1, operation, reserved, surface, tag; little-endian");
+    check(bytes == expected, "magic AVXQ, major 1, minor 3, operation, reserved, surface, tag; little-endian");
     check(ExportRequest{}.encode()[8] == 1, "a request is hello unless it says otherwise");
+}
+
+// An export and a sync say in the word at 12 that this side imports on
+// another GPU.
+void an_other_gpu_export_carries_its_flag_at_12() {
+    ExportRequest request{ExportRequest::Operation::Export, 5, 6};
+    request.flags = ExportRequest::kOtherGpu;
+    const std::array<std::uint8_t, 32> bytes = request.encode();
+    check(bytes[12] == 1 && bytes[13] == 0 && bytes[8] == 2, "operation 2, flag bit 0 at 12");
 }
 
 // A timing's refresh is where the others have their reserved word, and the
@@ -63,7 +72,7 @@ void a_timing_is_laid_out_as_the_device_reads_it() {
     ExportRequest timing{ExportRequest::Operation::Timing, 0, 9};
     timing.refresh_millihz = 144000;
     timing.blank = 0x0102'0304'0506'0708ULL;
-    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    1,    0,    5, 0, 0, 0, 0x80, 0x32, 0x02, 0,
+    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    3,    0,    5, 0, 0, 0, 0x80, 0x32, 0x02, 0,
                                                 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 9, 0, 0, 0, 0,    0,    0,    0};
     check(timing.encode() == expected, "operation 5, refresh at 12, the blank at 16");
 }
@@ -187,6 +196,7 @@ void a_copy_is_waited_for_until_it_ran() {
 
 int main() {
     a_request_is_laid_out_as_the_device_reads_it();
+    an_other_gpu_export_carries_its_flag_at_12();
     a_timing_is_laid_out_as_the_device_reads_it();
     a_hello_names_the_gpu();
     an_export_says_how_the_picture_lies();

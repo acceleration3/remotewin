@@ -14,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace rwin::host {
 
@@ -54,7 +55,7 @@ public:
     // asked to be, and is not followed.
     void follow_guest(const GuestWindow& window, std::uint32_t generation, bool placeable, bool answering);
     // A mirror maximised for the guest is maximised on the guest's own
-    // screen - the primary output, here - as Windows maximises a window on
+    // screen - the output that stands for it, here - as Windows maximises a window on
     // the monitor it is on; KWin would maximise it on the one its user is
     // on. Once per surface.
     void keep_on_guest_screen(WindowId window, std::uint32_t generation);
@@ -73,9 +74,11 @@ public:
     // corner rather than the guest window following KWin's.
     void guest_resized(WindowId window);
 
-    // Where the guest's screen - this desktop's primary output - is, as the
-    // compositor lays it out; nothing where it does not say.
-    [[nodiscard]] std::optional<ScreenMapping> guest_screen() const { return kwin_.primary_output(); }
+    // The output that stands for the guest's monitor (OutputLayout): the one
+    // a mirror maximised for the guest is sent to, and the one a window not
+    // seen yet is placed on. Mirrors on any other output are kept on the
+    // guest's monitor all the same.
+    void prefer_output(std::string name) { kwin_.prefer_output(std::move(name)); }
 
     // The mirror of a window was put somewhere here: its guest window's
     // picture is to be at this point of the guest's screen.
@@ -130,7 +133,7 @@ private:
     // A place KWin chose for a window just placed, rather than its user:
     // put back where this side placed it. True when it was.
     bool put_back(std::uint64_t key, Tracked& tracked, const KWinPlacement::Report& report, Point guest,
-                  const ScreenMapping& screen, const std::optional<BoxF>& before);
+                  const std::optional<BoxF>& before);
 
     KWinPlacement kwin_;
     std::unordered_map<std::uint64_t, Tracked> tracked_;

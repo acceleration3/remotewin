@@ -1,6 +1,7 @@
 #include "guest/windows/window_reader.hpp"
 
 #include "guest/windows/app_id_resolver.hpp"
+#include "guest/windows/process_tree.hpp"
 #include "guest/windows/desktop_settings.hpp"
 #include "guest/windows/shell_views.hpp"
 #include "guest/windows/wide_text.hpp"
@@ -326,6 +327,7 @@ WindowFields::AppId WindowReader::read_app_id(void* shown) const {
     DWORD process_id = 0;
     ::GetWindowThreadProcessId(static_cast<HWND>(window), &process_id);
     app.process_id = process_id;
+    app.tree = processes_.tree_of(process_id);
     HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
     if (process == nullptr) return app;
     std::array<wchar_t, MAX_PATH * 2> path{};

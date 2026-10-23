@@ -20,7 +20,12 @@ std::uint16_t FeatureSet::version(std::string_view name) const noexcept {
 }
 
 std::string FeatureSet::refusal() const {
-    if (has(Feature::kWindows)) return {};
+    if (has(Feature::kWindows) && version(Feature::kAppId) >= Feature::kAppIdVersion) return {};
+    if (has(Feature::kWindows)) {
+        return "the other half's \"" + std::string(Feature::kAppId) + "\" is older than this build's, which a mirror "
+               "needs to tell the launched program's windows: it is from another build. Put the halves built "
+               "together on both sides";
+    }
     return "the other half does not speak \"" + std::string(Feature::kWindows)
            + "\", which a mirror needs: it is from another build. Put the halves built together on both sides";
 }

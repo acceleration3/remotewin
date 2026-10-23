@@ -81,7 +81,7 @@ workspace.windowAdded.connect(watch);
 function outputs() {{
     callDBus(service, "{1}", "{2}", "outputs",
              workspace.screens.map(function(s) {{
-                 return s.name + " " + s.geometry.x + " " + s.geometry.y + " " + s.devicePixelRatio;
+                 return s.name + " " + s.geometry.x + " " + s.geometry.y + " " + s.geometry.width + " " + s.geometry.height + " " + s.devicePixelRatio;
              }}).join(";"));
 }}
 workspace.screensChanged.connect(outputs);
@@ -338,22 +338,19 @@ void KWinPlacement::moved(std::string_view report) {
 
 // KWin has each output's scale itself, fraction and all.
 void KWinPlacement::outputs(std::string_view report) {
-    outputs_.clear();
+    std::vector<OutputLayout::Output> found;
     for (const std::string_view entry : words_of(report, ';')) {
         const std::vector<std::string_view> parts = words_of(entry, ' ');
-        if (parts.size() != 4) continue;
-        outputs_.push_back(Output{std::string(parts[0]), PointF{to_double(parts[1]), to_double(parts[2])},
-                                  to_double(parts[3])});
-        RWIN_INFO("placement", "output {} at {},{} scale {}", parts[0], parts[1], parts[2], parts[3]);
+        constexpr std::size_t kParts = 6;
+        if (parts.size() != kParts) continue;
+        found.push_back(OutputLayout::Output{std::string(parts[0]), PointF{to_double(parts[1]), to_double(parts[2])},
+                                             PointF{to_double(parts[3]), to_double(parts[4])}, to_double(parts[5])});
+        RWIN_INFO("placement", "output {} at {},{} {}x{} scale {}", parts[0], parts[1], parts[2], parts[3], parts[4],
+                  parts[5]);
     }
+    outputs_.replace(std::move(found));
+    if (outputs_.known()) RWIN_INFO("placement", "the guest's monitor is output {}", outputs_.guest_output_name());
 }
-
-std::optional<ScreenMapping> KWinPlacement::primary_output() const {
-    if (outputs_.empty()) return std::nullopt;
-    return ScreenMapping{outputs_.front().origin, outputs_.front().scale};
-}
-
-std::string KWinPlacement::primary_output_name() const { return outputs_.empty() ? std::string() : outputs_.front().name; }
 
 void KWinPlacement::expire() {
     const std::int64_t now = now_ns();

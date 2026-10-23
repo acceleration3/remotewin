@@ -24,6 +24,9 @@ struct Feature {
     static constexpr std::string_view kMoveSize = "movesize";
     // The APPID window field.
     static constexpr std::string_view kAppId = "appid";
+    // 2: the field carries the window's process tree (AppId::tree), which
+    // scopes a mirror to the launched program's processes. A mirror needs it.
+    static constexpr std::uint16_t kAppIdVersion = 2;
     // The POPUP window field, and PopupDismiss.
     static constexpr std::string_view kPopupIntent = "popup.intent";
     // WindowIcon.

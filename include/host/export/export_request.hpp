@@ -12,7 +12,10 @@ struct ExportRequest {
     static constexpr std::size_t kBytes = 32;
     static constexpr std::uint32_t kMagic = 0x51585641;  // "AVXQ"
     static constexpr std::uint16_t kMajor = 1;
-    static constexpr std::uint16_t kMinor = 1;
+    static constexpr std::uint16_t kMinor = 3;
+    // An export's or a sync's flag: this side imports on another GPU than
+    // the surface's, and is handed a copy of it in linear system memory.
+    static constexpr std::uint32_t kOtherGpu = 1;
 
     enum class Operation : std::uint32_t {
         // Which GPU the surfaces are on.
@@ -33,6 +36,8 @@ struct ExportRequest {
     std::uint64_t surface = 0;
     // This side's own, answered back.
     std::uint64_t tag = 0;
+    // An export's or a sync's: kOtherGpu, or 0.
+    std::uint32_t flags = 0;
     // A timing's: the refresh, and a moment on CLOCK_MONOTONIC in
     // nanoseconds the guest is to blank in phase with.
     std::uint32_t refresh_millihz = 0;

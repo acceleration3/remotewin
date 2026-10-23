@@ -1420,10 +1420,43 @@ Each question as it was first asked, then what building wire 6 settled.
    program's path and a Store application's AUMID, and groups mirrors by
    the AUMIDs remotewin reports (`APP <aumid>` on stdout): a second mirror
    of an AUMID another mirror shows is closed in favour of the first.
-   Left open: a launcher stub that hands over to a process of another
-   image and AUMID (an app execution alias, a broker) is not followed;
-   LSW passes `--aumid` for Store applications, which covers the alias
-   case it launches.
+   *Wire 7: the launched program's process tree.* A launcher's one window
+   is often a helper's (Steam's is steamwebhelper.exe's, a child of
+   steam.exe), so image, pid and AUMID alone lose it. A mirror also covers
+   the launched process's whole tree: the topmost ancestor that is no part
+   of the session itself - the walk up from a process through verified
+   parents stops before the first of explorer, svchost, RuntimeBroker,
+   sihost, services, wininit, winlogon, userinit, dllhost, or LSW's own
+   agent and window half (`SessionBoundary`, the one list), so a Store
+   activation roots at the application itself - and every process under
+   that root, however long ago it started and whether or not its parent is
+   still there. The guest decides who is in a tree (`ProcessTree`) and
+   sends with each window the processes from its own up to its tree's root
+   (`WindowFields::AppId::tree`, depth at most 16), each as a pid and its
+   creation time: Windows gives a pid out again, so the agent reads the
+   launched process's creation time at the launch (`pid_created` in its
+   reply, passed on as `--pid-created`) and a window belongs when the
+   launched process, pid and time, is among them, or its tree's root is the
+   root of the launched process's tree, which the first window of the
+   launched process or of a descendant names. `ProcessTree` remembers each
+   process it has read as (parent, creation time, boundary, when it was last
+   seen alive), learned while it was alive - a window's own process and its
+   ancestors as it is asked, and everything alive at most once a second - so
+   a child whose parent has exited is still traced to it. A recorded parent
+   pid is believed only if a process of that pid was created before the child
+   and last seen alive after the child was made: a reused pid, and an earlier
+   holder of the pid, end the walk. A process whose image cannot be read (the
+   SYSTEM agent's) is a boundary. When the memory fills, dead processes
+   nothing alive descends from are forgotten, oldest first. A tree's root is
+   claimed once as `tree:<pid>:<time>` (`APP tree:<pid>:<time>` on stdout),
+   and the manager closes a second mirror claiming a root another shows, as
+   for an AUMID. The conformance harness's `same_app_id = false` turns the tree
+   (as the AUMID grouping) off. Wire 7's `appid` feature is version 2, and a
+   half with the older one is refused at the hello.
+   Left open: a launcher stub that hands over to a process outside its
+   tree and of another image and AUMID (an app execution alias, a broker
+   that is a boundary) is not followed; LSW passes `--aumid` for Store
+   applications, which covers the alias case it launches.
 4. **Foreground rights.** *Built:* the hotkey trick, as rdpshell does it
    (§2.6), on the marker's thread, after a plain `SetForegroundWindow`
    that is checked. Live: Activate after the marker held the foreground
@@ -1725,6 +1758,27 @@ follow guest reports that answer the mirror's own moves, and puts KWin's
 own placement back only for a move alone, never a resize or a user's
 drag. A window the guest resized itself, which KWin re-centres, is put
 back at the guest's corner.
+
+**Outputs.** The guest has one monitor and the host may have several. The
+manager names the output its main window is on (`--output <name>`, the
+Wayland output name, `QScreen::name()`), and that output stands for the
+guest's monitor: its pixel size is the guest's, a maximised mirror is sent
+to it, and a window not seen yet is placed on it; where the name is not
+among KWin's outputs it is the first output. `OutputLayout` holds what the
+watcher script reports for each output (name, corner, logical size, scale)
+and maps a mirror on *any* output: the output a frame's centre is on gives
+its origin and scale, so a spot of DP-2 and the same spot of HDMI-A-3 are
+that spot of the guest monitor in device pixels, and the guest window is
+clamped to lie whole on the monitor - Windows pushes a window that is off
+it back, and stops drawing one dragged off it. A guest move (`follow_guest`)
+is placed on the output the mirror is on now, from the same reported frame,
+so a window moving between outputs is never a guest move in itself: only
+the user's drag changes which output the centre is on, the reported place
+maps to a guest point once, the guest's echo of it is consumed
+(`awaiting_guest`), and asked back it is the same host place. A rescale at
+the new output's scale keeps the logical frame, so the mapping gives the
+same place before and after, and the size settles after one request to the
+guest.
 
 **Guest.** The capture pool has the same room as the ring: shrunk with
 `IDirect3D11CaptureFramePool::Recreate` in its session, grown with a new

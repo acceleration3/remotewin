@@ -10,6 +10,9 @@ struct ExportedLayout {
     // DRM_FORMAT_ARGB8888 ("AR24"): B8G8R8A8 in memory, what the guest's
     // rings are made of.
     static constexpr std::uint32_t kArgb8888 = 0x34325241;
+    // DRM_FORMAT_MOD_LINEAR: rows, one plane at offset 0; what a surface
+    // copied to system memory for another GPU is laid out by.
+    static constexpr std::uint64_t kLinearModifier = 0;
     // DRM_FORMAT_MOD_INVALID: the layout the driver keeps with the memory,
     // readable only on the same GPU.
     static constexpr std::uint64_t kImplicitModifier = 0x00FF'FFFF'FFFF'FFFFULL;

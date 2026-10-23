@@ -114,6 +114,7 @@ add_library(rwin_host STATIC
     mirror/window_report.cpp
     placement/kwin_placement.cpp
     placement/kwin_script.cpp
+    placement/output_layout.cpp
     placement/placement_sync.cpp
     wayland/activation.cpp
     wayland/backdrop.cpp

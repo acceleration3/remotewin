@@ -53,7 +53,8 @@ runtime, Qt or compositor behaviour; not run.
   xdg-shell. [I]
 - No `XDG_ACTIVATION_TOKEN` anywhere: GNOME will refuse raises. [P][I]
 - One guest screen, the host's primary output; a mirror on another output
-  maps outside it and Windows clamps menus and dialogs. [P][I]
+  maps outside it and Windows clamps menus and dialogs. [P][I] (Fixed:
+  `OutputLayout`, rail-model.md "Outputs".)
 - Popups are placed with Windows' screen-edge flipping already applied,
   against a guest screen unrelated to where the host window is. [I]
 

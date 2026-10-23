@@ -500,8 +500,8 @@ void a_hello_names_its_features() {
 }
 
 void features_are_active_at_the_lower_version() {
-    const std::vector<rwin::Feature> ours{{"windows", 2}, {"input", 1}, {"cursor", 3}};
-    const std::vector<rwin::Feature> theirs{{"windows", 1}, {"cursor", 1}, {"latency", 1}};
+    const std::vector<rwin::Feature> ours{{"windows", 2}, {"input", 1}, {"cursor", 3}, {"appid", 2}};
+    const std::vector<rwin::Feature> theirs{{"windows", 1}, {"cursor", 1}, {"latency", 1}, {"appid", 2}};
     const rwin::FeatureSet active{ours, theirs};
     check(active.version("windows") == 1 && active.version("cursor") == 1, "both list it: the lower version");
     check(!active.has("input") && !active.has("latency"), "one lists it: not active");
@@ -509,6 +509,9 @@ void features_are_active_at_the_lower_version() {
     const rwin::FeatureSet bare{ours, {{"input", 1}}};
     check(!bare.refusal().empty() && bare.refusal().find("windows") != std::string::npos,
           "a peer without windows is refused, naming what it lacks");
+    const rwin::FeatureSet old_appid{ours, {{"windows", 1}, {"appid", 1}}};
+    check(!old_appid.refusal().empty() && old_appid.refusal().find("appid") != std::string::npos,
+          "a peer whose appid lacks the process tree is refused");
     check(!rwin::FeatureSet{}.has("windows"), "before the hellos nothing is active");
 }
 
@@ -526,7 +529,8 @@ rwin::WindowFields sample_fields() {
     fields.geometry.picture = {2, 3, 1000, 760};
     fields.taskbar = rwin::WindowFields::kTaskbarButton | rwin::WindowFields::kInSwitchers;
     fields.z_glue = true;
-    fields.app_id = {"Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", 4242, "C:\\Program Files\\notepad.exe"};
+    fields.app_id = {"Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", 4242, "C:\\Program Files\\notepad.exe",
+                     {{4242, 90000}, {4000, 80000}, {3900, 70000}}};
     fields.class_name = "Notepad";
     fields.layering = {2, 128, 0x00FF00FF};
     fields.band = 1;

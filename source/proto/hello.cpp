@@ -10,7 +10,7 @@ namespace rwin {
 
 namespace {
 
-constexpr std::string_view kBuild = "remotewin wire 6";
+constexpr std::string_view kBuild = "remotewin wire 7";
 
 }  // namespace
 
@@ -21,7 +21,7 @@ Hello Hello::ours() {
          {Feature::kWindows, Feature::kInput, Feature::kFramesPixels, Feature::kFramesShared, Feature::kCursor,
           Feature::kPointerGrab, Feature::kLatency, Feature::kMoveSize, Feature::kAppId, Feature::kMonitor,
           Feature::kIcons}) {
-        hello.features.push_back(Feature{std::string(name), 1});
+        hello.features.push_back(Feature{std::string(name), name == Feature::kAppId ? Feature::kAppIdVersion : std::uint16_t{1}});
     }
     // 2: POPUP carries the popup's kind and where it was meant to open, and
     // the host can dismiss one.

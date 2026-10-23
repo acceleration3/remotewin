@@ -31,6 +31,7 @@ struct SlotRing;
 
 namespace rwin::host {
 
+class CompositorGpu;
 class GuestLink;
 class SlotLease;
 
@@ -41,10 +42,14 @@ class SlotLease;
 // then handed on with the fence that covers that copy on the GPU.
 //
 // The guest is told at its hello whether to send frames this way
-// (FrameRoute): only when the export socket answers and its GPU is the one
-// the compositor composes on - the surfaces come in the layout their driver
-// keeps with the memory, which only that GPU can read. A window whose surfaces cannot be exported or
-// drawn here has its frames sent as pixels from then on (WindowPixels),
+// (FrameRoute): only when the export socket answers and the compositor can
+// take what it exports. On the GPU the compositor composes on, the surfaces
+// come in their own memory, in the layout their driver keeps with it. On
+// another, each export asks for the device's copy of the surface in linear
+// system memory (ExportRequest::kOtherGpu), made on the surfaces' GPU on
+// every sync, which the compositor's GPU can read: the frame crosses the bus
+// once and never the guest's network. A window whose surfaces cannot be
+// exported or drawn here has its frames sent as pixels from then on (WindowPixels),
 // and the others keep theirs; only the export connection itself failing
 // sends every window back to pixels, for good: a mirror that shows frames
 // as pixels is a mirror, and one that waits on a broken path is not.
@@ -62,11 +67,13 @@ public:
     SharedFrameFeed& operator=(SharedFrameFeed&&) = delete;
 
     // Connects to the export socket at ``path`` and checks the GPU it
-    // names against ``composing``, the compositor's (nothing where it does
-    // not say, and a buffer it cannot take sends that window back to
+    // names against the one ``compositor`` composes on (nothing where it
+    // does not say, and a buffer it cannot take sends that window back to
     // pixels): offered() from then on, unless either fails, and then frames
-    // come as pixels, with a line saying why.
-    void open(const std::string& path, const std::optional<PciAddress>& composing);
+    // come as pixels, with a line saying why. On another GPU than the
+    // surfaces', the frames cross in linear system memory, and only if the
+    // compositor takes linear ARGB8888.
+    void open(const std::string& path, const CompositorGpu& compositor);
     [[nodiscard]] bool offered() const noexcept { return socket_.has_value(); }
 
     // Something here cannot draw the frames from the GPU (``why``): they
@@ -132,6 +139,11 @@ private:
     // not taken.
     std::unordered_set<WindowId> pixels_only_;
     std::uint64_t next_tag_ = 0;
+    // The compositor is on another GPU than the surfaces: exports and syncs
+    // ask for the copy in system memory.
+    bool other_gpu_ = false;
+    // The device said it cannot make that copy, and this side said so.
+    bool twin_refusal_said_ = false;
     // How often a surface's export has found nothing yet, by surface.
     std::map<std::uint64_t, int> export_asks_;
     // An export asked again this often, this far apart, before the GPU is

@@ -123,6 +123,11 @@ void WindowFields::write(MessageWriter& out, std::uint32_t mask) const {
         out.put_string(app_id.aumid);
         out.put_u32(app_id.process_id);
         out.put_string(app_id.image);
+        out.put_u8(static_cast<std::uint8_t>(app_id.tree.size()));
+        for (const ProcessRef& process : app_id.tree) {
+            out.put_u32(process.pid);
+            out.put_u64(process.created);
+        }
     }
     if ((mask & kClass) != 0) out.put_string(class_name);
     if ((mask & kLayering) != 0) {
@@ -159,6 +164,15 @@ bool WindowFields::read(MessageReader& in, WindowFields& into, std::uint32_t& ma
         into.app_id.aumid = in.string();
         into.app_id.process_id = in.u32();
         into.app_id.image = in.string();
+        const std::uint8_t depth = in.u8();
+        if (!in.ok() || depth > AppId::kMostTree) return false;
+        into.app_id.tree.clear();
+        for (std::uint8_t at = 0; at < depth; ++at) {
+            ProcessRef process;
+            process.pid = in.u32();
+            process.created = in.u64();
+            into.app_id.tree.push_back(process);
+        }
     }
     if ((mask & kClass) != 0) into.class_name = in.string();
     if ((mask & kLayering) != 0) {

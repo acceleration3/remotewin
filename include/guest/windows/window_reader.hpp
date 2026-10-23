@@ -10,6 +10,7 @@ namespace rwin::guest {
 
 class AppIdResolver;
 class DesktopSettings;
+class ProcessTree;
 class ShellViews;
 class WindowDirectory;
 
@@ -36,8 +37,8 @@ public:
     };
 
     WindowReader(const WindowDirectory& directory, const AppIdResolver& app_ids, const ShellViews& shell,
-                 const DesktopSettings& settings) noexcept
-        : directory_(directory), app_ids_(app_ids), shell_(shell), settings_(settings) {}
+                 const DesktopSettings& settings, ProcessTree& processes) noexcept
+        : directory_(directory), app_ids_(app_ids), shell_(shell), settings_(settings), processes_(processes) {}
 
     // IsWindowVisible, or redraw-suspended: WM_SETREDRAW(FALSE) clears
     // WS_VISIBLE, and user32 marks such a window with the SysSetRedraw
@@ -70,6 +71,8 @@ private:
     const AppIdResolver& app_ids_;
     const ShellViews& shell_;
     const DesktopSettings& settings_;
+    // Remembers what it learns of processes, as a reading asks.
+    ProcessTree& processes_;
 };
 
 }  // namespace rwin::guest

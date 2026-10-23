@@ -106,10 +106,29 @@ struct WindowFields {
 
     // The taskbar's identity for the window (IApplicationResolver), and the
     // process it runs in.
+    // A process as Windows tells it from another that was given its pid
+    // later: the pid and when it was created (FILETIME ticks).
+    struct ProcessRef {
+        std::uint32_t pid = 0;
+        std::uint64_t created = 0;
+
+        [[nodiscard]] bool operator==(const ProcessRef&) const noexcept = default;
+    };
+
     struct AppId {
+        // Most processes of ``tree``: a program's tree is not deeper.
+        static constexpr std::size_t kMostTree = 16;
+
         std::string aumid;
         std::uint32_t process_id = 0;
         std::string image;
+        // The process, then its parents nearest first (each verified a parent
+        // by creation time), up to the root of the
+        // program's process tree - the topmost process that is not the
+        // session's own (explorer, a service host, a broker): the pids a
+        // window of any process of a launched program has in common with the
+        // program's. Empty where the guest could not read the process.
+        std::vector<ProcessRef> tree;
 
         [[nodiscard]] bool operator==(const AppId&) const = default;
     };

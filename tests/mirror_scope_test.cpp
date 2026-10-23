@@ -77,7 +77,7 @@ void a_hidden_owner_is_no_owner() {
 void the_image_matches_as_windows_compares_paths() {
     GuestWindows windows;
     static_cast<void>(windows.tell(WindowId{0x10, 1}, made_by(kOther, {}, "C:\\Program Files\\App\\app.exe")));
-    const MirrorScope scope{MirrorScope::Launch{std::nullopt, "c:/program files/app/APP.EXE", {}}};
+    const MirrorScope scope{MirrorScope::Launch{std::nullopt, {}, "c:/program files/app/APP.EXE", {}}};
     check(scope.belongs(WindowId{0x10, 1}, windows), "case and slashes do not matter");
 }
 
@@ -93,11 +93,52 @@ void an_application_id_is_claimed_and_followed() {
     check(scope.claim(windows).empty(), "and not again");
     check(scope.belongs(WindowId{0x20, 2}, windows), "another process's window of that id then belongs");
     check(!scope.belongs(WindowId{0x30, 3}, windows), "one of another id does not");
-    MirrorScope exact{MirrorScope::Launch{kApp, {}, {}, false}};
+    MirrorScope exact{MirrorScope::Launch{kApp, {}, {}, {}, false}};
     check(exact.claim(windows).empty() && !exact.belongs(WindowId{0x20, 2}, windows),
           "kept to the process alone, another process of the same id is not the application's");
-    const MirrorScope store{MirrorScope::Launch{std::nullopt, {}, {"Other.App"}}};
+    const MirrorScope store{MirrorScope::Launch{std::nullopt, {}, {}, {"Other.App"}}};
     check(store.belongs(WindowId{0x30, 3}, windows), "an id given at launch belongs from the start");
+}
+
+// Steam's one window is its web helper's, a child of the launcher the mirror was
+// started for; the tree's root is the launcher, whose parent is the shell.
+void the_launched_programs_whole_process_tree_belongs() {
+    GuestWindows windows;
+    const WindowId helper{0x10, 1};
+    const WindowId sibling{0x20, 2};
+    const WindowId parent{0x30, 3};
+    const WindowId stranger{0x40, 4};
+    WindowFields grandchild = made_by(900);
+    grandchild.app_id.tree = {{900, 9}, {800, 8}, {kApp, 4}, {300, 3}};   // helper <- child <- launched <- root
+    static_cast<void>(windows.tell(helper, grandchild));
+    WindowFields cousin = made_by(901);
+    cousin.app_id.tree = {{901, 10}, {301, 5}, {300, 3}};   // beside the launched process, under its root
+    static_cast<void>(windows.tell(sibling, cousin));
+    WindowFields root = made_by(300);
+    root.app_id.tree = {{300, 3}};
+    static_cast<void>(windows.tell(parent, root));
+    WindowFields other = made_by(kOther);
+    other.app_id.tree = {{kOther, 7}, {55, 2}};
+    static_cast<void>(windows.tell(stranger, other));
+    MirrorScope scope{MirrorScope::Launch{kApp, {}, {}}};
+    check(scope.belongs(helper, windows), "a descendant's window belongs with no window of the launched process");
+    check(!scope.belongs(sibling, windows) && !scope.belongs(parent, windows),
+          "before the root is known, only descendants of the launched process are certain");
+    check(scope.claim(windows) == std::vector<std::string>{"tree:300:3"}, "the tree's root is claimed once");
+    check(scope.claim(windows).empty(), "and not again");
+    check(scope.belongs(sibling, windows) && scope.belongs(parent, windows),
+          "the root and everything under it then belong, parents included");
+    check(!scope.belongs(stranger, windows), "another tree does not");
+    MirrorScope exact{MirrorScope::Launch{kApp, {}, {}, {}, false}};
+    check(!exact.belongs(helper, windows) && exact.claim(windows).empty(),
+          "kept to the process alone, no tree is followed");
+    // Windows gives a pid out again: the launched process, as created at
+    // tick 4, is not a process of the same pid created at tick 99.
+    MirrorScope created{MirrorScope::Launch{kApp, 4, {}, {}}};
+    check(created.belongs(helper, windows), "the same pid and creation time is the launched process");
+    MirrorScope reused{MirrorScope::Launch{kApp, 99, {}, {}}};
+    check(!reused.belongs(helper, windows) && reused.claim(windows).empty(),
+          "the same pid created later is another process, and its tree no part of this one");
 }
 
 void a_loop_ends() {
@@ -144,6 +185,7 @@ int main() {
     the_launched_process_and_what_it_owns();
     a_hidden_owner_is_no_owner();
     the_image_matches_as_windows_compares_paths();
+    the_launched_programs_whole_process_tree_belongs();
     an_application_id_is_claimed_and_followed();
     a_loop_ends();
     a_resync_forgets_what_it_does_not_say();

@@ -51,7 +51,7 @@ Hello hello() {
     ours.build = "remotewin integration guest";
     for (const std::string_view name : {Feature::kWindows, Feature::kInput, Feature::kFramesPixels,
                                         Feature::kFramesShared, Feature::kMoveSize, Feature::kAppId}) {
-        ours.features.push_back(Feature{std::string(name), 1});
+        ours.features.push_back(Feature{std::string(name), name == Feature::kAppId ? Feature::kAppIdVersion : std::uint16_t{1}});
     }
     return ours;
 }

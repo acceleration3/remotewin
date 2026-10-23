@@ -56,12 +56,18 @@ Exits with status 3 when the guest half is from another build.
                            $RWIN_EXPORT_SOCKET.
   --pid <pid>              The launched guest process: its windows are the
                            application's.
+  --pid-created <ticks>    When that process was created (FILETIME ticks): with
+                           it, a window of a process that only has the same pid
+                           is not the application's.
   --image <path>           The launched program's path in the guest: windows of
                            any process of it are the application's.
   --aumid <id>             An AppUserModelID the application is known by
                            (repeatable). With none of --pid, --image and
                            --aumid, every guest window is mirrored.
   --app-id <id>            Desktop identity these windows present as.
+  --output <name>          The host output (Wayland output name, e.g. DP-2)
+                           that stands for the guest's monitor; the first
+                           output where there is none of that name.
   --desktop                Mirror the guest's whole primary monitor as one
                            window, rather than an application's windows.
   --title <title>          The title of the --desktop window.
@@ -79,12 +85,13 @@ struct Options {
     std::string export_socket;
     rwin::host::MirrorScope::Launch launch;
     std::string app_id;
+    std::string output;
     bool desktop = false;
     std::string title = "Guest desktop";
     bool managed = false;
 };
 
-enum Option : int { kPort = 1, kExport, kPid, kImage, kAumid, kAppId, kDesktop, kTitle, kManaged, kHelp, kVersion };
+enum Option : int { kPort = 1, kExport, kPid, kPidCreated, kImage, kAumid, kAppId, kOutput, kDesktop, kTitle, kManaged, kHelp, kVersion };
 
 template <typename Number>
 bool parse_number(std::string_view text, Number& into) {
@@ -96,8 +103,10 @@ bool parse_number(std::string_view text, Number& into) {
 std::optional<Options> parse(int argc, char** argv, int& status) {
     static const option kOptions[] = {
         {"port", required_argument, nullptr, kPort},     {"export-socket", required_argument, nullptr, kExport},
-        {"pid", required_argument, nullptr, kPid},       {"image", required_argument, nullptr, kImage},
+        {"pid", required_argument, nullptr, kPid},       {"pid-created", required_argument, nullptr, kPidCreated},
+        {"image", required_argument, nullptr, kImage},
         {"aumid", required_argument, nullptr, kAumid},   {"app-id", required_argument, nullptr, kAppId},
+        {"output", required_argument, nullptr, kOutput},
         {"desktop", no_argument, nullptr, kDesktop},     {"title", required_argument, nullptr, kTitle},
         {"managed", no_argument, nullptr, kManaged},     {"help", no_argument, nullptr, kHelp},
         {"version", no_argument, nullptr, kVersion},     {nullptr, 0, nullptr, 0},
@@ -124,9 +133,20 @@ std::optional<Options> parse(int argc, char** argv, int& status) {
                 }
                 options.launch.process_id = pid;
                 break;
+            case kPidCreated: {
+                std::uint64_t created = 0;
+                if (!parse_number(value, created)) {
+                    std::fprintf(stderr, "Invalid --pid-created\n");
+                    status = EXIT_FAILURE;
+                    return std::nullopt;
+                }
+                options.launch.process_created = created;
+                break;
+            }
             case kImage: options.launch.image = value; break;
             case kAumid: options.launch.aumids.emplace_back(value); break;
             case kAppId: options.app_id = value; break;
+            case kOutput: options.output = value; break;
             case kDesktop: options.desktop = true; break;
             case kTitle: options.title = value; break;
             case kManaged: options.managed = true; break;
@@ -135,7 +155,7 @@ std::optional<Options> parse(int argc, char** argv, int& status) {
                 status = EXIT_SUCCESS;
                 return std::nullopt;
             case kVersion:
-                std::puts("remotewin wire 6");
+                std::puts("remotewin wire 7");
                 status = EXIT_SUCCESS;
                 return std::nullopt;
             default:
@@ -204,7 +224,7 @@ int run(const Options& options) {
     // its frames are to come.
     SharedFrameFeed frames{loop, link};
     if (!options.export_socket.empty()) {
-        frames.open(options.export_socket, gpu.pci());
+        frames.open(options.export_socket, gpu);
     } else {
         RWIN_INFO("boot", "no export socket: frames come as pixels");
     }
@@ -246,7 +266,7 @@ int run(const Options& options) {
               options.launch.image, options.launch.aumids.size());
     MirrorScope scope{options.launch};
     if (scope.everything()) RWIN_INFO("boot", "nothing to go by: every guest window is mirrored");
-    MirrorSession session{MirrorSession::Parts{loop, link, frames, bus, surfaces}, std::move(scope), options.app_id,
+    MirrorSession session{MirrorSession::Parts{loop, link, frames, bus, surfaces, options.output}, std::move(scope), options.app_id,
                           take_activation_token()};
     const WindowReport report{bus, session};
     if (control) {
@@ -269,7 +289,7 @@ int main(int argc, char** argv) {
     // on the way out.
     std::signal(SIGPIPE, SIG_IGN);
     rwin::Logger::instance().opened("remotewin");
-    RWIN_INFO("boot", "wire 6");
+    RWIN_INFO("boot", "wire 7");
     try {
         return run(*options);
     } catch (const std::exception& error) {

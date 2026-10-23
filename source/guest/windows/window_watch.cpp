@@ -2,6 +2,7 @@
 
 #include "guest/session/outbox.hpp"
 #include "guest/windows/app_id_resolver.hpp"
+#include "guest/windows/process_tree.hpp"
 #include "guest/windows/move_size_report.hpp"
 #include "guest/windows/shell_views.hpp"
 #include "guest/windows/window_commands.hpp"
@@ -108,12 +109,13 @@ HWND root_owner_of(HWND window) {
 
 struct WindowWatch::Parts {
     explicit Parts(WindowWatch& watch)
-        : reader(watch.directory_, app_ids, shell, watch.settings_),
+        : reader(watch.directory_, app_ids, shell, watch.settings_, processes),
           tracker(watch.directory_, reader, watch.outbox_, watch.features_),
           zorder(tracker, watch.marker_, watch.outbox_),
           movesize(tracker, watch.outbox_) {}
 
     AppIdResolver app_ids;
+    ProcessTree processes;
     ShellViews shell;
     WindowReader reader;
     WindowTracker tracker;

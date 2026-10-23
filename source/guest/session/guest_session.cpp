@@ -150,7 +150,7 @@ void GuestSession::greet(MessageReader& message) {
     const std::optional<Hello> hello =
         message.id() == MessageId::HostHello ? Hello::read(message) : std::optional<Hello>{};
     if (!hello.has_value()) {
-        RWIN_ERROR("link", "the host's first message is {}, not a wire 6 hello: it is a remotewin from another "
+        RWIN_ERROR("link", "the host's first message is {}, not a wire 7 hello: it is a remotewin from another "
                    "build. Put the halves built together on both sides", static_cast<int>(message.id()));
         running_ = false;
         return;
@@ -330,11 +330,18 @@ bool GuestSession::handle_input(MessageReader& message) {
         case MessageId::PointerAt:
             if (const std::optional<PointerAt> at = PointerAt::read(message)) {
                 report_grab();
+                if (grabs_.current().kind == PointerGrab::Kind::Lock) {
+                    if (at->button != PointerAt::kNoButton) {
+                        target_.pressed(at->pressed);
+                        press_pointer_in_place(static_cast<PointerButton::Button>(at->button), at->pressed);
+                    }
+                    break;
+                }
                 move_pointer_on_screen(at->x, at->y);
                 grabs_.put_at(at->x, at->y);
                 if (at->button != PointerAt::kNoButton) {
                     target_.pressed(at->pressed);
-                    press_pointer_on_screen(at->x, at->y, static_cast<PointerButton::Button>(at->button), at->pressed);
+                    press_pointer_in_place(static_cast<PointerButton::Button>(at->button), at->pressed);
                 }
             }
             break;
@@ -382,14 +389,16 @@ void GuestSession::move_pointer(const PointerMove& move) {
 }
 
 void GuestSession::press_button(const PointerButton& press) {
+    report_grab();
+    if (grabs_.current().kind == PointerGrab::Kind::Lock) {
+        target_.pressed(press.pressed);
+        press_pointer_in_place(press.button, press.pressed);
+        return;
+    }
     if (press.window == kMonitorWindow) {
         if (monitor_at_.has_value()) {
             press_pointer_on_screen(monitor_at_->x + press.x, monitor_at_->y + press.y, press.button, press.pressed);
         }
-        return;
-    }
-    if (grabs_.current().kind == PointerGrab::Kind::Lock) {
-        press_pointer_in_place(press.button, press.pressed);
         return;
     }
     std::int32_t into_x = 0;
@@ -404,14 +413,15 @@ void GuestSession::press_button(const PointerButton& press) {
 }
 
 void GuestSession::turn_wheel_over(const PointerWheel& wheel) {
+    report_grab();
+    if (grabs_.current().kind == PointerGrab::Kind::Lock) {
+        turn_wheel_in_place(wheel.dx, wheel.dy);
+        return;
+    }
     if (wheel.window == kMonitorWindow) {
         if (monitor_at_.has_value()) {
             turn_wheel_on_screen(monitor_at_->x + wheel.x, monitor_at_->y + wheel.y, wheel.dx, wheel.dy);
         }
-        return;
-    }
-    if (grabs_.current().kind == PointerGrab::Kind::Lock) {
-        turn_wheel_in_place(wheel.dx, wheel.dy);
         return;
     }
     std::int32_t into_x = 0;
@@ -480,7 +490,8 @@ void GuestSession::report_cursor() {
 
 WindowId GuestSession::mirrored_foreground() const {
     const std::optional<WindowId> foreground = directory_.id_of(::GetForegroundWindow());
-    return foreground.has_value() && subscribed_.contains(foreground->key()) ? *foreground : WindowId{};
+    return foreground.has_value() && (monitor_at_.has_value() || subscribed_.contains(foreground->key()))
+               ? *foreground : WindowId{};
 }
 
 void GuestSession::report_grab() {

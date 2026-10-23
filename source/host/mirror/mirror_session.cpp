@@ -51,6 +51,7 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
           finished();
       })),
       rearrange_(parts.loop.timer([this] { arrange(); })) {
+    placement_.prefer_output(parts.output);
     // Windows moves a window it drags only at the end of the drag without
     // this, drawing an outline on a desktop nobody sees.
     link_.connected.connect([this] { link_.send_sys_param(SysParam{SysParam::Param::DragFullWindows, {}, true}); });

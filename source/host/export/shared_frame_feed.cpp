@@ -1,9 +1,11 @@
 #include "host/export/shared_frame_feed.hpp"
 
 #include "host/export/export_hello.hpp"
+#include "host/export/exported_layout.hpp"
 #include "host/export/slot_lease.hpp"
 #include "host/export/surface_memory.hpp"
 #include "host/link/guest_link.hpp"
+#include "host/wayland/compositor_gpu.hpp"
 #include "logging/logger.hpp"
 #include "proto/frame_in_slot.hpp"
 #include "proto/slot_free.hpp"
@@ -33,7 +35,8 @@ SharedFrameFeed::SharedFrameFeed(EventLoop& loop, GuestLink& link)
 // Leases let go of after the socket: what they free is the guest's.
 SharedFrameFeed::~SharedFrameFeed() = default;
 
-void SharedFrameFeed::open(const std::string& path, const std::optional<PciAddress>& composing) {
+void SharedFrameFeed::open(const std::string& path, const CompositorGpu& compositor) {
+    const std::optional<PciAddress>& composing = compositor.pci();
     std::string why;
     std::optional<ExportHello> hello = ExportHello::greet(path, ++next_tag_, why);
     if (!hello.has_value()) {
@@ -45,13 +48,22 @@ void SharedFrameFeed::open(const std::string& path, const std::optional<PciAddre
         RWIN_WARN("export", "frames come as pixels: the GPU device's GPU is on no PCI bus");
         return;
     }
-    if (composing.has_value() && *composing != *gpu.pci) {
-        RWIN_WARN("export", "frames come as pixels: the guest's surfaces are on {}, the compositor composes on {}",
+    const bool crossing = composing.has_value() && *composing != *gpu.pci;
+    if (crossing && !compositor.offers(ExportedLayout::kArgb8888, ExportedLayout::kLinearModifier)) {
+        RWIN_WARN("export",
+                  "frames come as pixels: the guest's surfaces are on {}, the compositor composes on {} and does "
+                  "not take linear ARGB8888 buffers, which the copy between the GPUs is made as",
                   gpu.pci->to_string(), composing->to_string());
         return;
     }
     socket_ = std::move(hello->socket());
+    other_gpu_ = crossing;
     answers_ = loop_.watch(socket_->descriptor(), POLLIN, [this](short) { read_answers(); });
+    if (crossing) {
+        RWIN_INFO("export", "frames stay on the GPU: '{}', copied from {} to system memory for {}", path,
+                  gpu.pci->to_string(), composing->to_string());
+        return;
+    }
     RWIN_INFO("export", "frames stay on the GPU: '{}', {}", path, gpu.pci->to_string());
 }
 
@@ -138,7 +150,10 @@ void SharedFrameFeed::ask_sync(PendingFrame frame) {
 }
 
 std::optional<std::uint64_t> SharedFrameFeed::ask(ExportRequest::Operation operation, std::uint64_t surface) {
-    return ask(ExportRequest{operation, surface, 0});
+    ExportRequest request{operation, surface, 0};
+    const bool names_a_copy = operation == ExportRequest::Operation::Export || operation == ExportRequest::Operation::Sync;
+    if (other_gpu_ && names_a_copy) request.flags = ExportRequest::kOtherGpu;
+    return ask(request);
 }
 
 std::optional<std::uint64_t> SharedFrameFeed::ask(const ExportRequest& request) {
@@ -248,6 +263,16 @@ void SharedFrameFeed::exported(const ExportAnswer& answer, UniqueFd dma_buf) {
         if (answer.ok()) static_cast<void>(ask(ExportRequest::Operation::Release, answer.surface));
         return;
     }
+    if (answer.status == ExportAnswer::Status::Unavailable && other_gpu_) {
+        // Said once: the same GPU refuses every surface alike.
+        if (!twin_refusal_said_) {
+            twin_refusal_said_ = true;
+            RWIN_WARN("export", "the GPU device cannot make a copy in system memory for the compositor's GPU; "
+                                "windows come as pixels");
+        }
+        pixels_for(*window, "no copy in system memory for the compositor's GPU");
+        return;
+    }
     if (!answer.ok()) {
         pixels_for(*window, "the GPU device did not export surface " + std::to_string(answer.surface) + ": "
                                 + to_string(answer.status));
@@ -257,6 +282,11 @@ void SharedFrameFeed::exported(const ExportAnswer& answer, UniqueFd dma_buf) {
     if (layout.fourcc != ExportedLayout::kArgb8888 || layout.width == 0 || layout.height == 0 || !dma_buf.valid()) {
         pixels_for(*window,
                    "surface " + std::to_string(answer.surface) + " was exported as something other than B8G8R8A8");
+        return;
+    }
+    if (other_gpu_ && layout.modifier != ExportedLayout::kLinearModifier) {
+        pixels_for(*window, "surface " + std::to_string(answer.surface)
+                                + "'s copy for the compositor's GPU was not exported as linear rows");
         return;
     }
     WindowRing& ring = rings_.at(window->key());

@@ -49,6 +49,8 @@ public:
         SharedFrameFeed& frames;
         BusConnection& bus;
         SurfaceKit surfaces;
+        // The host output that stands for the guest's monitor, by name.
+        std::string output;
     };
 
     // ``app_id`` is the identity the windows present as; ``token`` an

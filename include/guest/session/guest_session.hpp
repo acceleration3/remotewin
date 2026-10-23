@@ -125,8 +125,8 @@ private:
     void report_cursor();
     // With shared_ held.
     void report_grab();
-    // The foreground window when it is one the host subscribed to, else
-    // none. With shared_ held.
+    // The foreground window when the host shows it or the whole monitor,
+    // else none. With shared_ held.
     [[nodiscard]] WindowId mirrored_foreground() const;
     // Where the frames of ``window`` start inside its frame: its picture's
     // offset, which input is measured from.
