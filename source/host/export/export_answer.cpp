@@ -50,6 +50,7 @@ ExportedLayout ExportAnswer::layout() const noexcept {
 }
 
 std::uint64_t ExportAnswer::copies() const noexcept { return get<std::uint64_t>(body, 0); }
+std::uint32_t ExportAnswer::guest_refresh_microhz() const noexcept { return get<std::uint32_t>(body, 8); }
 
 std::uint32_t ExportAnswer::reason() const noexcept { return get<std::uint32_t>(body, 0); }
 

@@ -84,8 +84,8 @@ public:
     void pixels_for(WindowId window, const std::string& why);
 
     // A frame from here reached the screen: said in the log with the rest
-    // (LatencyLog), and, while ``active`` - this application has the
-    // keyboard - what times the guest's display (DisplayLock).
+    // (LatencyLog), and, while ``active`` - the surface it was shown on has
+    // the keyboard - what times the guest's display (DisplayLock).
     void shown(const FrameStamps& stamps, bool active);
 
     Signal<WindowId, const SharedFrame&> frame_ready;
@@ -154,7 +154,9 @@ private:
     GuestClock clock_;
     LatencyLog latency_;
     DisplayLock lock_;
-    bool active_ = false;
+    // The rate the guest's display blanks at, as the last sync said; 0 before
+    // one did, and from a device that does not say.
+    std::uint32_t guest_microhz_ = 0;
 };
 
 }  // namespace rwin::host

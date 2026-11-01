@@ -19,8 +19,8 @@ std::array<std::uint8_t, ExportRequest::kBytes> ExportRequest::encode() const no
     put(bytes, 4, kMajor);
     put(bytes, 6, kMinor);
     put(bytes, 8, static_cast<std::uint32_t>(operation));
-    put(bytes, 12, operation == Operation::Timing ? refresh_millihz : flags);
-    put(bytes, 16, operation == Operation::Timing ? blank : surface);
+    put(bytes, 12, flags);
+    put(bytes, 16, operation == Operation::Timing ? static_cast<std::uint64_t>(shift_ns) : surface);
     put(bytes, 24, tag);
     return bytes;
 }

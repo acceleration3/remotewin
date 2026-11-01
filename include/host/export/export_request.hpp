@@ -12,7 +12,7 @@ struct ExportRequest {
     static constexpr std::size_t kBytes = 32;
     static constexpr std::uint32_t kMagic = 0x51585641;  // "AVXQ"
     static constexpr std::uint16_t kMajor = 1;
-    static constexpr std::uint16_t kMinor = 3;
+    static constexpr std::uint16_t kMinor = 5;
     // An export's or a sync's flag: this side imports on another GPU than
     // the surface's, and is handed a copy of it in linear system memory.
     static constexpr std::uint32_t kOtherGpu = 1;
@@ -26,8 +26,9 @@ struct ExportRequest {
         Sync = 3,
         // The hold let go of.
         Release = 4,
-        // The display here: the guest's display clock blanks in phase with
-        // ``blank``, at ``refresh_millihz``.
+        // The display here: from the next blank on the guest's display
+        // clock blanks ``shift_ns`` earlier than its schedule would have
+        // (negative: later), at the rate it has, which the device keeps.
         Timing = 5,
     };
 
@@ -38,10 +39,9 @@ struct ExportRequest {
     std::uint64_t tag = 0;
     // An export's or a sync's: kOtherGpu, or 0.
     std::uint32_t flags = 0;
-    // A timing's: the refresh, and a moment on CLOCK_MONOTONIC in
-    // nanoseconds the guest is to blank in phase with.
-    std::uint32_t refresh_millihz = 0;
-    std::uint64_t blank = 0;
+    // A timing's: how much earlier than its schedule the guest is to blank,
+    // under a second either way.
+    std::int64_t shift_ns = 0;
 
     [[nodiscard]] std::array<std::uint8_t, kBytes> encode() const noexcept;
 };

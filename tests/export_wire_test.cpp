@@ -50,10 +50,10 @@ std::vector<std::uint8_t> answer(std::uint32_t operation, std::uint32_t status, 
 void a_request_is_laid_out_as_the_device_reads_it() {
     const std::array<std::uint8_t, 32> bytes =
         ExportRequest{ExportRequest::Operation::Sync, 0x0102'0304'0506'0708ULL, 0x1122'3344'5566'7788ULL}.encode();
-    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    3,    0,    3,    0,    0,
+    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    5,    0,    3,    0,    0,
                                                 0,    0,    0,    0,    0,    0x08, 0x07, 0x06, 0x05, 0x04, 0x03,
                                                 0x02, 0x01, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11};
-    check(bytes == expected, "magic AVXQ, major 1, minor 3, operation, reserved, surface, tag; little-endian");
+    check(bytes == expected, "magic AVXQ, major 1, minor 5, operation, reserved, surface, tag; little-endian");
     check(ExportRequest{}.encode()[8] == 1, "a request is hello unless it says otherwise");
 }
 
@@ -66,15 +66,14 @@ void an_other_gpu_export_carries_its_flag_at_12() {
     check(bytes[12] == 1 && bytes[13] == 0 && bytes[8] == 2, "operation 2, flag bit 0 at 12");
 }
 
-// A timing's refresh is where the others have their reserved word, and the
-// moment it names where they name a surface.
+// A timing leaves the word at 12 reserved, the rate being the device's, and
+// puts its shift, in two's complement, where the others name a surface.
 void a_timing_is_laid_out_as_the_device_reads_it() {
     ExportRequest timing{ExportRequest::Operation::Timing, 0, 9};
-    timing.refresh_millihz = 144000;
-    timing.blank = 0x0102'0304'0506'0708ULL;
-    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    3,    0,    5, 0, 0, 0, 0x80, 0x32, 0x02, 0,
-                                                0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 9, 0, 0, 0, 0,    0,    0,    0};
-    check(timing.encode() == expected, "operation 5, refresh at 12, the blank at 16");
+    timing.shift_ns = -1500000;
+    const std::array<std::uint8_t, 32> expected{0x41, 0x56, 0x58, 0x51, 1,    0,    5,    0,    5, 0, 0, 0, 0x00, 0x00, 0x00, 0x00,
+                                                0xA0, 0x1C, 0xE9, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 9, 0, 0, 0, 0,    0,    0,    0};
+    check(timing.encode() == expected, "operation 5, the word at 12 zero, the shift at 16");
 }
 
 void a_hello_names_the_gpu() {
@@ -114,6 +113,9 @@ void a_sync_counts_copies_and_a_revocation_says_why() {
     std::vector<std::uint8_t> sync = answer(3, 0, 5, 10);
     put(sync, 32, std::uint64_t{0x1'0000'0002ULL});
     check(ExportAnswer::decode(sync)->copies() == 0x1'0000'0002ULL, "a sync's copies are the u64 at 32");
+    check(ExportAnswer::decode(sync)->guest_refresh_microhz() == 0, "a device that says no rate has 0 at 40");
+    put(sync, 40, std::uint32_t{359'980'000});
+    check(ExportAnswer::decode(sync)->guest_refresh_microhz() == 359'980'000, "and the guest's refresh in microhertz is the u32 at 40");
     std::vector<std::uint8_t> revoked = answer(ExportAnswer::kRevoked, 0, 5, 0);
     put(revoked, 32, std::uint32_t{1});
     const std::optional<ExportAnswer> event = ExportAnswer::decode(revoked);
@@ -136,9 +138,9 @@ void what_is_no_answer_is_refused() {
     check(!ExportAnswer::decode(bytes).has_value(), "a request's magic");
     check(!ExportAnswer::decode(answer(1, 6, 0, 1)).has_value(), "a status version 1 does not have");
     std::vector<std::uint8_t> minor = answer(1, 0, 0, 1);
-    put(minor, 6, std::uint16_t{4});
+    put(minor, 6, std::uint16_t{9});
     check(ExportAnswer::decode(minor).has_value(), "any minor of major 1 reads as this layout");
-    check(ExportAnswer::decode(minor)->minor == 4, "the device's minor is the u16 at 6");
+    check(ExportAnswer::decode(minor)->minor == 9, "the device's minor is the u16 at 6");
 }
 
 void pci_addresses_read_as_sysfs_writes_them() {

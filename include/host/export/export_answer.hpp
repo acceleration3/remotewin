@@ -54,6 +54,9 @@ struct ExportAnswer {
     [[nodiscard]] ExportedLayout layout() const noexcept;
     // A sync's body: the copies into the surface the host has run.
     [[nodiscard]] std::uint64_t copies() const noexcept;
+    // A sync's body also says the rate the guest's display blanks at, in
+    // microhertz; 0 from a device that does not say.
+    [[nodiscard]] std::uint32_t guest_refresh_microhz() const noexcept;
     // A revocation's body: 1 the guest released the surface, 2 a reset.
     [[nodiscard]] std::uint32_t reason() const noexcept;
 };

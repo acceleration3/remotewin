@@ -173,16 +173,13 @@ std::optional<std::uint64_t> SharedFrameFeed::ask(const ExportRequest& request) 
 // with that one instead.
 void SharedFrameFeed::shown(const FrameStamps& stamps, bool active) {
     latency_.take(stamps);
-    if (active_ && !active) lock_.forget();
-    active_ = active;
     if (!active) return;
-    const std::optional<DisplayLock::Timing> timing = lock_.take(stamps, now_ns());
+    const std::optional<DisplayLock::Timing> timing = lock_.take(stamps, now_ns(), guest_microhz_);
     if (!timing.has_value()) return;
-    RWIN_DEBUG("latency", "asking the guest's display for {:.3f} Hz, blanking {:.2f} ms before this output does",
-               timing->refresh_millihz / 1000.0, static_cast<double>(lock_.ahead()) / 1e6);
+    RWIN_DEBUG("latency", "asking the guest's display, at {:.6f} Hz, to blank {:.2f} ms earlier",
+               guest_microhz_ / 1e6, static_cast<double>(timing->shift_ns) / 1e6);
     ExportRequest request{ExportRequest::Operation::Timing, 0, 0};
-    request.refresh_millihz = timing->refresh_millihz;
-    request.blank = static_cast<std::uint64_t>(timing->blank);
+    request.shift_ns = timing->shift_ns;
     static_cast<void>(ask(request));
 }
 
@@ -222,6 +219,9 @@ void SharedFrameFeed::take_answer(ExportSocket::Received received) {
             if (pending == syncing_.end()) return;
             PendingFrame frame = std::move(pending->second);
             syncing_.erase(pending);
+            // Every sync says the rate the guest's display blanks at, which a
+            // host that changed it while the VM runs has changed for the next.
+            if (answer.ok()) guest_microhz_ = answer.guest_refresh_microhz();
             synced(answer, std::move(received.descriptor), std::move(frame));
             return;
         }

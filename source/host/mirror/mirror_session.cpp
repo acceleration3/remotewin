@@ -230,8 +230,9 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
     mirror.resized_by_guest.connect([this](WindowId resized) { placement_.guest_resized(resized); });
     mirror.shared_refused.connect(
         [this](WindowId refused, const std::string& why) { frames_.pixels_for(refused, why); });
-    mirror.presented.connect([this](const FrameStamps& stamps) {
-        frames_.shown(stamps, kit_.surfaces.seat.keyboard_focus() != nullptr);
+    mirror.presented.connect([this, &mirror](const FrameStamps& stamps) {
+        const wl_surface* surface = mirror.surface();
+        frames_.shown(stamps, surface != nullptr && kit_.surfaces.seat.keyboard_focus() == surface);
     });
     mirror.let_go.connect([this](WindowId) { release_closed(); });
     mirror.remade.connect([this](WindowId) { rearrange_->start(std::chrono::milliseconds::zero(), false); });
