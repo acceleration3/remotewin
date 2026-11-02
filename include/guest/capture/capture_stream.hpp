@@ -10,6 +10,7 @@ struct ID3D11Texture2D;
 
 namespace rwin::guest {
 
+class CaptureCloser;
 class FrameSignal;
 class GraphicsDevice;
 
@@ -68,8 +69,9 @@ public:
         std::int64_t taken_time_ = 0;
     };
 
-    // ``arrivals`` is raised each time the compositor has a frame here.
-    CaptureStream(const GraphicsDevice& device, const FrameSignal& arrivals);
+    // ``arrivals`` is raised each time the compositor has a frame here;
+    // ``closer`` closes each session and pool this is done with.
+    CaptureStream(const GraphicsDevice& device, const FrameSignal& arrivals, CaptureCloser& closer);
     ~CaptureStream();
 
     CaptureStream(const CaptureStream&) = delete;
@@ -119,14 +121,14 @@ private:
     // Closing is what stops the compositor filling the pool. Releasing
     // alone leaves the session running, and the next one cannot be made
     // while the old is still capturing the same thing.
-    void close_session();
-    void close_pool();
+    void close_capture();
     void sample_frame(const Frame& frame);
 
     // Opaque: the capture interfaces are WinRT, and a header that named
     // them would drag the whole projection into everything that captures.
     const GraphicsDevice& device_;
     const FrameSignal& arrivals_;
+    CaptureCloser& closer_;
     void* item_ = nullptr;
     void* pool_ = nullptr;
     void* session_ = nullptr;

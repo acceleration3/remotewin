@@ -209,7 +209,7 @@ void GuestSession::handle(MessageReader& message) {
             // Said once per connection; a second is the same request.
             if (monitor_ != nullptr) return;
             RWIN_INFO("scope", "asked to mirror the whole monitor");
-            monitor_ = std::make_unique<MonitorCapture>(graphics_, frames_);
+            monitor_ = std::make_unique<MonitorCapture>(graphics_, frames_, closer_);
             monitor_tiles_ = ChangedTiles{};
             return;
         case MessageId::PopupDismiss:
@@ -274,7 +274,7 @@ void GuestSession::subscribe(WindowId window) {
         RWIN_DEBUG("session", "subscription to {}, which is not a window here", window);
         return;
     }
-    subscriptions_.try_emplace(window.key(), Subscription{std::make_unique<WindowCapture>(graphics_, frames_)});
+    subscriptions_.try_emplace(window.key(), Subscription{std::make_unique<WindowCapture>(graphics_, frames_, closer_)});
     {
         const std::lock_guard held{shared_};
         subscribed_.insert(window.key());
@@ -543,13 +543,13 @@ void GuestSession::recapture() {
 void GuestSession::recapture(WindowId window) {
     if (window == kMonitorWindow) {
         if (monitor_ == nullptr) return;
-        monitor_ = std::make_unique<MonitorCapture>(graphics_, frames_);
+        monitor_ = std::make_unique<MonitorCapture>(graphics_, frames_, closer_);
         monitor_tiles_ = ChangedTiles{};
         return;
     }
     const auto subscription = subscriptions_.find(window.key());
     if (subscription == subscriptions_.end()) return;
-    subscription->second.capture = std::make_unique<WindowCapture>(graphics_, frames_);
+    subscription->second.capture = std::make_unique<WindowCapture>(graphics_, frames_, closer_);
     subscription->second.lost = false;
 }
 
@@ -614,7 +614,7 @@ void GuestSession::send_window_frame(WindowId id, Subscription& subscription) {
         return;
     }
     if (!surface.capturable()) {
-        if (!subscription.unseen) subscription.capture = std::make_unique<WindowCapture>(graphics_, frames_);
+        if (!subscription.unseen) subscription.capture = std::make_unique<WindowCapture>(graphics_, frames_, closer_);
         subscription.unseen = true;
         return;
     }
@@ -622,7 +622,7 @@ void GuestSession::send_window_frame(WindowId id, Subscription& subscription) {
     const Clock::time_point now = Clock::now();
     if (subscription.lost) {
         if (now < subscription.retry_at) return;
-        subscription.capture = std::make_unique<WindowCapture>(graphics_, frames_);
+        subscription.capture = std::make_unique<WindowCapture>(graphics_, frames_, closer_);
     }
     const bool shared = shared_route_ && !pixels_only_.contains(id.key());
     const CaptureResult grabbed = shared ? send_shared_frame(id, *subscription.capture, surface)

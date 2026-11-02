@@ -1,8 +1,10 @@
 #include "guest/capture/capture_stream.hpp"
 
 #include "guest/capture/capture_clock.hpp"
+#include "guest/capture/capture_closer.hpp"
 #include "guest/capture/frame_signal.hpp"
 #include "guest/capture/graphics_device.hpp"
+#include "guest/capture/winrt_close.hpp"
 #include "logging/logger.hpp"
 
 // mingw's windows.foundation.h declares IReference<boolean> and
@@ -36,7 +38,6 @@ using capture_abi::IGraphicsCaptureItem;
 using capture_abi::IGraphicsCaptureSession;
 using capture_abi::IGraphicsCaptureSession2;
 using capture_abi::IGraphicsCaptureSession3;
-using ABI::Windows::Foundation::IClosable;
 using FrameArrived = __FITypedEventHandler_2_Windows__CGraphics__CCapture__CDirect3D11CaptureFramePool_IInspectable;
 
 // mingw ships the capture headers but not the Direct3D11 interop one, so
@@ -97,17 +98,6 @@ HRESULT activation_factory(const wchar_t* runtime_class, T** out) {
     return ::RoGetActivationFactory(name, __uuidof(T), reinterpret_cast<void**>(out));
 }
 
-// WinRT's Close, which ends what a Release alone leaves running.
-void close_winrt(void* object) {
-    if (object == nullptr) return;
-    IClosable* closable = nullptr;
-    if (SUCCEEDED(static_cast<IUnknown*>(object)->QueryInterface(
-            __uuidof(IClosable), reinterpret_cast<void**>(&closable)))) {
-        closable->Close();
-        closable->Release();
-    }
-}
-
 void release(void** object) {
     if (*object != nullptr) {
         static_cast<IUnknown*>(*object)->Release();
@@ -166,33 +156,28 @@ IGraphicsCaptureItemInterop* item_factory() {
 
 }  // namespace
 
-CaptureStream::CaptureStream(const GraphicsDevice& device, const FrameSignal& arrivals)
-    : device_(device), arrivals_(arrivals) {
+CaptureStream::CaptureStream(const GraphicsDevice& device, const FrameSignal& arrivals, CaptureCloser& closer)
+    : device_(device), arrivals_(arrivals), closer_(closer) {
     sample_pixels_ = std::getenv("RWIN_TIMING_PIXELS") != nullptr;
 }
 
 CaptureStream::~CaptureStream() { close(); }
 
-void CaptureStream::close_session() {
-    close_winrt(session_);
-    release(&session_);
-}
-
-// The pool holds its buffers until it is closed, not until it is
-// released: a capture of every window the matrix makes, each released
-// and none closed, is buffers the size of a maximised window apiece.
-void CaptureStream::close_pool() {
+// The session before the pool it fills. The pool holds its buffers until
+// it is closed, not until it is released: a capture of every window the
+// matrix makes, each released and none closed, is buffers the size of a
+// maximised window apiece.
+void CaptureStream::close_capture() {
     if (pool_ != nullptr && arrival_token_.has_value()) {
         static_cast<IDirect3D11CaptureFramePool*>(pool_)->remove_FrameArrived(EventRegistrationToken{*arrival_token_});
     }
     arrival_token_.reset();
-    close_winrt(pool_);
-    release(&pool_);
+    void* const closing[] = {std::exchange(session_, nullptr), std::exchange(pool_, nullptr)};
+    closer_.close(closing);
 }
 
 void CaptureStream::close() {
-    close_session();
-    close_pool();
+    close_capture();
     release(&item_);
     release(&staging_);
     release(&sample_);
@@ -282,8 +267,7 @@ bool CaptureStream::start(Extent size) {
     const ABI::Windows::Graphics::SizeInt32 pool_size{static_cast<INT32>(size.width),
                                                       static_cast<INT32>(size.height)};
 
-    close_session();
-    close_pool();
+    close_capture();
 
     // The wrapped device, asked for by the interface a frame pool takes.
     ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* wrapped = nullptr;

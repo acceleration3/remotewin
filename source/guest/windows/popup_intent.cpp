@@ -53,6 +53,18 @@ GUITHREADINFO input_state_of(HWND window) {
     return gui;
 }
 
+// The window a menu opens from, as one that is on screen. A menu can be
+// tracked for a window nobody sees - the shell's context menu, which
+// WizTree's list shows, is tracked for a hidden ItemPropMenuCallbackHelper
+// - and then it opens from the window its thread has active, the one that
+// was clicked. Against the hidden one it would open from nothing and stand
+// alone, behind the window it belongs to.
+HWND shown_owner_of_menu(HWND owner, const GUITHREADINFO& input) {
+    const HWND root = root_of(owner);
+    if (::IsWindowVisible(root) != FALSE) return root;
+    return input.hwndActive != nullptr ? root_of(input.hwndActive) : nullptr;
+}
+
 bool mirrored(HWND window) { return (::GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) != 0; }
 
 BOOL CALLBACK collect_menus(HWND window, LPARAM into) {
@@ -80,11 +92,13 @@ PopupIntent::PopupIntent(void* window, const Rect& frame, std::optional<Point> o
 void PopupIntent::read_menu(void* window, const std::optional<Point>& opened_at) {
     const auto hwnd = static_cast<HWND>(window);
     const HMENU menu = menu_of(hwnd);
-    HWND owner = input_state_of(hwnd).hwndMenuOwner;
+    const GUITHREADINFO input = input_state_of(hwnd);
+    HWND owner = input.hwndMenuOwner;
     if (menu != nullptr && owner != nullptr && read_menu_bar_item(menu, owner)) return;
     if (menu != nullptr && read_parent_item(window, menu)) return;
     if (owner == nullptr) return;
-    owner = root_of(owner);
+    owner = shown_owner_of_menu(owner, input);
+    if (owner == nullptr) return;
     const auto at_corner = [&](std::int32_t x, std::int32_t y) {
         return std::abs(opened_at->x - x) <= kNearCorner && std::abs(opened_at->y - y) <= kNearCorner;
     };

@@ -1,6 +1,7 @@
 add_executable(remotewin-guest
     main.cpp
     capture/capture_clock.cpp
+    capture/capture_closer.cpp
     capture/capture_stream.cpp
     capture/changed_tiles.cpp
     capture/content_bounds.cpp
@@ -13,6 +14,7 @@ add_executable(remotewin-guest
     capture/surface_id_reader.cpp
     capture/surface_ring.cpp
     capture/window_capture.cpp
+    capture/winrt_close.cpp
     cursor/cursor_decoder.cpp
     cursor/cursor_image.cpp
     cursor/cursor_watcher.cpp
@@ -57,9 +59,11 @@ target_link_options(remotewin-guest PRIVATE -static -static-libgcc -static-libst
 add_executable(remotewin-wgcbench EXCLUDE_FROM_ALL
     bench/wgc_bench.cpp
     capture/capture_clock.cpp
+    capture/capture_closer.cpp
     capture/capture_stream.cpp
     capture/frame_signal.cpp
     capture/graphics_device.cpp
+    capture/winrt_close.cpp
 )
 target_link_libraries(remotewin-wgcbench PRIVATE
     rwin::proto rwin::logging user32 gdi32 dwmapi d3d11 dxgi runtimeobject ole32)

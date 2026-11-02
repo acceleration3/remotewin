@@ -9,6 +9,7 @@
 
 namespace rwin::guest {
 
+class CaptureCloser;
 class FrameSignal;
 class GraphicsDevice;
 
@@ -19,7 +20,8 @@ class GraphicsDevice;
 // a monitor Windows replaced (a display reconfigured) is captured afresh.
 class MonitorCapture {
 public:
-    MonitorCapture(const GraphicsDevice& device, const FrameSignal& arrivals) : stream_(device, arrivals) {}
+    MonitorCapture(const GraphicsDevice& device, const FrameSignal& arrivals, CaptureCloser& closer)
+        : stream_(device, arrivals, closer) {}
 
     [[nodiscard]] CaptureResult grab();
     // The next frame left on the GPU, in ``frame``: Fresh with it set,

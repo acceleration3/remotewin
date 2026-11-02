@@ -9,6 +9,7 @@
 
 namespace rwin::guest {
 
+class CaptureCloser;
 class FrameSignal;
 class GraphicsDevice;
 class WindowSurface;
@@ -21,7 +22,8 @@ class WindowSurface;
 // WindowSurface measures every coordinate from.
 class WindowCapture {
 public:
-    WindowCapture(const GraphicsDevice& device, const FrameSignal& arrivals) : stream_(device, arrivals) {}
+    WindowCapture(const GraphicsDevice& device, const FrameSignal& arrivals, CaptureCloser& closer)
+        : stream_(device, arrivals, closer) {}
 
     [[nodiscard]] CaptureResult grab(const WindowSurface& surface);
     // The next frame left on the GPU, in ``frame``: Fresh with it set,

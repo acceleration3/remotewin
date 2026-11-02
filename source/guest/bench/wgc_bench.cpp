@@ -18,6 +18,7 @@
 // at least 57 frames a second and no gap past 50 ms - and 1 when it did not.
 
 #include "guest/capture/capture_clock.hpp"
+#include "guest/capture/capture_closer.hpp"
 #include "guest/capture/capture_stream.hpp"
 #include "guest/capture/frame_signal.hpp"
 #include "guest/capture/graphics_device.hpp"
@@ -208,7 +209,8 @@ int main(int argc, char** argv) {
     const CaptureStream::Extent size{static_cast<std::uint32_t>(info.rcMonitor.right - info.rcMonitor.left),
                                      static_cast<std::uint32_t>(info.rcMonitor.bottom - info.rcMonitor.top)};
     FrameSignal arrivals;
-    CaptureStream stream(device, arrivals);
+    CaptureCloser closer;
+    CaptureStream stream(device, arrivals, closer);
     RECT frame{};
     ::GetClientRect(window, &frame);
     const CaptureStream::Extent window_size{static_cast<std::uint32_t>(frame.right),

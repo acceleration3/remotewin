@@ -2,6 +2,7 @@
 
 #include "logging/frame_timing.hpp"
 
+#include "guest/capture/capture_closer.hpp"
 #include "guest/capture/changed_tiles.hpp"
 #include "guest/capture/frame_signal.hpp"
 #include "guest/capture/graphics_device.hpp"
@@ -138,6 +139,8 @@ private:
     GraphicsDevice graphics_;
     // Before every capture that raises it, so it outlives them all.
     FrameSignal frames_;
+    // Before every capture too: each closes through it as it goes.
+    CaptureCloser closer_;
     // Raised when the main loop has something other than a frame: a
     // message the reader queued, the reader ending, the cursor changing.
     FrameSignal woken_;
