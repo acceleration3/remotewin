@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host:
+    name: host half and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install the build dependencies
+        run: pacman -Syu --noconfirm --needed base-devel git cmake ninja pkgconf wayland wayland-protocols libxkbcommon libdrm systemd-libs
+
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Unit tests
+        run: ctest --test-dir build -LE integration --output-on-failure
+
+  guest:
+    name: guest half (mingw-w64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install the build dependencies
+        run: pacman -Syu --noconfirm --needed base-devel git cmake ninja mingw-w64-gcc
+
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build-guest -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DRWIN_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build-guest
