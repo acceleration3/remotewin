@@ -3,19 +3,7 @@
 #include <cstdint>
 
 namespace rwin {
-
-// Wire 6 (docs/rail-model.md §4). Host ids below 64, guest ids from 64, so
-// a message decoded on the wrong side is obviously wrong rather than
-// plausibly right. Each message belongs to one feature (Feature) and is
-// sent only while that feature is active on the link.
-//
-// The conformance probe speaks the same framing on a connection of its
-// own, in a range of its own: the harness's commands from 128, the
-// probe's answers from 192. Nothing on the mirror's connection is ever in
-// either, so a probe message reaching a mirror is refused as unknown
-// rather than read as something it resembles.
 enum class MessageId : std::uint8_t {
-    // Host to guest.
     HostHello = 1,
     HostSysParam = 3,
     Activate = 4,
@@ -28,12 +16,7 @@ enum class MessageId : std::uint8_t {
     Unsubscribe = 23,
     ClockProbe = 24,
     WatchMonitor = 25,
-    // One window's frames come as pixels from here on: the host cannot
-    // draw that window's shared surfaces, whatever it does with the rest.
     WindowPixels = 27,
-    // The compositor dismissed a popup of the window's (a press outside
-    // every window of this application, Escape): its menu or list is to
-    // close in the guest too.
     PopupDismiss = 28,
     PointerMove = 30,
     PointerButton = 31,
@@ -43,7 +26,6 @@ enum class MessageId : std::uint8_t {
     Key = 35,
     PointerLeave = 36,
 
-    // Guest to host.
     GuestHello = 64,
     SyncBegin = 65,
     SyncEnd = 66,
@@ -87,4 +69,4 @@ enum class MessageId : std::uint8_t {
     ProbeCursorTruth = 199,
 };
 
-}  // namespace rwin
+}

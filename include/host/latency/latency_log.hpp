@@ -9,10 +9,6 @@ namespace rwin::host {
 
 struct FrameStamps;
 
-// Where the time of the frames shown went, said in the log every few
-// seconds while frames are shown (RWIN_LOG=debug), so a mirror that feels
-// slow says which stage it is slow in, and one that stutters whether the
-// guest composed the stutter or the way to the screen made it.
 class LatencyLog {
 public:
     static constexpr std::int64_t kEveryNs = 5'000'000'000;
@@ -25,4 +21,4 @@ private:
     std::int64_t since_ = 0;
 };
 
-}  // namespace rwin::host
+}

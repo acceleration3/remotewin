@@ -10,7 +10,7 @@ namespace {
 
 constexpr UINT kAnswerWithinMs = 1000;
 
-}  // namespace
+}
 
 MinMax read_min_max(void* window, WindowId id) {
     MINMAXINFO info{};
@@ -31,4 +31,4 @@ MinMax read_min_max(void* window, WindowId id) {
                   info.ptMaxTrackSize.y};
 }
 
-}  // namespace rwin::guest
+}

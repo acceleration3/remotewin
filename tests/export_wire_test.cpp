@@ -32,7 +32,6 @@ void put(std::vector<std::uint8_t>& bytes, std::size_t at, Number value) {
     }
 }
 
-// An answer as the device lays one out (accel-virt's ExportAnswer::encode).
 std::vector<std::uint8_t> answer(std::uint32_t operation, std::uint32_t status, std::uint64_t surface,
                                  std::uint64_t tag) {
     std::vector<std::uint8_t> bytes(ExportAnswer::kBytes, 0);
@@ -46,7 +45,6 @@ std::vector<std::uint8_t> answer(std::uint32_t operation, std::uint32_t status, 
     return bytes;
 }
 
-// Pinned byte for byte: the other end is accel-virt's, built apart.
 void a_request_is_laid_out_as_the_device_reads_it() {
     const std::array<std::uint8_t, 32> bytes =
         ExportRequest{ExportRequest::Operation::Sync, 0x0102'0304'0506'0708ULL, 0x1122'3344'5566'7788ULL}.encode();
@@ -57,8 +55,6 @@ void a_request_is_laid_out_as_the_device_reads_it() {
     check(ExportRequest{}.encode()[8] == 1, "a request is hello unless it says otherwise");
 }
 
-// An export and a sync say in the word at 12 that this side imports on
-// another GPU.
 void an_other_gpu_export_carries_its_flag_at_12() {
     ExportRequest request{ExportRequest::Operation::Export, 5, 6};
     request.flags = ExportRequest::kOtherGpu;
@@ -66,8 +62,6 @@ void an_other_gpu_export_carries_its_flag_at_12() {
     check(bytes[12] == 1 && bytes[13] == 0 && bytes[8] == 2, "operation 2, flag bit 0 at 12");
 }
 
-// A timing leaves the word at 12 reserved, the rate being the device's, and
-// puts its shift, in two's complement, where the others name a surface.
 void a_timing_is_laid_out_as_the_device_reads_it() {
     ExportRequest timing{ExportRequest::Operation::Timing, 0, 9};
     timing.shift_ns = -1500000;
@@ -155,8 +149,6 @@ void pci_addresses_read_as_sysfs_writes_them() {
           "and as Mesa's DRI_PRIME names a GPU");
 }
 
-// Frames become ready out of the order they were named; an older one shown
-// after a newer would put the window back a frame.
 void a_ring_shows_only_newer_frames() {
     rwin::host::WindowRing ring{rwin::SlotRing{.window = 1, .ring = 4, .width = 8, .height = 8, .surfaces = {10, 11, 12}}};
     check(ring.slot_of(11) == 1u && !ring.slot_of(13).has_value(), "a surface is found by its id");
@@ -194,7 +186,7 @@ void a_copy_is_waited_for_until_it_ran() {
           "a copy that never runs is given up on after the most asks");
 }
 
-}  // namespace
+}
 
 int main() {
     a_request_is_laid_out_as_the_device_reads_it();

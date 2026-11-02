@@ -11,4 +11,4 @@ ShortcutsInhibitor::ShortcutsInhibitor(zwp_keyboard_shortcuts_inhibit_manager_v1
 
 ShortcutsInhibitor::~ShortcutsInhibitor() { zwp_keyboard_shortcuts_inhibitor_v1_destroy(inhibitor_); }
 
-}  // namespace rwin::host
+}

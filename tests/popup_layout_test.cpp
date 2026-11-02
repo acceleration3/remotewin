@@ -146,7 +146,7 @@ void roles() {
     check(MirrorRole::of(opened, windows_of({opened})) == MirrorRole{}, "a popup of nothing known stands alone");
 }
 
-}  // namespace
+}
 
 int main() {
     a_menu_bar_menu_opens_below_its_item();

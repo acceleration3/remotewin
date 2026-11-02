@@ -50,4 +50,4 @@ std::optional<std::uint32_t> ResizeBorder::edges_of(MoveSizeKind kind) noexcept 
     return std::nullopt;
 }
 
-}  // namespace rwin::host
+}

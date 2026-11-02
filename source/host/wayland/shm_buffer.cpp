@@ -23,7 +23,6 @@ ShmBuffer::ShmBuffer(wl_shm* shm, Size size, const Signal<>* freed)
     pixels_ = static_cast<std::uint8_t*>(mapped);
     wl_shm_pool* pool = wl_shm_create_pool(shm, memory_.get(), static_cast<std::int32_t>(bytes_));
     buffer_ = wl_shm_pool_create_buffer(pool, 0, size.width, size.height, stride(), WL_SHM_FORMAT_ARGB8888);
-    // The buffer keeps the pool's memory; the pool itself is no longer needed.
     wl_shm_pool_destroy(pool);
     static constexpr wl_buffer_listener kListener{&ShmBuffer::released};
     wl_buffer_add_listener(buffer_, &kListener, this);
@@ -34,10 +33,10 @@ ShmBuffer::~ShmBuffer() {
     if (pixels_ != nullptr) ::munmap(pixels_, bytes_);
 }
 
-void ShmBuffer::released(void* self, wl_buffer* /*buffer*/) {
+void ShmBuffer::released(void* self, wl_buffer* ) {
     auto* buffer = static_cast<ShmBuffer*>(self);
     buffer->held_ = false;
     if (buffer->freed_ != nullptr) (*buffer->freed_)();
 }
 
-}  // namespace rwin::host
+}

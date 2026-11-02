@@ -39,13 +39,9 @@ namespace {
 
 constexpr std::size_t kChunk = 256 * 1024;
 constexpr std::uint32_t kPictureColour = 0xFF3060A0;
-// The other windows' colours, one each in the order they are shown.
 constexpr std::array<std::uint32_t, 4> kOtherColours{0xFFC05020, 0xFF30A050, 0xFF9040C0, 0xFFD0B030};
-// What Windows' capture hands over of a window as it is minimised: its
-// minimised stub (measured on build 26200: 185x27 for Notepad).
 constexpr Rect kMinimizedStub{0, 0, 185, 27};
 
-// What this guest speaks: everything a pixel-path guest does.
 Hello hello() {
     Hello ours;
     ours.build = "remotewin integration guest";
@@ -56,7 +52,7 @@ Hello hello() {
     return ours;
 }
 
-}  // namespace
+}
 
 FakeGuest::FakeGuest(host::EventLoop& loop, ModelWindow& window, Timing timing, FakeExportDevice* device)
     : loop_(loop), window_(window), timing_(timing), device_(device), chunk_(kChunk) {
@@ -236,8 +232,6 @@ void FakeGuest::apply(const Request& request) {
     report();
 }
 
-// The fields that changed, then a frame of the size it now is: Windows
-// says the window moved before DWM composes it there.
 void FakeGuest::report() {
     const WindowFields now = window_.fields();
     if (const std::uint32_t mask = now.differences(said_); mask != 0) {
@@ -281,8 +275,6 @@ void FakeGuest::send_pixels(WindowId id, std::uint32_t width, std::uint32_t heig
     send(out.take());
 }
 
-// The picture is the frame (played_window), so the region's rectangles,
-// relative to the frame, are the picture's.
 void FakeGuest::paint(const Other& played, std::uint32_t width, std::uint32_t height) {
     other_pixels_.assign(static_cast<std::size_t>(width) * height * 4, 0);
     const std::vector<Rect>& region = played.said.geometry.region;
@@ -310,7 +302,6 @@ bool FakeGuest::subscribed_to(WindowId id) const {
     return found != others_.end() && found->subscribed;
 }
 
-// Windows' capture has nothing of a hidden window, or of one of no size.
 void FakeGuest::picture_other(Other& played) {
     const Rect& picture = played.said.geometry.picture;
     if (!played.subscribed || played.said.show == WindowFields::Show::Hidden || picture.width == 0
@@ -325,7 +316,6 @@ void FakeGuest::picture_other(Other& played) {
     send_pixels(played.id, picture.width, picture.height, other_pixels_);
 }
 
-// A ring is made the first time, or again when the picture outgrows it.
 void FakeGuest::copy_into_ring(Other& played, std::uint32_t width, std::uint32_t height) {
     if (played.ring == 0 || width > played.ring_width || height > played.ring_height) {
         SlotRing ring{played.id, ++rings_, width, height, {}};
@@ -343,7 +333,6 @@ void FakeGuest::copy_into_ring(Other& played, std::uint32_t width, std::uint32_t
         ring.write(made);
         send(made.take());
     }
-    // Slot 0, every time: the host frees it before the next.
     device_->copied(played.slot_surface, other_pixels_, width, height);
     MessageWriter out{MessageId::FrameInSlot};
     FrameInSlot{played.id, played.ring, 0, width, height, ++played.copies, 0, 0, 0}.write(out);
@@ -414,4 +403,4 @@ void FakeGuest::send(const std::vector<std::uint8_t>& bytes) {
     }
 }
 
-}  // namespace rwin::integration
+}

@@ -11,10 +11,8 @@
 namespace rwin::probe {
 
 namespace {
-// How long a wait for the socket lasts before the thread looks whether it
-// is being stopped.
 constexpr std::uint32_t kStopCheckMs = 100;
-}  // namespace
+}
 
 CommandReader::CommandReader(guest::TcpClient& link, HWND__* notify, unsigned arrived_message)
     : link_(link), notify_(notify), arrived_message_(arrived_message) {
@@ -61,4 +59,4 @@ void CommandReader::read() {
     ::PostMessageW(notify_, arrived_message_, 0, 0);
 }
 
-}  // namespace rwin::probe
+}

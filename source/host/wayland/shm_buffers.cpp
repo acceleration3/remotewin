@@ -16,4 +16,4 @@ ShmBuffer* ShmBuffers::free_buffer(Size size) {
     return buffers_.back().get();
 }
 
-}  // namespace rwin::host
+}

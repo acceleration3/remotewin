@@ -47,11 +47,9 @@ void the_cursor_worn_stays() {
     check(cursors.find(1) == worn && worn != nullptr, "the cursor worn is kept however many arrive after it");
 }
 
-// The guest keeps 64 it believes sent; as long as the host keeps more, in
-// the same order, a cursor named is one the host has.
 void the_bound_is_above_the_guests() { check(EmulatedCursor::kCapacity > 64, "the host keeps more than the guest"); }
 
-}  // namespace
+}
 
 int main() {
     the_cursor_shown_longest_ago_goes_first();

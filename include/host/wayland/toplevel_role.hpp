@@ -21,14 +21,8 @@ class Globals;
 class MirrorSurface;
 class ToplevelEvents;
 
-// A surface as a window of this desktop (xdg_toplevel): the compositor
-// places it, sizes it, maximises it, puts it in the taskbar. Its first
-// configure is waited for before a buffer is committed to it, and every
-// configure is acknowledged before its owner hears of it.
 class ToplevelRole {
 public:
-    // Undecorated - the guest draws its own chrome - unless
-    // ``server_decorated``.
     ToplevelRole(const Globals& globals, MirrorSurface& surface, ToplevelEvents& events, bool server_decorated);
     ~ToplevelRole();
 
@@ -42,25 +36,17 @@ public:
     [[nodiscard]] bool configured() const noexcept { return configured_; }
     [[nodiscard]] const ToplevelConfigure& last() const noexcept { return last_; }
 
-    // The first commit, without a buffer, once everything it starts with is
-    // said: the compositor configures it in answer.
     void start();
     void set_title(const std::string& title);
     void set_app_id(const std::string& app_id);
-    // Kept above ``parent`` and grouped with it; null for none.
     void set_parent(const ToplevelRole* parent);
-    // Logical units; an empty side is no limit.
     void limit(Size smallest, Size largest);
     void set_window_geometry(const Box& geometry);
     void maximize(bool maximized);
     void fullscreen(bool full);
     void minimize();
-    // The compositor runs the user's drag (xdg_toplevel.move/resize) for
-    // the press of ``serial``; ``edges`` are xdg_toplevel's resize_edge.
     void move(wl_seat* seat, std::uint32_t serial);
     void resize(wl_seat* seat, std::uint32_t serial, std::uint32_t edges);
-    // A modal dialog of its parent (xdg_dialog_v1), where the compositor
-    // knows of those.
     void set_modal(bool modal);
     void set_icon(xdg_toplevel_icon_v1* icon);
 
@@ -79,8 +65,6 @@ private:
     xdg_toplevel* toplevel_;
     zxdg_toplevel_decoration_v1* decoration_ = nullptr;
     xdg_dialog_v1* dialog_ = nullptr;
-    // The parent's serial (0 for none): a role made where a freed one was is
-    // a new parent, and is said again.
     std::uint64_t parent_ = 0;
     std::uint64_t serial_;
     ToplevelConfigure pending_;
@@ -89,4 +73,4 @@ private:
     bool modal_ = false;
 };
 
-}  // namespace rwin::host
+}

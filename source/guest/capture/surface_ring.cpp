@@ -24,10 +24,6 @@ SurfaceRing::SurfaceRing(const GraphicsDevice& device, const SurfaceIdReader& id
 
 SurfaceRing::~SurfaceRing() { release_textures(); }
 
-// Let go of, a ring's textures are let go of everywhere - nothing else in
-// the guest opened them - and the GPU device tells the host so. Whatever
-// the host still draws from them it keeps: what it imported names memory,
-// not the textures.
 void SurfaceRing::release_textures() noexcept {
     for (auto& source : sources_) source.reset();
     for (ID3D11Texture2D*& texture : textures_) {
@@ -51,17 +47,9 @@ std::optional<SurfaceRing::Delivery> SurfaceRing::copy(CaptureStream::Frame& fra
     assert(slot.has_value());
     if (!slot.has_value()) return std::nullopt;
 
-    // The picture only: the frame's buffer is the pool's size, which is
-    // larger than the picture while a window shrinks.
     const D3D11_BOX picture{0, 0, 0, size.width, size.height, 1};
     device_.context()->CopySubresourceRegion(textures_[*slot], 0, 0, 0, 0, frame.texture(), 0, &picture);
-    // Sent now rather than at the device's leisure: the host is about to
-    // be told this copy is coming, and asks the GPU device until it ran.
     device_.context()->Flush();
-    // Flush submits the copy; it does not complete it. Keep WGC's pool buffer
-    // out of reuse until the host's fenced release proves the copy finished.
-    // The capture is stamped with the blank it is shown at; the compositor
-    // composed it at the blank before.
     const std::int64_t composed = frame.source_time() != 0 ? frame.source_time() - composition_period() : 0;
     const std::int64_t taken = frame.taken_time();
     sources_[*slot] = std::move(frame);
@@ -125,4 +113,4 @@ bool SurfaceRing::remake(CaptureStream::Extent size) {
     return true;
 }
 
-}  // namespace rwin::guest
+}

@@ -14,7 +14,6 @@ constexpr std::uint16_t kCursorType = 2;
 constexpr std::uint32_t kIconDirSize = 6 + 16;
 constexpr std::uint32_t kBitmapHeaderSize = 40;
 constexpr std::uint32_t kAniHeaderSize = 36;
-// AF_ICON: the frames are icon (.cur) resources, not raw bitmaps.
 constexpr std::uint32_t kAfIcon = 1;
 
 class Bytes {
@@ -48,13 +47,10 @@ struct FileCloser {
     void operator()(std::FILE* file) const noexcept { std::fclose(file); }
 };
 
-}  // namespace
+}
 
 void AniFile::add(Frame frame) { frames_.push_back(std::move(frame)); }
 
-// One .cur: the icon directory with the hotspot where an icon has its
-// planes and bit count, then a bitmap twice the height - the colour rows
-// bottom-up, then an all-zero AND mask, alpha doing the transparency.
 std::vector<std::uint8_t> AniFile::cur_bytes(const Frame& frame) {
     const std::uint32_t mask_row = ((frame.side + 31) / 32) * 4;
     const std::uint32_t colour_size = frame.side * frame.side * kBytesPerPixel;
@@ -115,4 +111,4 @@ bool AniFile::write(const std::wstring& path, std::string& failure) const {
     return true;
 }
 
-}  // namespace rwin::probe
+}

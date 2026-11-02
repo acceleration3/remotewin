@@ -17,7 +17,7 @@ namespace {
 constexpr auto kGrace = std::chrono::milliseconds(1500);
 constexpr auto kReapPoll = std::chrono::milliseconds(10);
 
-}  // namespace
+}
 
 ChildProcess::ChildProcess(const Launch& launch) {
     int to_child[2] = {-1, -1};
@@ -87,4 +87,4 @@ int ChildProcess::stop() {
     return status_;
 }
 
-}  // namespace rwin::integration
+}

@@ -24,7 +24,6 @@ namespace {
 constexpr auto kStartWait = std::chrono::milliseconds(20000);
 constexpr auto kTick = std::chrono::milliseconds(2);
 constexpr auto kNamePoll = std::chrono::milliseconds(20);
-// The guest's taskbar, along the bottom of its screen.
 constexpr int kTaskbarHeight = 48;
 
 ModelWindow::Shape window_shape(int screen_width, int screen_height) {
@@ -42,7 +41,7 @@ ModelWindow::Shape window_shape(int screen_width, int screen_height) {
     return shape;
 }
 
-}  // namespace
+}
 
 TestDesktop::TestDesktop(const Layout& layout, const std::string& host_binary, const std::string& scratch)
     : layout_(layout), socket_(std::format("remotewin-integration-{}", ::getpid())),
@@ -103,9 +102,6 @@ bool TestDesktop::start_kwin(const std::string& scratch) {
     return true;
 }
 
-// KWin's virtual output is made at --width and --height times --scale, and
-// then scaled as its output configuration says - which, written afresh,
-// says 1. Said here first, it is the scale asked for.
 void TestDesktop::write_output_config(const std::string& config) const {
     const std::string json = std::format(
         R"([{{"name": "outputs", "data": [{{"connectorName": "Virtual-0", "scale": {},
@@ -119,8 +115,6 @@ void TestDesktop::write_output_config(const std::string& config) const {
     std::fclose(file);
 }
 
-// The device names the GPU the compositor composes on, as accel-virt's
-// does on a desktop it serves: the host takes its surfaces only then.
 bool TestDesktop::start_export(const std::string& scratch) {
     if (!layout_.gpu_frames) return true;
     wl_display* display = wl_display_connect(socket_.c_str());
@@ -139,8 +133,6 @@ bool TestDesktop::start_export(const std::string& scratch) {
 }
 
 bool TestDesktop::start_host(const std::string& host_binary) {
-    // RWIN_INTEGRATION_HOST_LOG picks the host's log level (debug by
-    // default); RWIN_INTEGRATION_WAYLAND_DEBUG=1 adds its Wayland traffic.
     const char* level = std::getenv("RWIN_INTEGRATION_HOST_LOG");
     std::vector<std::pair<std::string, std::string>> env{{"WAYLAND_DISPLAY", socket_},
                                                          {"RWIN_LOG", level != nullptr ? level : "debug"}};
@@ -224,4 +216,4 @@ void TestDesktop::pass(std::chrono::milliseconds time) {
     loop_.run();
 }
 
-}  // namespace rwin::integration
+}

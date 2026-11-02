@@ -9,12 +9,9 @@
 namespace rwin::host {
 
 namespace {
-
-// How long the device has to answer hello: it answers at once, from a
-// thread of its own.
 constexpr int kHelloMs = 2000;
 
-}  // namespace
+}
 
 std::optional<ExportHello> ExportHello::greet(const std::string& path, std::uint64_t tag, std::string& why) {
     std::optional<ExportSocket> socket = ExportSocket::connect(path, why);
@@ -33,9 +30,6 @@ std::optional<ExportHello> ExportHello::greet(const std::string& path, std::uint
         why = "the GPU device at '" + path + "' exports nothing (" + to_string(answer->answer.status) + ")";
         return std::nullopt;
     }
-    // A device of an older minor takes what this side asks of it as
-    // malformed, and answers it untagged: frames would go over to pixels then,
-    // in the middle of the session, with nothing to say why.
     if (answer->answer.minor < ExportRequest::kMinor) {
         why = "the GPU device at '" + path + "' reads export requests up to 1." + std::to_string(answer->answer.minor)
               + ", this host half sends 1." + std::to_string(ExportRequest::kMinor)
@@ -45,4 +39,4 @@ std::optional<ExportHello> ExportHello::greet(const std::string& path, std::uint
     return ExportHello{std::move(*socket), answer->answer.gpu()};
 }
 
-}  // namespace rwin::host
+}

@@ -11,8 +11,6 @@ namespace {
 
 constexpr std::uint32_t kFirstPrintable = 0x20;
 
-// For a key with no scan code: the keys a character cannot express, by
-// their keysym.
 std::uint32_t virtual_key_for(std::uint32_t keysym) {
     switch (keysym) {
         case XKB_KEY_BackSpace: return 0x08;
@@ -35,7 +33,7 @@ std::uint32_t virtual_key_for(std::uint32_t keysym) {
     }
 }
 
-}  // namespace
+}
 
 std::optional<KeyStroke> stroke_for(const KeyPress& press, WindowId window) {
     KeyStroke stroke;
@@ -50,4 +48,4 @@ std::optional<KeyStroke> stroke_for(const KeyPress& press, WindowId window) {
     return stroke;
 }
 
-}  // namespace rwin::host
+}

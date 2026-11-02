@@ -26,7 +26,7 @@ struct BitmapDeleter {
     void operator()(HBITMAP__* bitmap) const noexcept { ::DeleteObject(bitmap); }
 };
 
-}  // namespace
+}
 
 std::optional<ScreenPixels> capture_screen(std::int32_t left, std::int32_t top,
                                            std::uint32_t width, std::uint32_t height) {
@@ -73,9 +73,8 @@ std::optional<ScreenPixels> capture_screen(std::int32_t left, std::int32_t top,
     const std::size_t size = static_cast<std::size_t>(width) * height * kBytesPerPixel;
     pixels.bgra.resize(size);
     std::memcpy(pixels.bgra.data(), bits, size);
-    // GDI leaves the fourth byte as whatever it was; the screen is opaque.
     for (std::size_t at = 3; at < size; at += kBytesPerPixel) pixels.bgra[at] = 0xFF;
     return pixels;
 }
 
-}  // namespace rwin::probe
+}

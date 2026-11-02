@@ -16,8 +16,6 @@ namespace rwin::probe {
 namespace {
 
 constexpr DWORD kDialogStyle = DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE;
-// Dialog units are a quarter of the dialog font's average width and an
-// eighth of its height; a template is sized in them.
 constexpr int kHorizontalUnits = 4;
 constexpr int kVerticalUnits = 8;
 
@@ -25,7 +23,7 @@ HWND as_window(std::uint64_t handle) {
     return reinterpret_cast<HWND>(static_cast<std::uintptr_t>(handle));
 }
 
-}  // namespace
+}
 
 struct DialogBoxes::Opening {
     DialogBoxes* self;
@@ -34,8 +32,6 @@ struct DialogBoxes::Opening {
 
 DialogBoxes::DialogBoxes(InputJournal& journal) : journal_(journal) {}
 
-// DLGTEMPLATE, then the menu, class and title as WORD arrays: no menu, the
-// dialog class, the title as UTF-16. No controls follow.
 const void* DialogBoxes::template_for(const ProbeAction& action) {
     const DWORD style = kDialogStyle | (action.centred ? DS_CENTER : 0);
     const LONG units = ::GetDialogBaseUnits();
@@ -101,9 +97,6 @@ bool DialogBoxes::end(HWND dialog, std::string& failure) {
     return false;
 }
 
-// The template is in dialog units, which DS_CENTER centres; the client
-// size asked for is in pixels. The dialog is grown to that size about the
-// place Windows chose for it, or put where it was asked to be.
 void DialogBoxes::place(HWND dialog, const ProbeAction& action) const {
     RECT outer{0, 0, action.width, action.height};
     const auto style = static_cast<DWORD>(::GetWindowLongPtrW(dialog, GWL_STYLE));
@@ -158,4 +151,4 @@ std::intptr_t DialogBoxes::answer(HWND dialog, unsigned message, std::uintptr_t 
     return answered;
 }
 
-}  // namespace rwin::probe
+}

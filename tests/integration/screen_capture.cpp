@@ -16,8 +16,6 @@
 namespace rwin::integration {
 
 namespace {
-
-// QImage's formats, as CaptureArea names the one it wrote.
 constexpr std::uint32_t kRgb32 = 4;
 constexpr std::uint32_t kArgb32 = 5;
 constexpr std::uint32_t kArgb32Premultiplied = 6;
@@ -32,7 +30,6 @@ struct Described {
     std::uint32_t format = 0;
 };
 
-// CaptureArea's answer, a{sv}: the image's size, its stride and its format.
 bool read_described(sd_bus_message* reply, Described& described) {
     if (sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}") < 0) return false;
     while (sd_bus_message_enter_container(reply, SD_BUS_TYPE_DICT_ENTRY, "sv") > 0) {
@@ -72,15 +69,13 @@ bool known(std::uint32_t format) {
            || format == kRgba8888 || format == kRgba8888Premultiplied;
 }
 
-}  // namespace
+}
 
 std::uint32_t ScreenCapture::Picture::at(int x, int y) const noexcept {
     if (x < 0 || y < 0 || x >= width || y >= height) return 0;
     return pixels[static_cast<std::size_t>(y) * width + x];
 }
 
-// KWin answers first and writes the image after, from a thread of its own:
-// the pipe is read to its end once the answer is in.
 std::optional<ScreenCapture::Picture> ScreenCapture::area(int x, int y, int width, int height) {
     int ends[2] = {-1, -1};
     if (::pipe2(ends, O_CLOEXEC) != 0) return std::nullopt;
@@ -119,4 +114,4 @@ std::optional<ScreenCapture::Picture> ScreenCapture::area(int x, int y, int widt
     return picture;
 }
 
-}  // namespace rwin::integration
+}

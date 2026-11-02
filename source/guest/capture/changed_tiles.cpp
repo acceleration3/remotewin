@@ -9,7 +9,7 @@ namespace {
 
 constexpr std::size_t kBytesPerPixel = 4;
 
-}  // namespace
+}
 
 bool ChangedTiles::tile_differs(const std::uint8_t* pixels, const PictureRect& tile) const {
     const std::size_t stride = static_cast<std::size_t>(width_) * kBytesPerPixel;
@@ -48,7 +48,6 @@ bool ChangedTiles::weigh(const std::uint8_t* pixels, std::uint32_t width, std::u
         std::uint32_t run_left = 0;
         bool in_run = false;
         const std::uint32_t columns = (width_ + kTile - 1) / kTile;
-        // One step past the last column, to end a run that reaches the edge.
         for (std::uint32_t column = 0; column <= columns; ++column) {
             const std::uint32_t left = column * kTile;
             const bool differs =
@@ -67,8 +66,6 @@ bool ChangedTiles::weigh(const std::uint8_t* pixels, std::uint32_t width, std::u
         }
     }
 
-    // More than half of it changed: one whole picture is about as many
-    // bytes, and one message.
     if (changed_area * 2 > static_cast<std::uint64_t>(width_) * height_) {
         changed_.clear();
         previous_.assign(pixels, pixels + bytes);
@@ -78,4 +75,4 @@ bool ChangedTiles::weigh(const std::uint8_t* pixels, std::uint32_t width, std::u
     return true;
 }
 
-}  // namespace rwin::guest
+}

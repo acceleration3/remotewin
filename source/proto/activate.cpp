@@ -17,4 +17,4 @@ std::optional<Activate> Activate::read(MessageReader& in) {
     return Activate{*window, enabled == 1};
 }
 
-}  // namespace rwin
+}

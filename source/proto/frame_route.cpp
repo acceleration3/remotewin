@@ -13,4 +13,4 @@ std::optional<FrameRoute> FrameRoute::read(MessageReader& in) {
     return FrameRoute{shared == 1};
 }
 
-}  // namespace rwin
+}

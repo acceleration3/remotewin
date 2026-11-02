@@ -89,7 +89,6 @@ void round_trip() {
     check(r.remaining() == 0, "payload fully consumed");
 }
 
-// A socket hands over whatever arrived, which is not a message.
 void arrives_one_byte_at_a_time() {
     const std::vector<std::uint8_t> bytes = sample_window_list();
     rwin::FrameDecoder decoder;
@@ -120,8 +119,6 @@ void two_messages_in_one_read() {
     check(!decoder.next(&payload, &size), "and no third");
 }
 
-// Reading past the end is what a malformed peer produces. It must poison
-// the reader rather than read our memory or throw across the boundary.
 void short_payload_poisons_rather_than_throws() {
     rwin::MessageWriter w{rwin::MessageId::Subscribe};
     w.put_u32(1);
@@ -151,7 +148,6 @@ void absurd_length_is_refused() {
     check(decoder.overflowed(), "and the stream is marked unusable");
 }
 
-// The bytes after the id, as the other end reads them.
 std::vector<std::uint8_t> body_of(rwin::MessageWriter writer) {
     std::vector<std::uint8_t> bytes = writer.take();
     bytes.erase(bytes.begin(), bytes.begin() + 5);
@@ -180,7 +176,6 @@ void a_key_stroke_crosses_whole() {
     check(read_back<rwin::KeyStroke>(message) == right_ctrl, "a key stroke reads back as written");
     check(right_ctrl.extended() && right_ctrl.code() == 0x1D, "E0 1D is the extended 1D");
 
-    // Pinned byte for byte: the guest is built by another compiler.
     rwin::MessageWriter pinned{rwin::MessageId::Key};
     rwin::KeyStroke{.window = rwin::WindowId{0, 7}, .scan_code = 0xE048, .virtual_key = 0x26, .character = 0x1F600,
                     .pressed = false}
@@ -314,10 +309,8 @@ void system_cursors_are_named_as_windows_numbers_them() {
     }
 }
 
-}  // namespace
+}
 
-// The frames that stay on the GPU: pinned byte for byte, as everything on
-// this wire is, because the guest half is built by another compiler.
 void a_frame_route_crosses_whole() {
     rwin::MessageWriter writer{rwin::MessageId::FrameRoute};
     rwin::FrameRoute{true}.write(writer);
@@ -485,8 +478,6 @@ void a_hello_names_its_features() {
     crowded.put_u16(static_cast<std::uint16_t>(rwin::Hello::kMaxFeatures + 1));
     check(!read_back<rwin::Hello>(crowded.take()).has_value(), "a hello listing too many features is refused");
 
-    // What a guest half from before wire 6 sends first: the old hello, id 71
-    // with a version u32, which is not this hello by its id.
     rwin::MessageWriter old{static_cast<rwin::MessageId>(71)};
     old.put_u32(5);
     const std::vector<std::uint8_t> old_bytes = old.take();
@@ -873,7 +864,7 @@ void each_end_has_its_own_ids() {
     }
 }
 
-}  // namespace
+}
 
 int main() {
     a_window_id_crosses_whole();

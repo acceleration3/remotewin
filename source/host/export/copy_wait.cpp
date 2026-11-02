@@ -7,4 +7,4 @@ CopyWait::Verdict CopyWait::answered(std::uint64_t copies_run) noexcept {
     return ++asks_ < kMostAsks ? Verdict::AskAgain : Verdict::GiveUp;
 }
 
-}  // namespace rwin::host
+}

@@ -12,14 +12,6 @@
 namespace rwin::guest {
 
 namespace {
-
-// The scan code, and whether it needs the extended prefix.
-//
-// Asked of the layout rather than matched against a list of virtual keys:
-// MAPVK_VK_TO_VSC_EX answers with the 0xE0 or 0xE1 prefix in the high
-// byte for exactly the keys that have one, which is the same question a
-// hand-written table of arrow and modifier keys is trying to answer, and
-// stays right on a layout the table's author never saw.
 struct ScanCode {
     WORD value = 0;
     bool extended = false;
@@ -41,9 +33,6 @@ UINT send(WORD virtual_key, WORD scan, DWORD flags) {
 }
 
 void type(std::uint32_t character) {
-    // Anything outside the basic plane arrives as a surrogate pair, and
-    // each half goes in as its own keystroke for the receiver to
-    // reassemble.
     if (character > 0xFFFF) {
         const std::uint32_t offset = character - 0x10000;
         for (const WORD half : {static_cast<WORD>(0xD800 + (offset >> 10)),
@@ -59,8 +48,6 @@ void type(std::uint32_t character) {
     RWIN_DEBUG("input", "typed {:#x}: {} of 2 events accepted", character, accepted);
 }
 
-// wVk is left 0: with KEYEVENTF_SCANCODE Windows ignores it and asks the
-// layout, as it does for a key a keyboard sent.
 void press_scan_code(std::uint16_t scan_code, bool pressed) {
     DWORD flags = KEYEVENTF_SCANCODE | (pressed ? 0 : KEYEVENTF_KEYUP);
     if ((scan_code & KeyStroke::kExtended) == KeyStroke::kExtended) {
@@ -80,7 +67,7 @@ void press_virtual_key(std::uint32_t virtual_key, bool pressed) {
                pressed ? "down" : "up", accepted);
 }
 
-}  // namespace
+}
 
 void put_key(const KeyStroke& stroke) {
     if (stroke.scan_code != 0) {
@@ -92,4 +79,4 @@ void put_key(const KeyStroke& stroke) {
     }
 }
 
-}  // namespace rwin::guest
+}

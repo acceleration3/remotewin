@@ -9,9 +9,6 @@
 #include <algorithm>
 
 namespace rwin::host {
-
-// Centred on a square, as the protocol wants one; straight alpha, as
-// Windows keeps an icon, made premultiplied, as a compositor reads one.
 ToplevelIcon::ToplevelIcon(const Globals& globals, const WindowIcon& icon) {
     if (globals.toplevel_icon() == nullptr) return;
     const int side = std::max(icon.width, icon.height);
@@ -43,4 +40,4 @@ void ToplevelIcon::put_on(ToplevelRole& toplevel) const {
     if (icon_ != nullptr) toplevel.set_icon(icon_);
 }
 
-}  // namespace rwin::host
+}

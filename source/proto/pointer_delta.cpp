@@ -21,4 +21,4 @@ std::optional<PointerDelta> PointerDelta::read(MessageReader& in) {
     return delta;
 }
 
-}  // namespace rwin
+}

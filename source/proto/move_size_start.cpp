@@ -24,4 +24,4 @@ std::optional<MoveSizeStart> MoveSizeStart::read(MessageReader& in) {
     return start;
 }
 
-}  // namespace rwin
+}

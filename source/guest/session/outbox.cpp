@@ -9,4 +9,4 @@ void Outbox::send(const std::vector<std::uint8_t>& message) {
     if (!link_.send(message)) failed_.store(true);
 }
 
-}  // namespace rwin::guest
+}

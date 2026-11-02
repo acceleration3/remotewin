@@ -31,8 +31,6 @@ WindowTruth::Rect rect_of(const RECT& rect) {
     return WindowTruth::Rect{rect.left, rect.top, rect.right, rect.bottom};
 }
 
-// The window rectangle, the visible frame within it, and the client area,
-// all on the screen.
 void read_rectangles(HWND window, WindowTruth& truth) {
     RECT rect{};
     ::GetWindowRect(window, &rect);
@@ -42,17 +40,12 @@ void read_rectangles(HWND window, WindowTruth& truth) {
                                                       &bounds, sizeof(bounds)))
                         ? rect_of(bounds)
                         : truth.window;
-    // MapWindowPoints with the two corners of a RECT, because a
-    // WS_EX_LAYOUTRTL window's client origin is its right edge: mapped as
-    // a rectangle, left and right come back in screen order.
     RECT client{};
     ::GetClientRect(window, &client);
     ::MapWindowPoints(window, HWND_DESKTOP, reinterpret_cast<POINT*>(&client), 2);
     truth.client = rect_of(client);
 }
 
-// Fails, and leaves nothing set, for a window drawn with
-// UpdateLayeredWindow: its alpha is in its pixels, not in attributes.
 void read_layering(HWND window, WindowTruth& truth) {
     COLORREF key = 0;
     BYTE alpha = 255;
@@ -98,7 +91,6 @@ bool owner_chain_disabled(HWND window) {
     return false;
 }
 
-// The thread's activation and focus, as they touch this window.
 void read_activation(HWND window, WindowTruth& truth) {
     truth.foreground = ::GetForegroundWindow() == window;
     truth.active = ::GetActiveWindow() == window;
@@ -109,7 +101,7 @@ void read_activation(HWND window, WindowTruth& truth) {
     truth.enabled_popup = popup == window ? 0 : reinterpret_cast<std::uintptr_t>(popup);
 }
 
-}  // namespace
+}
 
 WindowTruth read_window(HWND window) {
     WindowTruth truth;
@@ -144,4 +136,4 @@ WindowTruth read_window(HWND window) {
     return truth;
 }
 
-}  // namespace rwin::probe
+}

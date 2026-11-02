@@ -24,8 +24,6 @@ void check(bool condition, const char* what) {
     ++failures;
 }
 
-// Through the writer, the length prefix and the decoder, as the bytes
-// would cross the socket; the reader comes back positioned after the id.
 template <typename Write>
 std::vector<std::uint8_t> framed(rwin::MessageId id, Write write) {
     rwin::MessageWriter out{id};
@@ -74,7 +72,6 @@ void a_spec_survives_the_wire() {
 void a_spec_naming_no_layering_is_refused() {
     rwin::WindowSpec spec = every_field_set();
     auto bytes = framed(rwin::MessageId::ProbeCreateWindow, [&](auto& out) { spec.write(out); });
-    // id, class style, style, extended style: the layering byte is next.
     bytes[1 + 4 * 3] = 9;
     rwin::MessageReader in{bytes.data(), bytes.size()};
     check(!rwin::WindowSpec::read(in).has_value(), "an unknown layering is refused, not cast");
@@ -202,7 +199,6 @@ void input_records_survive_and_read_signed_coordinates() {
     record.message = 0x0201;
     record.window = 0x500c4;
     record.wparam = 1;
-    // GET_X_LPARAM -3, GET_Y_LPARAM 183: a point left of the client area.
     record.lparam = (183u << 16) | 0xFFFDu;
     record.outcome = -2;
     const auto bytes = framed(rwin::MessageId::ProbeInput, [&](auto& out) { record.write(out); });
@@ -276,7 +272,7 @@ void the_probe_range_is_its_own() {
           "harness commands and probe answers do not overlap");
 }
 
-}  // namespace
+}
 
 int main() {
     a_spec_survives_the_wire();

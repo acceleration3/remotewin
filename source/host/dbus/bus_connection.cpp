@@ -22,7 +22,7 @@ std::uint64_t monotonic_us() {
     return static_cast<std::uint64_t>(now.tv_sec) * 1'000'000 + static_cast<std::uint64_t>(now.tv_nsec) / 1000;
 }
 
-}  // namespace
+}
 
 BusConnection::BusConnection(EventLoop& loop) {
     if (const int error = sd_bus_open_user(&bus_); error < 0) {
@@ -47,9 +47,6 @@ std::string BusConnection::unique_name() const {
     return name;
 }
 
-// sd-bus refuses to be processed from inside one of its own callbacks
-// (EBUSY): a call queued from one goes out when the outer processing ends
-// and the watch asks for the socket to be writable.
 void BusConnection::pump() {
     if (bus_ == nullptr) return;
     if (processing_) return;
@@ -79,4 +76,4 @@ void BusConnection::rearm() {
     timeout_->start(std::chrono::milliseconds(wait), false);
 }
 
-}  // namespace rwin::host
+}

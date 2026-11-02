@@ -23,8 +23,6 @@ void every_slot_starts_free_and_is_the_hosts_once_filled() {
     check(!ledger.free_slot().has_value(), "with all three the host's, none is free");
 }
 
-// The device counts every copy into a surface from the day it was shared,
-// so a slot's count goes on across frees: the n-th copy is "copy n".
 void counts_go_on_across_frees() {
     rwin::guest::SlotLedger ledger{1};
     check(ledger.filled(0) == 1, "copy 1");
@@ -33,9 +31,6 @@ void counts_go_on_across_frees() {
     check(ledger.filled(0) == 2, "the next copy into it is copy 2, not 1 again");
 }
 
-// A ring replaced by a larger one has slots of the same numbers; a free
-// the host sent for the old ring must not hand a slot of the new one back
-// while the host still reads it.
 void a_free_for_another_ring_changes_nothing() {
     rwin::guest::SlotLedger ledger{8};
     static_cast<void>(ledger.filled(0));
@@ -47,7 +42,7 @@ void a_free_for_another_ring_changes_nothing() {
     check(!ledger.freed(8, 0), "once");
 }
 
-}  // namespace
+}
 
 int main() {
     every_slot_starts_free_and_is_the_hosts_once_filled();

@@ -14,9 +14,6 @@
 namespace rwin::guest {
 
 namespace {
-
-// d3dkmthk.h's, which mingw-w64 does not ship. The layouts are the WDK's;
-// only what reading an id needs is declared, and only here.
 using KmtHandle = UINT;
 using KmtStatus = LONG;
 
@@ -86,16 +83,11 @@ using QueryResourceInfoEntry = KmtStatus(WINAPI*)(KmtQueryResourceInfo*);
 using OpenResourceEntry = KmtStatus(WINAPI*)(KmtOpenResource*);
 using DestroyAllocationEntry = KmtStatus(WINAPI*)(const KmtDestroyAllocation*);
 
-// The allocation's private data as avgpu writes it (accel-virt's
-// docs/external-export.md): its 56-byte allocation descriptor, then a
-// 40-byte record - magic "AVS\0", version 1, and the id 8 bytes in.
 constexpr UINT kDescriptorBytes = 56;
 constexpr UINT kRecordBytes = 40;
 constexpr std::uint32_t kRecordMagic = 0x00535641;
 constexpr std::uint32_t kRecordVersion = 1;
 constexpr std::size_t kIdOffset = kDescriptorBytes + 8;
-// Larger than any resource's private data a texture of ours has; the sizes
-// are asked for first, and one larger than this is not avgpu's texture.
 constexpr std::size_t kPrivateBytes = 4096;
 
 
@@ -111,14 +103,9 @@ std::optional<LUID> adapter_luid(ID3D11Device* device) {
     return described.AdapterLuid;
 }
 
-}  // namespace
+}
 
-// Looked up in gdi32.dll by name rather than linked: d3d11.dll exports
-// functions of the same names that do nothing and say they succeeded
-// (D3DKMTCreateDevice among them, handing back device 0), and an import
-// library listed before gdi32's on a link line binds them instead.
 struct SurfaceIdReader::Kernel {
-    // Nothing when gdi32 lacks any of them.
     static std::unique_ptr<const Kernel> load() {
         const HMODULE gdi32 = ::GetModuleHandleW(L"gdi32.dll");
         if (gdi32 == nullptr) return nullptr;
@@ -151,9 +138,6 @@ struct SurfaceIdReader::Kernel {
 };
 
 namespace {
-
-// The open made to read the id is a second hold of this process's on the
-// texture, let go of as soon as it is read.
 class OpenedResource {
 public:
     OpenedResource(DestroyAllocationEntry destroy, KmtHandle device, KmtHandle resource) noexcept
@@ -173,7 +157,7 @@ private:
     KmtHandle resource_;
 };
 
-}  // namespace
+}
 
 SurfaceIdReader::SurfaceIdReader(ID3D11Device* device) : kernel_(Kernel::load()) {
     if (kernel_ == nullptr) {
@@ -267,4 +251,4 @@ std::optional<std::uint64_t> SurfaceIdReader::id_of(void* shared_handle) const {
     return id;
 }
 
-}  // namespace rwin::guest
+}

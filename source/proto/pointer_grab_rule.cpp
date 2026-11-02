@@ -5,14 +5,11 @@
 namespace rwin {
 
 namespace {
-
-// A pixel either way: a cursor put back at a point lands on it, and one
-// left where it went is wherever the pointer put it.
 bool near(PointerGrabRule::Point a, PointerGrabRule::Point b) noexcept {
     return std::abs(a.x - b.x) <= 1 && std::abs(a.y - b.y) <= 1;
 }
 
-}  // namespace
+}
 
 void PointerGrabRule::put_at(Point at, std::uint64_t now_ms) noexcept {
     pending_ = Pending{at, true, now_ms};
@@ -44,10 +41,6 @@ void PointerGrabRule::note_free() noexcept {
     returns_ = 0;
 }
 
-// Put at a point and found elsewhere: something put it back, however soon
-// it is looked at. Nudged and found where it was: put back too, once the
-// nudge has had time to land. Found where the move left it, once the
-// application has had time to answer: left alone.
 void PointerGrabRule::judge(const Look& look) noexcept {
     if (!pending_.has_value()) return;
     const bool settled = look.now_ms - pending_->since_ms >= kSettleMs;
@@ -94,4 +87,4 @@ PointerGrab PointerGrabRule::grab_for(const Look& look) noexcept {
     return grab;
 }
 
-}  // namespace rwin
+}

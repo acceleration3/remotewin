@@ -48,13 +48,9 @@ void the_output_may_be_anywhere_in_the_layout() {
 
 void a_rounded_report_is_the_nearest_pixel() {
     const ScreenMapping mapping{PointF{0, 0}, 1.2};
-    // The compositor answering 127 for an asked 126.67 is still guest 152.
     check(mapping.guest_point(PointF{127, 0}) == Point{152, 0}, "127 logical is 152.4, guest 152");
 }
 
-// The host of the trace: HDMI-A-3 at 2134,120 scale 1 listed first, DP-2 at
-// 0,0 scale 1.2 (2560x1440 physical, 2133x1200 logical), standing for the
-// guest's 2560x1440 monitor.
 OutputLayout two_outputs(const char* guest_output) {
     OutputLayout layout;
     layout.replace({OutputLayout::Output{"HDMI-A-3", PointF{2134, 120}, PointF{1920, 1080}, 1.0},
@@ -71,7 +67,6 @@ void the_named_output_is_the_guests_and_the_first_is_the_fallback() {
 
 void a_window_on_either_output_is_on_the_guest_monitor() {
     const OutputLayout layout = two_outputs("DP-2");
-    // The trace: KWin put a window at 299,300 on DP-2; it was -1834,180 in the guest.
     check(layout.guest_point(BoxF{299, 300, 1254, 500}) == Point{359, 360}, "DP-2 at its own scale");
     check(layout.guest_point(BoxF{2234, 220, 800, 500}) == Point{100, 100}, "HDMI-A-3 at scale 1");
 }
@@ -83,7 +78,6 @@ void a_guest_move_is_placed_on_the_output_the_window_is_on() {
     check(layout.host_point(Point{100, 100}, on_hdmi) == PointF{2234, 220}, "stays on HDMI-A-3");
     check(layout.host_point(Point{120, 120}, on_dp) == PointF{100, 100}, "stays on DP-2");
     check(layout.host_point(Point{120, 120}, std::nullopt) == PointF{100, 100}, "a new window is on the guest's output");
-    // And the round trip settles: reported, asked back, the same place.
     const Point guest = layout.guest_point(on_hdmi);
     const PointF back = layout.host_point(guest, on_hdmi);
     check(layout.guest_point(BoxF{back.x, back.y, 800, 500}) == guest, "no drift");
@@ -92,12 +86,11 @@ void a_guest_move_is_placed_on_the_output_the_window_is_on() {
 void the_guest_window_is_kept_whole_on_the_guest_monitor() {
     const OutputLayout layout = two_outputs("DP-2");
     check(layout.guest_point(BoxF{-300, -50, 800, 500}) == Point{0, 0}, "not left of or above it");
-    // DP-2's 1700 is guest 2040 px; an 800 logical (960 px) wide window leaves 1600.
     check(layout.guest_point(BoxF{1700, 100, 800, 500}).x == 2560 - 960, "not past its right edge");
     check(layout.guest_point(BoxF{299, 1100, 1254, 800}).y == 1440 - static_cast<int>(800 * 1.2 + 0.5), "not below it");
 }
 
-}  // namespace
+}
 
 int main() {
     the_named_output_is_the_guests_and_the_first_is_the_fallback();

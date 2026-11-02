@@ -31,4 +31,4 @@ std::optional<ScreenPixels> ScreenPixels::read(MessageReader& in) {
     return pixels;
 }
 
-}  // namespace rwin
+}

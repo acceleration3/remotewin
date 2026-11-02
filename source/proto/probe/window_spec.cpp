@@ -54,4 +54,4 @@ std::optional<WindowSpec> WindowSpec::read(MessageReader& in) {
     return spec;
 }
 
-}  // namespace rwin
+}

@@ -54,4 +54,4 @@ std::vector<std::uint8_t> MessageWriter::take() {
     return std::move(bytes_);
 }
 
-}  // namespace rwin
+}

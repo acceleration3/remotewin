@@ -38,9 +38,6 @@ void a_ratio_that_is_no_small_fraction_is_refused() {
     check(!unit_padding(Size{32, 32}, Point{0, 0}, 1.2345678).has_value(), "1.2345678 has no p/q to pad to");
 }
 
-// Every scale a compositor offers (120ths, 1 to 2.5) and every hotspot: the
-// padded picture is exactly its logical size at the ratio, and so is the
-// hotspot.
 void every_scale_lands_on_whole_units() {
     for (int twentieths = 20; twentieths <= 50; ++twentieths) {
         const double ratio = twentieths / 20.0;
@@ -61,7 +58,7 @@ void every_scale_lands_on_whole_units() {
     }
 }
 
-}  // namespace
+}
 
 int main() {
     a_cursor_at_six_fifths();

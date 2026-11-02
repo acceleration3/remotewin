@@ -15,11 +15,7 @@ namespace {
 constexpr WORD kIsShellManagedWindowOrdinal = 2574;
 constexpr const wchar_t* kAsNormalWindow = L"Microsoft.Windows.ShellManagedWindowAsNormalWindow";
 constexpr CLSID kImmersiveShell{0xc2f03a33, 0x21f5, 0x47fa, {0xb4, 0xbb, 0x15, 0x63, 0x62, 0xa2, 0xf2, 0x39}};
-// IApplicationViewCollection, which is also the service id rdpshell asks
-// the immersive shell's service provider for.
 constexpr IID kViewCollection{0x1841c6d7, 0x4f9d, 0x42c0, {0xaf, 0x41, 0x87, 0x47, 0x53, 0x8f, 0x10, 0xe5}};
-// IApplicationViewCollection::GetViewForHwnd, slot 6 (offset 0x30);
-// IApplicationView::GetShowInSwitchers, slot 27 (offset 0xd8).
 constexpr std::size_t kGetViewForHwnd = 6;
 constexpr std::size_t kGetShowInSwitchers = 27;
 using GetViewForHwnd = HRESULT(STDMETHODCALLTYPE*)(IUnknown*, HWND, IUnknown**);
@@ -43,7 +39,7 @@ IUnknown* view_collection() {
     return SUCCEEDED(found) ? views : nullptr;
 }
 
-}  // namespace
+}
 
 ShellViews::ShellViews()
     : is_shell_managed_(reinterpret_cast<IsShellManagedWindow>(reinterpret_cast<void*>(
@@ -68,8 +64,6 @@ bool ShellViews::shown_in_switchers(void* window) const {
     IUnknown* view = nullptr;
     const HRESULT found = slot<GetViewForHwnd>(views_, kGetViewForHwnd)(views_, static_cast<HWND>(window), &view);
     if (FAILED(found) || view == nullptr) {
-        // The shell went away with the collection (Explorer restarted): asked
-        // afresh next time.
         if (found == RPC_E_DISCONNECTED || found == HRESULT_FROM_WIN32(RPC_S_SERVER_UNAVAILABLE)) {
             views_->Release();
             views_ = nullptr;
@@ -82,4 +76,4 @@ bool ShellViews::shown_in_switchers(void* window) const {
     return SUCCEEDED(read) && shown != FALSE;
 }
 
-}  // namespace rwin::guest
+}

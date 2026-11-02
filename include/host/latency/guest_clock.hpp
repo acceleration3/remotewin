@@ -15,15 +15,10 @@ namespace rwin::host {
 
 class GuestLink;
 
-// The guest's clock as this side sees it: the guest is probed while it is
-// connected (ClockProbe), quickly at first and then once a second, and its
-// answers kept (ClockOffset).
 class GuestClock {
 public:
     GuestClock(EventLoop& loop, GuestLink& link);
 
-    // A moment the guest stamped, on this side's clock (now_ns); nothing
-    // until the guest has answered a probe.
     [[nodiscard]] std::optional<std::int64_t> to_host(std::int64_t guest) const noexcept {
         return offset_.to_host(guest);
     }
@@ -37,4 +32,4 @@ private:
     std::size_t answers_ = 0;
 };
 
-}  // namespace rwin::host
+}

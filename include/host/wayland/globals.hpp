@@ -28,20 +28,8 @@ struct zwp_relative_pointer_manager_v1;
 struct zxdg_decoration_manager_v1;
 
 namespace rwin::host {
-
-// The compositor's globals this client speaks, bound once.
-//
-// Required, and the connection refused without them: wl_compositor (4,
-// for damage_buffer), wl_subcompositor, wl_shm, xdg_wm_base, wl_seat and
-// wp_viewporter (a mirror is sized apart from its buffer, at any scale).
-// Everything else is null where the compositor does not offer it, and
-// what needs it does without: shared frames without dma-bufs come as
-// pixels, a frame without explicit sync is waited for here, a system
-// cursor without shapes is the guest's picture, and so on.
 class Globals {
 public:
-    // ``display`` outlives this. Throws std::runtime_error naming what
-    // the compositor lacks.
     explicit Globals(wl_display* display);
     ~Globals();
 
@@ -57,8 +45,6 @@ public:
     [[nodiscard]] wl_shm* shm() const noexcept { return shm_; }
     [[nodiscard]] xdg_wm_base* wm_base() const noexcept { return wm_base_; }
     [[nodiscard]] std::uint32_t wm_base_version() const noexcept { return wm_base_version_; }
-    // The seat, bound for whoever listens to it from the start: what it can
-    // do is said once, as it is bound.
     [[nodiscard]] wl_seat* bind_seat() const;
     [[nodiscard]] std::uint32_t seat_version() const noexcept { return seat_version_; }
     [[nodiscard]] wp_viewporter* viewporter() const noexcept { return viewporter_; }
@@ -76,19 +62,14 @@ public:
     [[nodiscard]] xdg_activation_v1* activation() const noexcept { return activation_; }
     [[nodiscard]] zxdg_decoration_manager_v1* decoration() const noexcept { return decoration_; }
     [[nodiscard]] xdg_toplevel_icon_manager_v1* toplevel_icon() const noexcept { return toplevel_icon_; }
-    // Null too where the compositor's presentation clock is not
-    // CLOCK_MONOTONIC, the clock every other stamp is on.
     [[nodiscard]] wp_presentation* presentation() const noexcept {
         return presentation_monotonic_ ? presentation_ : nullptr;
     }
     [[nodiscard]] wp_alpha_modifier_v1* alpha_modifier() const noexcept { return alpha_modifier_; }
     [[nodiscard]] xdg_wm_dialog_v1* dialog() const noexcept { return dialog_; }
 
-    // The largest scale any output has: what a surface is drawn at before
-    // the compositor names its own.
     [[nodiscard]] double output_scale() const noexcept;
 
-    // "name version, ..." of every optional global found, and of those not.
     [[nodiscard]] std::string describe() const;
 
 private:
@@ -134,4 +115,4 @@ private:
     std::vector<Output> outputs_;
 };
 
-}  // namespace rwin::host
+}

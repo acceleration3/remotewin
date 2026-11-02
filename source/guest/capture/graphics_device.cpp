@@ -13,18 +13,12 @@
 namespace rwin::guest {
 
 namespace {
-
-// Declared here because mingw ships the capture headers but not the
-// Direct3D11 interop one. This is the documented export of d3d11.dll that
-// turns a DXGI device into the WinRT device a frame pool accepts.
 extern "C" HRESULT WINAPI CreateDirect3D11DeviceFromDXGIDevice(IDXGIDevice*,
                                                               IInspectable**);
 
-}  // namespace
+}
 
 GraphicsDevice::GraphicsDevice() {
-    // Multithreaded: the frame pools are created free-threaded so frames
-    // arrive without a dispatcher to pump.
     const HRESULT initialised = ::RoInitialize(RO_INIT_MULTITHREADED);
     if (FAILED(initialised) && initialised != RPC_E_CHANGED_MODE) {
         RWIN_ERROR("capture", "RoInitialize failed: {:#010x}",
@@ -32,16 +26,12 @@ GraphicsDevice::GraphicsDevice() {
         return;
     }
 
-    // BGRA support is required by the capture pixel format. No debug
-    // layer: it is not installed on a stock Windows.
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0,
                                         D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0};
     HRESULT created = ::D3D11CreateDevice(
         nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
         levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &device_, nullptr, &context_);
     if (FAILED(created)) {
-        // A guest with no GPU driver has no hardware device; WARP is what
-        // it has, and DWM is composing into it anyway.
         created = ::D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr,
                                       D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels,
                                       ARRAYSIZE(levels), D3D11_SDK_VERSION, &device_,
@@ -62,8 +52,6 @@ GraphicsDevice::GraphicsDevice() {
         RWIN_ERROR("capture", "the Direct3D device is not a DXGI device");
         return;
     }
-    // Its copies and edge reads are ahead of the application's own work on
-    // the GPU: a frame copied late is a frame shown late. 7 is the highest.
     constexpr INT kHighestGpuPriority = 7;
     if (FAILED(dxgi->SetGPUThreadPriority(kHighestGpuPriority))) {
         RWIN_DEBUG("capture", "the GPU will not put this device's work first");
@@ -84,4 +72,4 @@ GraphicsDevice::~GraphicsDevice() {
     if (device_ != nullptr) device_->Release();
 }
 
-}  // namespace rwin::guest
+}

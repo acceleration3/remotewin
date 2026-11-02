@@ -7,11 +7,6 @@
 #include "guest/capture/winrt_close.hpp"
 #include "logging/logger.hpp"
 
-// mingw's windows.foundation.h declares IReference<boolean> and
-// IReference<BYTE> separately, and its own boolean is unsigned char — so
-// the two are one type defined twice and the header does not compile.
-// Suppressing the later of the pair leaves the type present under the
-// other name, which is the one nothing here asks for by name.
 #define ____FIReference_1_boolean_INTERFACE_DEFINED__
 
 // clang-format off
@@ -40,10 +35,6 @@ using capture_abi::IGraphicsCaptureSession2;
 using capture_abi::IGraphicsCaptureSession3;
 using FrameArrived = __FITypedEventHandler_2_Windows__CGraphics__CCapture__CDirect3D11CaptureFramePool_IInspectable;
 
-// mingw ships the capture headers but not the Direct3D11 interop one, so
-// the interface it declares is declared here — at namespace scope and
-// with its identifier attached, which is what makes a COM interface
-// callable rather than merely nameable.
 MIDL_INTERFACE("A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1")
 IDirect3DDxgiInterfaceAccess : public IUnknown {
     virtual HRESULT STDMETHODCALLTYPE GetInterface(REFIID iid, void** object) = 0;
@@ -51,7 +42,6 @@ IDirect3DDxgiInterfaceAccess : public IUnknown {
 __CRT_UUID_DECL(IDirect3DDxgiInterfaceAccess, 0xA9B3D012, 0x3DF2, 0x4EE3, 0xB8, 0xD1,
                 0x86, 0x95, 0xF4, 0x57, 0xD3, 0xC1)
 
-// IGraphicsCaptureSession5 is absent from the MinGW headers.
 struct CaptureInterval : IInspectable {
     virtual HRESULT STDMETHODCALLTYPE get_MinUpdateInterval(INT64* hundred_ns) = 0;
     virtual HRESULT STDMETHODCALLTYPE put_MinUpdateInterval(INT64 hundred_ns) = 0;
@@ -62,13 +52,7 @@ namespace rwin::guest {
 namespace {
 
 constexpr std::size_t kBytesPerPixel = 4;
-// Three buffers: DWM composes a capture frame only into a buffer the
-// guest's GPU has finished with, and on accel-virt it learns that a frame
-// later than real hardware would tell it - with two, about one composition
-// in six found none free and was not captured.
 constexpr int kPoolBuffers = 3;
-// DirectXPixelFormat::B8G8R8A8UIntNormalized. The only format the
-// compositor hands out, and the one that carries alpha.
 constexpr int kBgra8 = 87;
 
 void allow_every_composition(IGraphicsCaptureSession* session) {
@@ -79,8 +63,6 @@ void allow_every_composition(IGraphicsCaptureSession* session) {
         RWIN_WARN("capture", "this Windows build retains WGC's default capture throttle");
         return;
     }
-    // DWM's default 16 ms gate skips a 60 Hz composition after >0.67 ms
-    // of phase jitter. Zero permits each composition, not busy-loop captures.
     const HRESULT changed = interval->put_MinUpdateInterval(0);
     interval->Release();
     if (FAILED(changed))
@@ -105,8 +87,6 @@ void release(void** object) {
     }
 }
 
-// What the pool calls, on a thread of its own, as each frame is composed.
-// Agile: a free-threaded pool calls it from whichever thread it likes.
 class FrameArrivedHandler final : public FrameArrived {
 public:
     explicit FrameArrivedHandler(const rwin::guest::FrameSignal& arrivals) noexcept : arrivals_(arrivals) {}
@@ -132,7 +112,7 @@ public:
         if (left == 0) delete this;
         return left;
     }
-    HRESULT STDMETHODCALLTYPE Invoke(IDirect3D11CaptureFramePool* /*pool*/, IInspectable* /*nothing*/) override {
+    HRESULT STDMETHODCALLTYPE Invoke(IDirect3D11CaptureFramePool* , IInspectable* ) override {
         arrivals_.raise();
         return S_OK;
     }
@@ -154,7 +134,7 @@ IGraphicsCaptureItemInterop* item_factory() {
     return interop;
 }
 
-}  // namespace
+}
 
 CaptureStream::CaptureStream(const GraphicsDevice& device, const FrameSignal& arrivals, CaptureCloser& closer)
     : device_(device), arrivals_(arrivals), closer_(closer) {
@@ -163,10 +143,6 @@ CaptureStream::CaptureStream(const GraphicsDevice& device, const FrameSignal& ar
 
 CaptureStream::~CaptureStream() { close(); }
 
-// The session before the pool it fills. The pool holds its buffers until
-// it is closed, not until it is released: a capture of every window the
-// matrix makes, each released and none closed, is buffers the size of a
-// maximised window apiece.
 void CaptureStream::close_capture() {
     if (pool_ != nullptr && arrival_token_.has_value()) {
         static_cast<IDirect3D11CaptureFramePool*>(pool_)->remove_FrameArrived(EventRegistrationToken{*arrival_token_});
@@ -223,9 +199,6 @@ bool CaptureStream::open(void* item, Extent size) {
     return false;
 }
 
-// The pool made again at another size keeps the session capturing into it,
-// which is a good deal cheaper than a new session; a new pool and session
-// are made only where that is refused.
 bool CaptureStream::resize(Extent size) {
     if (pool_ != nullptr && session_ != nullptr && recreate(size)) return true;
     return start(size);
@@ -269,7 +242,6 @@ bool CaptureStream::start(Extent size) {
 
     close_capture();
 
-    // The wrapped device, asked for by the interface a frame pool takes.
     ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice* wrapped = nullptr;
     if (FAILED(device_.winrt_device()->QueryInterface(
             __uuidof(ABI::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice),
@@ -279,8 +251,6 @@ bool CaptureStream::start(Extent size) {
         return false;
     }
 
-    // Free-threaded: frames then arrive without a dispatcher on this
-    // thread to pump, which a console program does not have.
     const HRESULT created = statics->CreateFreeThreaded(
         wrapped,
         static_cast<ABI::Windows::Graphics::DirectX::DirectXPixelFormat>(kBgra8),
@@ -309,10 +279,6 @@ bool CaptureStream::start(Extent size) {
         return false;
     }
 
-    // The pointer, which belongs to the desktop rather than to anything
-    // captured. Left on, the guest's cursor is painted into the frame and
-    // arrives as part of the picture — so the host shows two, its own and
-    // a drawn one that lags behind it.
     IGraphicsCaptureSession2* pointer = nullptr;
     if (SUCCEEDED(static_cast<IGraphicsCaptureSession*>(session_)->QueryInterface(
             __uuidof(IGraphicsCaptureSession2), reinterpret_cast<void**>(&pointer)))) {
@@ -322,9 +288,6 @@ bool CaptureStream::start(Extent size) {
         RWIN_WARN("capture", "this build cannot turn off cursor capture");
     }
 
-    // The yellow "you are being captured" border, which is not part of
-    // the picture and would be mirrored as if it were. Only newer builds
-    // allow turning it off; on older ones the request simply fails.
     IGraphicsCaptureSession3* borders = nullptr;
     if (SUCCEEDED(static_cast<IGraphicsCaptureSession*>(session_)->QueryInterface(
             __uuidof(IGraphicsCaptureSession3), reinterpret_cast<void**>(&borders)))) {
@@ -364,8 +327,6 @@ CaptureStream::Frame& CaptureStream::Frame::operator=(Frame&& other) noexcept {
     return *this;
 }
 
-// Closed as well as released: the pool composes into a buffer again only
-// once its frame is closed.
 void CaptureStream::Frame::let_go() noexcept {
     if (texture_ != nullptr) texture_->Release();
     texture_ = nullptr;
@@ -406,8 +367,6 @@ std::optional<CaptureStream::Extent> CaptureStream::read(const Frame& frame, std
         return std::nullopt;
     }
 
-    // The rows are copied rather than the block because a texture's pitch
-    // is its own business and is routinely wider than its pixels.
     const Extent content = frame.content();
     const auto* from = static_cast<const std::uint8_t*>(mapped.pData);
     const std::size_t row = static_cast<std::size_t>(content.width) * kBytesPerPixel;
@@ -434,7 +393,6 @@ std::optional<CaptureStream::Frame> CaptureStream::next_frame() {
         || frame == nullptr) {
         return std::nullopt;
     }
-    // Held from here, so every way out lets go of it.
     Frame held{frame, nullptr, {}};
     std::uint64_t drained = 0;
     for (IDirect3D11CaptureFrame* newer = nullptr;
@@ -461,9 +419,6 @@ std::optional<CaptureStream::Frame> CaptureStream::next_frame() {
     if (FAILED(frame->get_ContentSize(&content))) {
         content = {static_cast<INT32>(size_.width), static_cast<INT32>(size_.height)};
     }
-    // The picture is in the top left of the buffer, as large as the frame
-    // says it is. One the buffer does not hold is cropped: not sent, and
-    // the frames made large enough for the next.
     D3D11_TEXTURE2D_DESC described{};
     texture->GetDesc(&described);
     if (content.Width > 0 && content.Height > 0
@@ -516,4 +471,4 @@ void CaptureStream::sample_frame(const Frame& frame) {
     device_.context()->Unmap(texture, 0);
 }
 
-}  // namespace rwin::guest
+}

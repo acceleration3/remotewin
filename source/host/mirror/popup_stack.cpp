@@ -15,7 +15,7 @@ bool descends_from(const WindowMirror& mirror, const WindowMirror& ancestor) {
     return false;
 }
 
-}  // namespace
+}
 
 void PopupStack::opened(WindowMirror& popup) { open_.push_back(&popup); }
 
@@ -39,7 +39,6 @@ bool PopupStack::open_beside(const WindowMirror& parent) const {
     });
 }
 
-// Topmost first, as the compositor wants them.
 void PopupStack::close_from(std::size_t first) {
     while (open_.size() > first) {
         WindowMirror* top = open_.back();
@@ -48,4 +47,4 @@ void PopupStack::close_from(std::size_t first) {
     }
 }
 
-}  // namespace rwin::host
+}

@@ -26,8 +26,6 @@ PointerGrabRule::Look look(bool shown, std::optional<PointerGrab::Area> clip, Po
     return PointerGrabRule::Look{foreground, shown, clip, cursor, now};
 }
 
-// SetCursorPos to the middle on every WM_MOUSEMOVE: each absolute move the
-// pointer makes is found back at the middle when next looked at.
 void mouse_look(PointerGrabRule& rule, std::uint64_t& now, int moves, bool shown = false) {
     for (int i = 0; i < moves; ++i) {
         static_cast<void>(rule.grab_for(look(shown, std::nullopt, kMiddle, now)));
@@ -143,7 +141,7 @@ void losing_the_foreground_lets_go() {
     check(!rule.warping(), "what was seen of one window is forgotten when another is in front");
 }
 
-}  // namespace
+}
 
 int main() {
     a_hidden_cursor_alone_is_left_alone();

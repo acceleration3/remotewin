@@ -16,17 +16,12 @@ PointerGrabRule::Point cursor_now() {
     return {at.x, at.y};
 }
 
-// Whether a window is being moved or sized by Windows' own loop, which
-// clips the cursor to the work area while it runs: Windows' clip, not one
-// the application asked for, and confining the mirror to it would hold the
-// pointer inside the very window being dragged.
 bool moving_or_sizing() {
     GUITHREADINFO gui{};
     gui.cbSize = sizeof(gui);
     return ::GetGUIThreadInfo(0, &gui) != FALSE && (gui.flags & GUI_INMOVESIZE) != 0;
 }
 
-// GetClipCursor answers the whole desktop when nothing is clipped.
 std::optional<PointerGrab::Area> clip_now() {
     if (moving_or_sizing()) return std::nullopt;
     RECT clip{};
@@ -61,7 +56,7 @@ const char* kind_name(PointerGrab::Kind kind) {
     return "none";
 }
 
-}  // namespace
+}
 
 std::optional<PointerGrab> PointerGrabWatcher::changed(WindowId foreground) {
     const PointerGrabRule::Look look{foreground, cursor_shown(), clip_now(), cursor_now(), ::GetTickCount64()};
@@ -80,4 +75,4 @@ void PointerGrabWatcher::put_at(std::int32_t screen_x, std::int32_t screen_y) {
 
 void PointerGrabWatcher::nudging() { rule_.nudged(cursor_now(), ::GetTickCount64()); }
 
-}  // namespace rwin::guest
+}

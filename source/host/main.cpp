@@ -35,12 +35,7 @@
 #include <vector>
 
 namespace {
-
-// The exit status when the guest half that dialled in is from another
-// build (its hello lacks what a mirror needs): whoever spawned this can tell
-// the user to replace it rather than report a mirror that merely ended.
 constexpr int kExitWireMismatch = 3;
-// The guest half went away.
 constexpr int kExitDisconnected = 4;
 constexpr std::uint16_t kDefaultPort = 5140;
 
@@ -99,7 +94,6 @@ bool parse_number(std::string_view text, Number& into) {
     return error == std::errc{} && end == text.data() + text.size();
 }
 
-// Nothing when the program is to exit at once, with the status given.
 std::optional<Options> parse(int argc, char** argv, int& status) {
     static const option kOptions[] = {
         {"port", required_argument, nullptr, kPort},     {"export-socket", required_argument, nullptr, kExport},
@@ -167,8 +161,6 @@ std::optional<Options> parse(int argc, char** argv, int& status) {
     return options;
 }
 
-// Taken once, by the first window: a token is good for one activation, and
-// a process this one starts must not take it too.
 std::string take_activation_token() {
     const char* token = std::getenv("XDG_ACTIVATION_TOKEN");
     std::string taken = token != nullptr ? token : "";
@@ -176,9 +168,6 @@ std::string take_activation_token() {
     return taken;
 }
 
-// SIGTERM, SIGINT and SIGHUP end the loop rather than the process, so what
-// is undone on the way out is undone: the scripts loaded into KWin are
-// unloaded and their files removed.
 class Stopping {
 public:
     explicit Stopping(rwin::host::PollLoop& loop) {
@@ -214,14 +203,11 @@ int run(const Options& options) {
     const WaylandDisplay display{loop};
     const Globals globals{display.display()};
     Seat seat{loop, globals};
-    // The seat's pointer and keyboard are said as it is bound.
     wl_display_roundtrip(display.display());
     const CompositorGpu gpu{globals};
     const DrmSyncDevice sync{gpu.render_node(), globals.syncobj()};
     BusConnection bus{loop};
     GuestLink link{loop};
-    // Opened before the guest dials in: it is told at its hello which way
-    // its frames are to come.
     SharedFrameFeed frames{loop, link};
     if (!options.export_socket.empty()) {
         frames.open(options.export_socket, gpu);
@@ -232,14 +218,10 @@ int run(const Options& options) {
     std::unique_ptr<ParentControl> control;
     if (options.managed) {
         control = std::make_unique<ParentControl>(loop, STDIN_FILENO, STDOUT_FILENO);
-        // Losing the parent only detaches the mirror: the guest's windows
-        // are not asked to close.
         control->closed.connect([&loop] { loop.quit(EXIT_SUCCESS); });
         control->failed.connect([&loop] { loop.quit(EXIT_FAILURE); });
         control->report_listening(link.port());
     }
-    // A guest of another build is disconnected as it is refused; the
-    // disconnection is not what the exit says.
     bool mismatched = false;
     link.mismatched.connect([&](const std::string&) {
         mismatched = true;
@@ -278,15 +260,12 @@ int run(const Options& options) {
     return loop.run();
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     int status = EXIT_SUCCESS;
     const std::optional<Options> options = parse(argc, argv, status);
     if (!options.has_value()) return status;
-    // A write to a parent or a guest that has gone is an error to handle,
-    // not the end of the process: the scripts loaded into KWin are unloaded
-    // on the way out.
     std::signal(SIGPIPE, SIG_IGN);
     rwin::Logger::instance().opened("remotewin");
     RWIN_INFO("boot", "wire 7");

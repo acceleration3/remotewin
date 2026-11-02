@@ -12,11 +12,7 @@
 namespace rwin::guest {
 
 namespace {
-
-// Undocumented; what RAIL's server posts for Client System Menu.
 constexpr UINT kPopupSystemMenu = 0x0313;
-// The Alt+Space WM_SYSCHAR that precedes SC_KEYMENU: repeat 1, scan code
-// 0x39, context (Alt held) set.
 constexpr LPARAM kAltSpace = 0x20390001;
 constexpr ULONG_PTR kMenuClassAtom = 32768;
 
@@ -24,7 +20,7 @@ std::int32_t kept_in(std::int32_t at, std::int32_t room_from, std::uint32_t room
     return std::clamp(at, room_from, room_from + static_cast<std::int32_t>(room_size - std::min(size, room_size)));
 }
 
-}  // namespace
+}
 
 void post_sys_command(void* window, SysCommand::Command command) {
     const auto hwnd = static_cast<HWND>(window);
@@ -92,8 +88,6 @@ void place(void* window, const Rect& frame, const Rect& room) {
     const std::uint32_t height = resized ? std::min(frame.height, room.height) : frame.height;
     const std::int32_t x = resized ? kept_in(frame.x, room.x, room.width, width) : frame.x;
     const std::int32_t y = resized ? kept_in(frame.y, room.y, room.height, height) : frame.y;
-    // SWP_ASYNCWINDOWPOS: the window's own thread applies it, and a hung
-    // one does not hang this.
     UINT flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS;
     if (!resized) flags |= SWP_NOSIZE;
     if (::SetWindowPos(hwnd, nullptr, x - surface.inset_x(), y - surface.inset_y(),
@@ -107,4 +101,4 @@ void place(void* window, const Rect& frame, const Rect& room) {
     RWIN_DEBUG("move", "{:#x} frame to {},{} {}x{}", reinterpret_cast<std::uintptr_t>(window), x, y, width, height);
 }
 
-}  // namespace rwin::guest
+}

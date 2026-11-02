@@ -13,8 +13,6 @@ namespace {
 
 constexpr std::string_view kMenuClass = "#32768";
 
-// A popup that is part of its owner's window rather than something opened
-// from it: Windows draws it within the owner, and it takes no focus.
 bool lies_within(const GuestWindow& window, const GuestWindow& parent) {
     const Win32Style style{window};
     if (style.activates() || style.has_caption() || window.fields().class_name == kMenuClass) return false;
@@ -22,13 +20,12 @@ bool lies_within(const GuestWindow& window, const GuestWindow& parent) {
     return parent.frame().contains(window.frame());
 }
 
-}  // namespace
+}
 
 MirrorRole MirrorRole::of(const GuestWindow& window, const GuestWindows& windows) {
     const Win32Style style{window};
     WindowId parent = window.anchor();
     if (parent.none() && !window.owner().none()) {
-        // Glued to its owner (EnforceServerZOrder) whatever its words say.
         if (style.stands_alone() && !window.fields().z_glue) return MirrorRole{Kind::Toplevel, window.owner()};
         parent = window.owner();
     }
@@ -47,4 +44,4 @@ const char* name_of(MirrorRole::Kind kind) noexcept {
     return "?";
 }
 
-}  // namespace rwin::host
+}

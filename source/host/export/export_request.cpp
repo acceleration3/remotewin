@@ -11,7 +11,7 @@ void put(std::array<std::uint8_t, ExportRequest::kBytes>& bytes, std::size_t at,
     }
 }
 
-}  // namespace
+}
 
 std::array<std::uint8_t, ExportRequest::kBytes> ExportRequest::encode() const noexcept {
     std::array<std::uint8_t, kBytes> bytes{};
@@ -25,4 +25,4 @@ std::array<std::uint8_t, ExportRequest::kBytes> ExportRequest::encode() const no
     return bytes;
 }
 
-}  // namespace rwin::host
+}

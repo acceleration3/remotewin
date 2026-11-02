@@ -32,7 +32,7 @@ bool any_alpha(const std::vector<std::uint8_t>& pixels) {
     return false;
 }
 
-}  // namespace
+}
 
 CursorImage::CursorImage(void* cursor_handle) {
     if (cursor_handle == nullptr) return;
@@ -46,8 +46,6 @@ CursorImage::CursorImage(void* cursor_handle) {
     if (icon.hbmColor != nullptr) {
         valid_ = read_colour(screen, icon.hbmColor);
         if (valid_ && !any_alpha(pixels_)) {
-            // A colour cursor with no alpha at all is an older one whose
-            // transparency lives in the mask instead.
             apply_mask_alpha(screen, icon.hbmMask);
         }
     } else {
@@ -85,7 +83,6 @@ void CursorImage::apply_mask_alpha(void* device_context, void* mask_bitmap) {
         == 0) {
         return;
     }
-    // In the mask, white means "leave what is behind" — transparent.
     for (std::size_t at = 0; at < pixels_.size(); at += kBytesPerPixel) {
         pixels_[at + 3] = mask[at] != 0 ? 0 : 0xFF;
     }
@@ -118,4 +115,4 @@ bool CursorImage::read_monochrome(void* device_context, void* mask_bitmap) {
 
 std::vector<std::uint8_t> CursorImage::take_pixels() noexcept { return std::move(pixels_); }
 
-}  // namespace rwin::guest
+}

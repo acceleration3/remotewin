@@ -13,10 +13,6 @@ class PointerGrabber;
 class PopupStack;
 struct GuestDesktop;
 
-// What every window's mirror is made with: the link to the guest, what its
-// surfaces are made with, and what the mirrors of one application share -
-// activation, the popups shown, the pointer's hold, the guest's desktop,
-// where the compositor is told windows go, and the identity they present.
 struct MirrorKit {
     GuestLink& link;
     SurfaceKit surfaces;
@@ -28,4 +24,4 @@ struct MirrorKit {
     std::string app_id;
 };
 
-}  // namespace rwin::host
+}

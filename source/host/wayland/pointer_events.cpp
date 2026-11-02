@@ -13,10 +13,9 @@ namespace {
 
 constexpr std::uint32_t kFrameVersion = 5;
 constexpr double kStep = 120.0;
-// A touchpad scrolls in logical units; this many make a notch.
 constexpr double kUnitsPerStep = 15.0;
 
-}  // namespace
+}
 
 PointerEvents::PointerEvents(wl_pointer* pointer, std::uint32_t version, PointerCursor& cursor,
                              std::function<void(std::uint32_t, wl_surface*)> pressed)
@@ -45,7 +44,7 @@ SurfaceInput* PointerEvents::target() const {
     return MirrorSurface::input_of(focus_);
 }
 
-void PointerEvents::entered(void* self, wl_pointer* /*pointer*/, std::uint32_t serial, wl_surface* surface,
+void PointerEvents::entered(void* self, wl_pointer* , std::uint32_t serial, wl_surface* surface,
                             std::int32_t x, std::int32_t y) {
     auto* events = static_cast<PointerEvents*>(self);
     events->cursor_.entered(serial);
@@ -54,20 +53,20 @@ void PointerEvents::entered(void* self, wl_pointer* /*pointer*/, std::uint32_t s
     if (events->version_ < kFrameVersion) events->flush();
 }
 
-void PointerEvents::left(void* self, wl_pointer* /*pointer*/, std::uint32_t /*serial*/, wl_surface* surface) {
+void PointerEvents::left(void* self, wl_pointer* , std::uint32_t , wl_surface* surface) {
     auto* events = static_cast<PointerEvents*>(self);
     if (surface == events->focus_) events->pending_.left = true;
     if (events->version_ < kFrameVersion) events->flush();
 }
 
-void PointerEvents::moved(void* self, wl_pointer* /*pointer*/, std::uint32_t /*time*/, std::int32_t x,
+void PointerEvents::moved(void* self, wl_pointer* , std::uint32_t , std::int32_t x,
                           std::int32_t y) {
     auto* events = static_cast<PointerEvents*>(self);
     events->pending_.at = PointF{wl_fixed_to_double(x), wl_fixed_to_double(y)};
     if (events->version_ < kFrameVersion) events->flush();
 }
 
-void PointerEvents::pressed(void* self, wl_pointer* /*pointer*/, std::uint32_t serial, std::uint32_t /*time*/,
+void PointerEvents::pressed(void* self, wl_pointer* , std::uint32_t serial, std::uint32_t ,
                             std::uint32_t button, std::uint32_t state) {
     auto* events = static_cast<PointerEvents*>(self);
     const bool down = state == WL_POINTER_BUTTON_STATE_PRESSED;
@@ -79,7 +78,7 @@ void PointerEvents::pressed(void* self, wl_pointer* /*pointer*/, std::uint32_t s
     if (events->version_ < kFrameVersion) events->flush();
 }
 
-void PointerEvents::turned(void* self, wl_pointer* /*pointer*/, std::uint32_t /*time*/, std::uint32_t axis,
+void PointerEvents::turned(void* self, wl_pointer* , std::uint32_t , std::uint32_t axis,
                            std::int32_t value) {
     auto* events = static_cast<PointerEvents*>(self);
     const double units = wl_fixed_to_double(value) * kStep / kUnitsPerStep;
@@ -91,7 +90,7 @@ void PointerEvents::turned(void* self, wl_pointer* /*pointer*/, std::uint32_t /*
     if (events->version_ < kFrameVersion) events->flush();
 }
 
-void PointerEvents::clicked(void* self, wl_pointer* /*pointer*/, std::uint32_t axis, std::int32_t discrete) {
+void PointerEvents::clicked(void* self, wl_pointer* , std::uint32_t axis, std::int32_t discrete) {
     auto* events = static_cast<PointerEvents*>(self);
     events->pending_.stepped = true;
     if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
@@ -101,7 +100,7 @@ void PointerEvents::clicked(void* self, wl_pointer* /*pointer*/, std::uint32_t a
     }
 }
 
-void PointerEvents::turned120(void* self, wl_pointer* /*pointer*/, std::uint32_t axis, std::int32_t value120) {
+void PointerEvents::turned120(void* self, wl_pointer* , std::uint32_t axis, std::int32_t value120) {
     auto* events = static_cast<PointerEvents*>(self);
     events->pending_.stepped = true;
     if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
@@ -111,15 +110,13 @@ void PointerEvents::turned120(void* self, wl_pointer* /*pointer*/, std::uint32_t
     }
 }
 
-void PointerEvents::sourced(void* /*self*/, wl_pointer* /*pointer*/, std::uint32_t /*source*/) {}
-void PointerEvents::stopped(void* /*self*/, wl_pointer* /*pointer*/, std::uint32_t /*time*/, std::uint32_t /*axis*/) {}
-void PointerEvents::directed(void* /*self*/, wl_pointer* /*pointer*/, std::uint32_t /*axis*/,
-                             std::uint32_t /*direction*/) {}
+void PointerEvents::sourced(void* , wl_pointer* , std::uint32_t ) {}
+void PointerEvents::stopped(void* , wl_pointer* , std::uint32_t , std::uint32_t ) {}
+void PointerEvents::directed(void* , wl_pointer* , std::uint32_t ,
+                             std::uint32_t ) {}
 
-void PointerEvents::framed(void* self, wl_pointer* /*pointer*/) { static_cast<PointerEvents*>(self)->flush(); }
+void PointerEvents::framed(void* self, wl_pointer* ) { static_cast<PointerEvents*>(self)->flush(); }
 
-// Each step looks its target up again: a press can close the surface it
-// was on, and what follows goes to nobody.
 void PointerEvents::flush() {
     Pending frame = std::move(pending_);
     pending_ = Pending{};
@@ -147,4 +144,4 @@ void PointerEvents::flush() {
     if (SurfaceInput* input = target()) input->wheel(wheel);
 }
 
-}  // namespace rwin::host
+}

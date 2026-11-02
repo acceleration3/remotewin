@@ -11,18 +11,13 @@
 namespace rwin::guest {
 
 namespace {
-
-// CLSID_StartMenuCacheAndAppResolver and IApplicationResolver (Windows 8
-// and later), as rdpshell's WindowGetAppIDOrder creates it.
 constexpr CLSID kResolverClass{0x660b90c8, 0x73a9, 0x4b58, {0x8c, 0xae, 0x35, 0x5b, 0x7f, 0x55, 0x34, 0x1b}};
 constexpr IID kResolverInterface{0xde25675a, 0x72de, 0x44b4, {0x93, 0x73, 0x05, 0x17, 0x04, 0x50, 0xc1, 0x40}};
 
-// GetAppIDForWindow(hwnd, out id, out pinning prevented, out explicit,
-// out embedded shortcut valid): vtable slot 5 (offset 0x28).
 constexpr std::size_t kGetAppIdForWindow = 5;
 using GetAppIdForWindow = HRESULT(STDMETHODCALLTYPE*)(IUnknown*, HWND, LPWSTR*, BOOL*, BOOL*, BOOL*);
 
-}  // namespace
+}
 
 AppIdResolver::AppIdResolver() {
     const HRESULT made = ::CoCreateInstance(kResolverClass, nullptr, CLSCTX_INPROC_SERVER, kResolverInterface,
@@ -55,4 +50,4 @@ std::string AppIdResolver::app_id_of(void* window) const {
     return utf8;
 }
 
-}  // namespace rwin::guest
+}

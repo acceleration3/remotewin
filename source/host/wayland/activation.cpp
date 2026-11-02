@@ -54,4 +54,4 @@ void Activation::done(void* self, xdg_activation_token_v1* token, const char* na
     if (target != nullptr) activation->activate(target, name);
 }
 
-}  // namespace rwin::host
+}

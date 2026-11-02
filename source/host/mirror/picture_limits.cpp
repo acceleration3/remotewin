@@ -5,15 +5,13 @@
 namespace rwin::host {
 
 namespace {
-
-// The least of the limits given, those of 0 or less being none.
 int tightest(int first, int second) noexcept {
     if (first <= 0) return std::max(0, second);
     if (second <= 0) return first;
     return std::min(first, second);
 }
 
-}  // namespace
+}
 
 PictureLimits PictureLimits::of(const std::optional<MinMax>& limits, const GuestWindow::Margins& margins,
                                 Size padding, Size work_area) noexcept {
@@ -37,4 +35,4 @@ PictureLimits PictureLimits::of(const std::optional<MinMax>& limits, const Guest
     return picture;
 }
 
-}  // namespace rwin::host
+}

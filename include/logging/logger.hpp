@@ -8,13 +8,6 @@ namespace rwin {
 
 enum class LogLevel { Trace, Debug, Info, Warn, Error };
 
-// Every line says when, how loud, from where, and in which thread:
-//
-//   [    0.041273]  info  link     main | guest dialled in from 10.0.2.15:49871
-//
-// The elapsed stamp is relative to process start, because what matters
-// when two processes are talking to each other is how long after their
-// own beginning each did something, and the two clocks need not agree.
 class Logger {
 public:
     static Logger& instance();
@@ -22,8 +15,6 @@ public:
     void set_ceiling(LogLevel level) noexcept { ceiling_ = level; }
     [[nodiscard]] bool wants(LogLevel level) const noexcept { return level >= ceiling_; }
 
-    // ``tag`` names the subsystem, not the file: the reader is following
-    // a conversation between two processes, not a call stack.
     void write(LogLevel level, std::string_view tag, std::string_view message);
 
     void opened(std::string_view program);
@@ -34,7 +25,7 @@ private:
     LogLevel ceiling_ = LogLevel::Info;
 };
 
-}  // namespace rwin
+}
 
 #define RWIN_LOG(level, tag, ...)                                              \
     do {                                                                       \

@@ -40,4 +40,4 @@ PointF OutputLayout::host_point(Point guest, const std::optional<BoxF>& on) cons
     return mapping_of(on.has_value() ? output_of(*on) : guest_output()).host_point(guest);
 }
 
-}  // namespace rwin::host
+}

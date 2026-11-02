@@ -32,7 +32,7 @@ ID3D11Texture2D* staging(ID3D11Device* device, UINT width, UINT height) {
     return made;
 }
 
-}  // namespace
+}
 
 PictureEdges::~PictureEdges() { release(); }
 
@@ -47,7 +47,6 @@ void PictureEdges::release() noexcept {
     unread_ = 0;
 }
 
-// A new size is a new picture: what the old one's edges said is not its.
 bool PictureEdges::fit(CaptureStream::Extent size) {
     if (size == size_ && edges_[0].rows != nullptr) return true;
     release();
@@ -83,8 +82,6 @@ bool PictureEdges::all_drawn(const CaptureStream::Frame& frame) {
     Edges& previous = edges_[1 - next_];
     next_ = 1 - next_;
     copy(current, frame);
-    // The frame before's edges, if the GPU is done with them; the newest
-    // ones, waited for, when nothing has said anything for too long.
     const bool overdue = !verdict_.has_value() || unread_ >= kMostUnread;
     std::optional<bool> heard = previous.copied ? read(previous, false) : std::nullopt;
     if (!heard.has_value() && overdue) heard = read(current, true);
@@ -106,8 +103,6 @@ std::optional<bool> PictureEdges::read(Edges& edges, bool wait) {
     return *rows && *columns;
 }
 
-// A map that fails for any other reason than the copy still running says
-// "not drawn": the frame is then read back whole, which is never wrong.
 std::optional<bool> PictureEdges::rows_drawn(ID3D11Texture2D* rows, bool wait) {
     D3D11_MAPPED_SUBRESOURCE mapped{};
     const HRESULT result = device_.context()->Map(rows, 0, D3D11_MAP_READ, wait ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
@@ -140,4 +135,4 @@ std::optional<bool> PictureEdges::columns_drawn(ID3D11Texture2D* columns, bool w
     return drawn[0] && drawn[1];
 }
 
-}  // namespace rwin::guest
+}

@@ -8,11 +8,6 @@ struct wl_display;
 struct wl_registry;
 
 namespace rwin::integration {
-
-// The pointer of a compositor with no input devices of its own - KWin's
-// virtual backend - made through KWin's fake input (org_kde_kwin_fake_input):
-// while this is connected the seat has a pointer, and it goes where it is
-// told. Each call waits for the compositor to have taken it.
 class FakePointer {
 public:
     explicit FakePointer(const std::string& socket);
@@ -25,7 +20,6 @@ public:
 
     [[nodiscard]] bool usable() const noexcept { return input_ != nullptr; }
 
-    // In the compositor's logical units.
     void move_to(double x, double y);
     void press();
     void release();
@@ -41,4 +35,4 @@ private:
     org_kde_kwin_fake_input* input_ = nullptr;
 };
 
-}  // namespace rwin::integration
+}

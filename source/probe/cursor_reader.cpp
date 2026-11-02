@@ -37,8 +37,6 @@ std::uint64_t as_handle(const void* pointer) {
     return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(pointer));
 }
 
-// The cursor drawn as Windows draws it on screen - alpha blended, the
-// monochrome AND and XOR applied - over one flat colour.
 std::vector<std::uint8_t> drawn_over(HCURSOR cursor, std::uint32_t step, std::uint32_t width, std::uint32_t height,
                                      std::uint32_t background) {
     BITMAPINFO info{};
@@ -69,7 +67,7 @@ std::vector<std::uint8_t> drawn_over(HCURSOR cursor, std::uint32_t step, std::ui
     return pixels;
 }
 
-}  // namespace
+}
 
 CursorReader::CursorReader(const PointerActions& pointer) : pointer_(pointer) {
     std::size_t next = 0;
@@ -144,8 +142,6 @@ void CursorReader::read_pointer_settings(CursorTruth& truth) {
     truth.metric_height = static_cast<std::uint32_t>(::GetSystemMetrics(SM_CYCURSOR));
 }
 
-// An animated cursor is drawn a step at a time (DrawIconEx's step); each
-// step's own picture, from GetCursorFrameInfo, says its size and hotspot.
 void CursorReader::read_frames(HCURSOR cursor, CursorTruth& truth) const {
     std::uint32_t jiffies = 0;
     std::uint32_t steps = 1;
@@ -176,4 +172,4 @@ void CursorReader::read_frames(HCURSOR cursor, CursorTruth& truth) const {
     }
 }
 
-}  // namespace rwin::probe
+}

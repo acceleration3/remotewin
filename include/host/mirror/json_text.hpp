@@ -5,9 +5,6 @@
 #include <string_view>
 
 namespace rwin::host {
-
-// JSON written out as it goes: objects and arrays opened and closed in
-// order, each value after its key in an object, commas where they belong.
 class JsonText {
 public:
     JsonText& open_object();
@@ -28,9 +25,7 @@ private:
     void separate();
 
     std::string text_;
-    // Nothing written yet in the object or array now open, or a key just
-    // written: no comma before what comes next.
     bool fresh_ = true;
 };
 
-}  // namespace rwin::host
+}

@@ -17,10 +17,6 @@ namespace rwin::host {
 
 class Globals;
 
-// The user's seat: its pointer and keyboard as they come and go
-// (wl_seat.capabilities), the cursor over this client's surfaces, and the
-// latest press - what a popup grab, a move or a handed-on activation is
-// asked with.
 class Seat {
 public:
     Seat(EventLoop& loop, const Globals& globals);
@@ -33,19 +29,15 @@ public:
 
     [[nodiscard]] wl_seat* seat() const noexcept { return seat_; }
     [[nodiscard]] PointerCursor& cursor() noexcept { return cursor_; }
-    // Null while the seat has none.
     [[nodiscard]] wl_pointer* pointer() const noexcept;
     [[nodiscard]] wl_surface* pointer_focus() const noexcept;
     [[nodiscard]] wl_surface* keyboard_focus() const noexcept;
     [[nodiscard]] bool control_alt() const;
     [[nodiscard]] const InputSerial& last_press() const noexcept { return last_press_; }
 
-    // A surface of this client's is going: nothing is told to it again.
     void forget(wl_surface* surface) noexcept;
 
-    // The keyboard came to one of this client's surfaces, or left them all.
     Signal<> keyboard_focus_changed;
-    // The seat gained or lost its pointer.
     Signal<> pointer_changed;
 
 private:
@@ -62,4 +54,4 @@ private:
     InputSerial last_press_;
 };
 
-}  // namespace rwin::host
+}

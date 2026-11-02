@@ -88,4 +88,4 @@ JsonText& JsonText::null() {
     return *this;
 }
 
-}  // namespace rwin::host
+}

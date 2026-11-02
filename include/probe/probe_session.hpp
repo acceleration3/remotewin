@@ -28,20 +28,6 @@ class TcpClient;
 }
 
 namespace rwin::probe {
-
-// One harness connection: makes the windows it asks for, does to them what
-// it asks, tells it what Windows made of them, and hands over what they
-// were given as input.
-//
-// Every command is answered, in order, with a message that starts with
-// whether it worked and, if not, why; the harness waits for each answer
-// before asking again.
-//
-// Commands are served from a window of the session's own: the reader
-// posts it a message as they arrive, and whichever message loop the
-// thread is in - its own, or a modal dialog's Windows is running -
-// dispatches it. A command that opens a modal dialog is answered from the
-// modal loop it starts, once the dialog is up.
 class ProbeSession {
 public:
     explicit ProbeSession(guest::TcpClient& link);
@@ -52,7 +38,6 @@ public:
     ProbeSession(ProbeSession&&) = delete;
     ProbeSession& operator=(ProbeSession&&) = delete;
 
-    // Returns when the harness says quit or goes away.
     void run();
 
 private:
@@ -87,10 +72,8 @@ private:
     WindowActions actions_{windows_, dialogs_, pointer_};
     CursorReader cursor_reader_{pointer_};
     std::unique_ptr<BackdropProcess> backdrop_;
-    // A modal call whose window has not been seen yet, and how many more
-    // times to look for it.
     std::optional<int> awaiting_dialog_;
     bool running_ = true;
 };
 
-}  // namespace rwin::probe
+}

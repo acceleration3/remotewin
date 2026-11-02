@@ -16,7 +16,7 @@ Number get(std::span<const std::uint8_t> bytes, std::size_t at) noexcept {
     return static_cast<Number>(value);
 }
 
-}  // namespace
+}
 
 std::optional<ExportAnswer> ExportAnswer::decode(std::span<const std::uint8_t> datagram) {
     if (datagram.size() != kBytes || get<std::uint32_t>(datagram, 0) != kMagic
@@ -72,4 +72,4 @@ const char* to_string(ExportAnswer::Status status) noexcept {
     return "unknown";
 }
 
-}  // namespace rwin::host
+}

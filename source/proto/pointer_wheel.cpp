@@ -25,4 +25,4 @@ std::optional<PointerWheel> PointerWheel::read(MessageReader& in) {
     return wheel;
 }
 
-}  // namespace rwin
+}

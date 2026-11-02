@@ -12,15 +12,8 @@ struct wl_buffer;
 struct wl_shm;
 
 namespace rwin::host {
-
-// A picture in memory shared with the compositor (wl_shm, ARGB8888:
-// premultiplied BGRA in memory, top-down), written here and shown there.
-// Held by the compositor from the commit it is attached in until it says
-// it is done (wl_buffer.release); written again only after.
 class ShmBuffer {
 public:
-    // Throws std::runtime_error when the memory cannot be had. ``freed``, if
-    // any, is told each time the compositor lets go of it.
     ShmBuffer(wl_shm* shm, Size size, const Signal<>* freed = nullptr);
     ~ShmBuffer();
 
@@ -34,7 +27,6 @@ public:
     [[nodiscard]] std::span<std::uint8_t> pixels() noexcept { return {pixels_, bytes_}; }
     [[nodiscard]] wl_buffer* buffer() const noexcept { return buffer_; }
 
-    // The compositor has it from the next commit on.
     void attached() noexcept { held_ = true; }
     [[nodiscard]] bool held() const noexcept { return held_; }
 
@@ -50,4 +42,4 @@ private:
     bool held_ = false;
 };
 
-}  // namespace rwin::host
+}

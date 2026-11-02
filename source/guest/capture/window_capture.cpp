@@ -13,7 +13,7 @@ namespace {
 
 constexpr std::size_t kBytesPerPixel = 4;
 
-}  // namespace
+}
 
 CaptureResult WindowCapture::grab(const WindowSurface& surface) {
     std::optional<CaptureStream::Frame> frame;
@@ -22,10 +22,6 @@ CaptureResult WindowCapture::grab(const WindowSurface& surface) {
     return keep(*frame, surface) ? CaptureResult::Fresh : CaptureResult::Unchanged;
 }
 
-// Windows' capture hands over, after a window is restored, the frame it
-// took as the window was minimised: a picture of the minimised stub, which
-// shown would be the window flashing to a sliver. Frames are dropped until
-// one is the window's size, kMostStaleFrames at most.
 CaptureResult WindowCapture::grab(const WindowSurface& surface, std::optional<CaptureStream::Frame>& frame) {
     if (!follow(surface)) return CaptureResult::Gone;
     frame = stream_.next_frame();
@@ -55,9 +51,6 @@ bool WindowCapture::keep(const CaptureStream::Frame& frame, const WindowSurface&
     return true;
 }
 
-// Captured from the window's own first frame, in frames with room for it
-// (picture_room.hpp): a window being resized is captured into the same pool
-// until it outgrows it.
 bool WindowCapture::follow(const WindowSurface& surface) {
     if (!surface.valid()) return false;
     const auto handle =
@@ -73,19 +66,12 @@ bool WindowCapture::follow(const WindowSurface& surface) {
     return fits ? stream_.resize(room_for(size)) : stream_.capture_afresh(room_for(size));
 }
 
-// Not a margin (WindowSurface::margin_is_reserved): a shaped window's
-// transparent edge is its region, which is in the window's coordinates -
-// trimmed, an ellipse lost its last row and column and every point
-// measured against it moved with them.
 void WindowCapture::keep_drawn(CaptureStream::Extent content, const WindowSurface& surface) {
     if (!surface.margin_is_reserved()) {
         keep_whole(content);
         return;
     }
     const ContentBounds drawn{scratch_.data(), content.width, content.height};
-    // A window that draws nothing at all - WS_EX_NOREDIRECTIONBITMAP with
-    // nothing composed into it, or one entirely see-through - is still on
-    // screen: sent whole and transparent, rather than never.
     if (drawn.empty()) {
         keep_whole(content);
         return;
@@ -106,8 +92,6 @@ void WindowCapture::keep_drawn(CaptureStream::Extent content, const WindowSurfac
     }
 }
 
-// The frame as it arrived is what is sent. Swapped rather than copied:
-// both buffers keep their size from frame to frame either way.
 void WindowCapture::keep_whole(CaptureStream::Extent content) {
     offset_x_ = 0;
     offset_y_ = 0;
@@ -116,4 +100,4 @@ void WindowCapture::keep_whole(CaptureStream::Extent content) {
     visible_.swap(scratch_);
 }
 
-}  // namespace rwin::guest
+}

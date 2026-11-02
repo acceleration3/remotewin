@@ -24,4 +24,4 @@ std::optional<InputRecord> InputRecord::read(MessageReader& in) {
     return record;
 }
 
-}  // namespace rwin
+}

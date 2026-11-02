@@ -85,4 +85,4 @@ std::vector<const GuestWindow*> GuestWindows::stacked() const {
     return stacked;
 }
 
-}  // namespace rwin::host
+}

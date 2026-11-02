@@ -19,8 +19,6 @@
 namespace rwin::probe {
 
 namespace {
-
-// Newer than mingw's dwmapi.h.
 constexpr DWORD kDwmUseImmersiveDarkMode = 20;
 constexpr DWORD kDwmWindowCornerPreference = 33;
 
@@ -39,8 +37,6 @@ std::wstring wide(const std::string& text) {
     return out;
 }
 
-// One class per class style: a class style belongs to the class, and the
-// spec names it per window.
 std::optional<std::wstring> class_for(std::uint32_t class_style, WNDPROC procedure,
                                       std::string& failure) {
     wchar_t name[32] = {};
@@ -60,7 +56,7 @@ std::optional<std::wstring> class_for(std::uint32_t class_style, WNDPROC procedu
     return std::wstring{name};
 }
 
-}  // namespace
+}
 
 ProbeWindow::ProbeWindow(const WindowSpec& spec, InputJournal& journal)
     : spec_(spec), journal_(journal) {
@@ -73,8 +69,6 @@ ProbeWindow::ProbeWindow(const WindowSpec& spec, InputJournal& journal)
                                ::GetDpiForSystem());
     const std::wstring title = wide(spec.title);
     auto* owner = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(spec.owner));
-    // WS_VISIBLE is left to show(): everything below has to be in place
-    // before the window is first drawn.
     const DWORD style = spec.style & ~static_cast<DWORD>(WS_VISIBLE);
     window_ = ::CreateWindowExW(spec.extended_style, class_name->c_str(), title.c_str(), style, spec.x,
                                 spec.y, outer.right - outer.left, outer.bottom - outer.top,
@@ -116,8 +110,6 @@ void ProbeWindow::apply_layering() {
     }
 }
 
-// In the window's own coordinates, which start at the window rectangle's
-// corner, invisible border and all.
 void ProbeWindow::apply_shape() {
     if (spec_.shape == WindowSpec::Shape::None) return;
     RECT rect{};
@@ -144,7 +136,6 @@ void ProbeWindow::apply_shape() {
         case WindowSpec::Shape::None:
             return;
     }
-    // The window owns the region once it is set, and frees it itself.
     if (::SetWindowRgn(window_, region.get(), FALSE) != 0) {
         static_cast<void>(region.release());
         return;
@@ -203,8 +194,6 @@ std::intptr_t __stdcall ProbeWindow::procedure(HWND__* window, unsigned message,
     if (message == WM_NCCREATE) {
         const auto* creating = reinterpret_cast<const CREATESTRUCTW*>(lparam);
         auto* self = static_cast<ProbeWindow*>(creating->lpCreateParams);
-        // Kept before CreateWindowEx returns, so the messages it sends on
-        // the way are answered by this window too.
         self->window_ = window;
         ::SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
     }
@@ -213,8 +202,6 @@ std::intptr_t __stdcall ProbeWindow::procedure(HWND__* window, unsigned message,
     return self->answer(message, wparam, lparam);
 }
 
-// SetCursorPos makes a WM_MOUSEMOVE of its own, at the middle; that one
-// finds the cursor already there, and is neither put back nor left alone.
 void ProbeWindow::follow_cursor(std::intptr_t lparam) {
     RECT client{};
     ::GetClientRect(window_, &client);
@@ -231,8 +218,6 @@ void ProbeWindow::follow_cursor(std::intptr_t lparam) {
     ++put_back_;
 }
 
-// The handle WM_INPUT carries is good only until the message is answered,
-// so what it says of a mouse is noted now (InputRecord says how).
 void ProbeWindow::note_raw_input(std::intptr_t lparam) {
     RAWINPUT input{};
     UINT size = sizeof(input);
@@ -266,22 +251,15 @@ std::intptr_t ProbeWindow::answer(unsigned message, std::uintptr_t wparam,
             follow_cursor(lparam);
             break;
         case WM_INPUT:
-            // Noted here, with its motion, rather than below with a handle
-            // that is gone by then; DefWindowProc frees it.
             note_raw_input(lparam);
             return ::DefWindowProcW(window, message, wparam, lparam);
         case WM_ERASEBKGND:
-            // The pattern covers every pixel; erasing first is a flash.
             answered = 1;
             break;
         case WM_PAINT:
             paint();
             break;
         case WM_SYSCOMMAND:
-            // F10 or Alt alone asks for the menu bar, and DefWindowProc
-            // would run its modal loop on the probe's one thread until
-            // the menu is dismissed - with the harness's socket unread
-            // meanwhile. The key messages themselves are already noted.
             answered = (wparam & 0xFFF0) == SC_KEYMENU
                            ? 0
                            : ::DefWindowProcW(window, message, wparam, lparam);
@@ -300,4 +278,4 @@ std::intptr_t ProbeWindow::answer(unsigned message, std::uintptr_t wparam,
     return answered;
 }
 
-}  // namespace rwin::probe
+}

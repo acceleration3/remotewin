@@ -53,4 +53,4 @@ void StateSync::compositor_anew(std::int64_t at) {
     if (guest_.seen.value_or(false)) ask(compositor_, true, at, ask_compositor_);
 }
 
-}  // namespace rwin::host
+}

@@ -1,7 +1,3 @@
-// MoveRequests: one WindowMove at a time, the newest size and place asked
-// together once the last is answered, a resize keeping the edges it does
-// not move, and an ask the guest leaves unanswered given up on.
-
 #include "host/chrome/resize_border.hpp"
 #include "host/loop/poll_loop.hpp"
 #include "host/mirror/move_requests.hpp"
@@ -90,9 +86,6 @@ void unanswered_is_given_up() {
     check(guest.asked.size() == 2, "and nothing more while nothing new is wanted");
 }
 
-// A slow guest's answer to an older ask, landing after the wait let a newer
-// one go out, is not its answer to the newer: the size it reports was asked,
-// not chosen by the guest instead.
 void late_answer_is_not_a_refusal() {
     Guest guest;
     guest.moves.want_size(Size{810, 600}, ResizeBorder::kRight);
@@ -105,8 +98,6 @@ void late_answer_is_not_a_refusal() {
           "the newest landing does");
 }
 
-// A guest that makes the window another size than asked (its smallest) is
-// heard as answering with that size.
 void refusal_is_an_answer() {
     Guest guest;
     guest.moves.want_size(Size{200, 100}, ResizeBorder::kRight);
@@ -115,7 +106,7 @@ void refusal_is_an_answer() {
           "the size the guest chose is the answer");
 }
 
-}  // namespace
+}
 
 int main() {
     coalesces_while_one_is_out();

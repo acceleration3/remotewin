@@ -14,17 +14,6 @@ class CaptureCloser;
 class FrameSignal;
 class GraphicsDevice;
 
-// Frames of one thing on screen, as the compositor composed them
-// (Windows.Graphics.Capture): a window, or a whole monitor.
-//
-// Taken from the compositor rather than asking anything to draw itself.
-// PrintWindow goes through GDI, which has no alpha channel: every pixel
-// comes back opaque, so a rounded corner is a black notch, a shadow is a
-// black band, and a window that is meant to be see-through is not. What
-// DWM already composed has all of that, and this asks for a copy of it.
-//
-// The guest's cursor is left out of every frame: it belongs to the desktop
-// rather than to anything captured, and the host draws it as its own.
 class CaptureStream {
 public:
     struct Extent {
@@ -34,10 +23,6 @@ public:
         [[nodiscard]] bool operator==(const Extent&) const noexcept = default;
     };
 
-    // One frame as the compositor handed it over, held until this is gone:
-    // the pool does not compose into a buffer while its frame is held.
-    // ``content`` is the part of the texture that is the picture, from its
-    // top left; the rest is whatever the pool's buffer last held.
     class Frame {
     public:
         Frame(void* frame, ID3D11Texture2D* texture, Extent content) noexcept
@@ -51,10 +36,7 @@ public:
 
         [[nodiscard]] ID3D11Texture2D* texture() const noexcept { return texture_; }
         [[nodiscard]] Extent content() const noexcept { return content_; }
-        // When the compositor shows it (SystemRelativeTime): the blank after
-        // the one it was composed at, on capture_clock_now's clock.
         [[nodiscard]] std::int64_t source_time() const noexcept { return source_time_; }
-        // When it was taken from the capture, on the same clock.
         [[nodiscard]] std::int64_t taken_time() const noexcept { return taken_time_; }
 
     private:
@@ -69,8 +51,6 @@ public:
         std::int64_t taken_time_ = 0;
     };
 
-    // ``arrivals`` is raised each time the compositor has a frame here;
-    // ``closer`` closes each session and pool this is done with.
     CaptureStream(const GraphicsDevice& device, const FrameSignal& arrivals, CaptureCloser& closer);
     ~CaptureStream();
 
@@ -79,53 +59,28 @@ public:
     CaptureStream(CaptureStream&&) = delete;
     CaptureStream& operator=(CaptureStream&&) = delete;
 
-    // Captures ``window`` (an HWND) or ``monitor`` (an HMONITOR) from here
-    // on, in frames ``size`` large, whatever was captured before. False,
-    // and nothing captured, when the compositor will not.
     [[nodiscard]] bool open_window(void* window, Extent size);
     [[nodiscard]] bool open_monitor(void* monitor, Extent size);
 
-    // Frames of another size from here on, in the same session: what is
-    // captured leaves too much of them unused.
     [[nodiscard]] bool resize(Extent size);
-    // Frames of another size from here on, in a new session: what is
-    // captured has outgrown them. A new session's first frame comes at once;
-    // a pool made again in the same one is not promised another frame until
-    // what it captures changes, and the frame it has is cropped.
     [[nodiscard]] bool capture_afresh(Extent size);
     [[nodiscard]] Extent size() const noexcept { return size_; }
-    // What is captured was larger than the frames the last time one came:
-    // that frame was cropped and dropped, and this is the size it needed.
     [[nodiscard]] const std::optional<Extent>& outgrown() const noexcept { return outgrown_; }
 
-    // The next frame the compositor has, if it has one: its content, from
-    // the top left of the buffer, copied into ``into`` with its rows packed
-    // (BGRA, premultiplied, width * 4 bytes per row), and how large it is.
     [[nodiscard]] std::optional<Extent> read_next(std::vector<std::uint8_t>& into);
 
-    // The newest frame the compositor has, left on the GPU; nothing when it
-    // has none, or none with any picture in it. Older ones waiting behind
-    // it are let go: a picture already replaced is not worth sending.
     [[nodiscard]] std::optional<Frame> next_frame();
-    // ``frame``'s picture read back as read_next reads one.
     [[nodiscard]] std::optional<Extent> read(const Frame& frame, std::vector<std::uint8_t>& into);
 
     void close();
 
 private:
     [[nodiscard]] bool open(void* item, Extent size);
-    // A pool and a session made anew, at ``size``.
     [[nodiscard]] bool start(Extent size);
-    // The pool made again at ``size``, in the same session.
     [[nodiscard]] bool recreate(Extent size);
-    // Closing is what stops the compositor filling the pool. Releasing
-    // alone leaves the session running, and the next one cannot be made
-    // while the old is still capturing the same thing.
     void close_capture();
     void sample_frame(const Frame& frame);
 
-    // Opaque: the capture interfaces are WinRT, and a header that named
-    // them would drag the whole projection into everything that captures.
     const GraphicsDevice& device_;
     const FrameSignal& arrivals_;
     CaptureCloser& closer_;
@@ -133,7 +88,6 @@ private:
     void* pool_ = nullptr;
     void* session_ = nullptr;
     void* staging_ = nullptr;
-    // The pool's FrameArrived registration, while it has one.
     std::optional<std::int64_t> arrival_token_;
     Extent size_;
     std::optional<Extent> outgrown_;
@@ -143,4 +97,4 @@ private:
     bool sample_pixels_ = false;
 };
 
-}  // namespace rwin::guest
+}

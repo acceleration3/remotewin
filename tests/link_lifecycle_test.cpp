@@ -34,7 +34,6 @@ void check(bool ok, const char* label) {
 
 using rwin::host::PollLoop;
 
-// Turns the loop until ``done`` says so, or for a second at most.
 bool wait_for(PollLoop& loop, const std::function<bool()>& done) {
     if (done()) return true;
     const auto poll = loop.timer([&] {
@@ -88,7 +87,6 @@ void parent_control(PollLoop& loop) {
     check(closed == 1 && errors == 0, "EOF is reported once, not spun on");
 }
 
-// A guest half: dials the link, and speaks to it as the guest would.
 class FakeGuest {
 public:
     explicit FakeGuest(std::uint16_t port) : socket_(::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0)) {
@@ -231,7 +229,7 @@ void guest_link(PollLoop& loop) {
     check(wait_for(loop, [&] { return disconnected == 1; }), "guest disconnect is detected");
 }
 
-}  // namespace
+}
 
 int main() {
     PollLoop loop;

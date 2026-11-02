@@ -34,24 +34,6 @@ namespace rwin::host {
 class SurfaceInput;
 class SyncTimeline;
 
-// One wl_surface and the guest picture on it, as the compositor shows it.
-//
-// A frame of pixels is copied into shared memory of the surface's own,
-// reused frame to frame. A frame that stayed on the GPU is shown as the
-// guest's own buffer (zwp_linux_dmabuf_v1): with explicit sync
-// (wp_linux_drm_syncobj_v1) the compositor waits for the guest's copy
-// itself, and says when it is done with it; without, the copy is waited for
-// here before the buffer is attached, and wl_buffer.release says when it is
-// done. Either way the slot goes back to the guest only then.
-//
-// A guest pixel is a device pixel: the picture is shown at the surface's
-// scale (wp_fractional_scale_v1, else the integer one the surface or its
-// outputs have) through a viewport, the fraction of a logical unit a
-// fractional scale leaves past its last whole unit cropped away
-// (ViewMapping) - or stretched to a size it is given.
-//
-// Nothing is committed with a buffer until the surface's role allows it
-// (allow_commits): an xdg surface's first commit has to be without one.
 class MirrorSurface {
 public:
     MirrorSurface(const SurfaceKit& kit, SurfaceInput& input);
@@ -63,79 +45,43 @@ public:
     MirrorSurface& operator=(MirrorSurface&&) = delete;
 
     [[nodiscard]] wl_surface* surface() const noexcept { return surface_; }
-    // What the seat's input on this surface is told to. The surface's own
-    // listener data is this object, which is how the seat finds it
-    // (input_of).
     [[nodiscard]] SurfaceInput& input() const noexcept { return input_; }
     [[nodiscard]] static SurfaceInput* input_of(wl_surface* surface) noexcept;
 
-    // Device pixels per logical unit: the compositor's word for this
-    // surface, or what it fell back to until it has one.
     [[nodiscard]] double scale() const noexcept { return scale_ > 0.0 ? scale_ : fallback_scale_; }
     void fall_back_to(double scale);
-    // Whether the compositor has said this surface's scale yet.
     [[nodiscard]] bool scale_known() const noexcept { return scale_ > 0.0; }
 
     void show(const PixelsView& pixels);
     void show(const SharedFrame& frame);
-    // The picture shown, or about to be; empty before the first.
     [[nodiscard]] Size picture_size() const noexcept { return picture_; }
-    // A buffer has been committed.
     [[nodiscard]] bool mapped() const noexcept { return mapped_; }
-    // The buffer committed last is the guest's own on the GPU (a dma-buf),
-    // not pixels copied here.
     [[nodiscard]] bool on_gpu() const noexcept { return on_gpu_; }
 
-    // One guest pixel to one device pixel (the default); the same, cropped
-    // to at most ``logical`` units; or stretched over ``logical`` units.
-    // Said with the next commit, which is the caller's: committed here, a
-    // view would go out ahead of the window geometry that goes with it, and
-    // the compositor take the configure acknowledged for answered with the
-    // old geometry.
     void fit_one_to_one();
     void crop_to(Size logical);
     void fit_to(Size logical);
-    // How the picture lies on the surface as it is shown now.
     [[nodiscard]] ViewMapping mapping() const noexcept;
 
-    // Where input lands: the picture rectangles given (empty: all of it),
-    // or nowhere.
     void shape_input(std::vector<Box> picture_rects);
     void take_no_input(bool none);
-    // A layered window's constant alpha, where the compositor can apply it.
     void set_opacity(std::uint8_t alpha);
-    // What of a picture ``of`` that size is opaque, in picture rectangles
-    // (empty: none is said to be), for the compositor to draw without
-    // blending. Said only while the picture shown is that size: a window's
-    // region comes before the frame of its new size, and claimed against
-    // the old one it would make the old one's transparent corners black.
     void shape_opaque(std::vector<Box> picture_rects, Size of);
 
-    // The role was configured: buffers may be committed from now on.
     void allow_commits();
-    // What changed other than the picture - its size, shape, opacity -
-    // committed now.
     void commit();
 
     Signal<> rescaled;
-    // A frame on the GPU cannot be shown here: why.
     Signal<const std::string&> shared_refused;
     Signal<const FrameStamps&> presented;
-    // The first buffer was committed.
     Signal<> first_mapped;
-    // A picture of another size is about to be committed: what goes with it
-    // - a window geometry, a place - is to be said now.
     Signal<> picture_resized;
-    // A frame in pixels was dropped, every buffer being held, and one is
-    // free now: the last frame is to be shown again, since the guest sends
-    // none until its window changes.
     Signal<> frame_owed;
 
 private:
     struct Held {
         wl_buffer* buffer = nullptr;
         std::shared_ptr<const SlotLease> lease;
-        // With explicit sync: readable once the compositor is done.
         UniqueFd released;
         std::unique_ptr<EventLoop::Watch> watch;
     };
@@ -181,22 +127,16 @@ private:
     std::vector<Box> opaque_rects_;
     Size opaque_for_;
     bool commits_allowed_ = false;
-    // A new picture's size is being said: nothing commits before its buffer.
     bool attaching_ = false;
     bool mapped_ = false;
     bool on_gpu_ = false;
-    // A pixel frame copied and not yet committed.
     ShmBuffer* pixels_waiting_ = nullptr;
     bool frame_dropped_ = false;
-    // Asks for the dropped frame after the release event that freed a
-    // buffer, not within it.
     std::unique_ptr<EventLoop::Timer> owed_;
     FrameStamps pixels_stamps_;
-    // The newest frame on the GPU not yet committed: its buffer is being
-    // made, its copy waited for, or the role is not configured yet.
     std::optional<SharedFrame> shared_waiting_;
     std::unique_ptr<EventLoop::Watch> fence_watch_;
     std::vector<Held> held_;
 };
 
-}  // namespace rwin::host
+}

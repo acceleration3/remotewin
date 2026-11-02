@@ -20,25 +20,16 @@ namespace {
 
 constexpr const char* kPath = "/remotewin/placement";
 constexpr const char* kInterface = "org.remotewin.Placement";
-// Long enough for a window to be mapped after it was shown; a placement
-// still unanswered then is for a window KWin never had.
 constexpr std::int64_t kPlacementTimeoutNs = 3'000'000'000;
 constexpr std::chrono::milliseconds kExpiryCheck{500};
 constexpr std::chrono::milliseconds kRewatch{1000};
 constexpr int kMostWatchTries = 3;
 constexpr std::int64_t kNanosecondsPerMillisecond = 1'000'000;
 
-// INVISIBLE SEPARATOR, then the handle's low 32 bits two at a time as one
-// of four zero-width characters. KWin keeps them in a caption (measured:
-// it removes white space it trims, not these), and nothing draws them.
 constexpr char16_t kMarker = 0x2063;
 constexpr std::array<char16_t, 4> kDigits{0x200B, 0x200C, 0x200D, 0x2060};
 constexpr int kDigitCount = 32;
 
-// Finds this process's windows by their tag, and reports where each is
-// put - not during a drag, which is reported once, where it ends - and
-// when it is maximised, made fullscreen or minimised. Leaves a window out of
-// the taskbar and the switcher as the character after its tag says.
 constexpr const char* kWatcher = R"JS(
 const service = "{0}";
 const marker = String.fromCharCode(0x2063);
@@ -88,8 +79,6 @@ workspace.screensChanged.connect(outputs);
 outputs();
 )JS";
 
-// Puts one window's frame corner somewhere, now or as KWin maps it, at the
-// size it has.
 constexpr const char* kPlacer = R"JS(
 const tag = "{0}";
 function place(w) {{
@@ -108,7 +97,6 @@ if (!workspace.windowList().some(place)) {{
 }}
 )JS";
 
-// Sends one window to an output, now or as KWin maps it.
 constexpr const char* kSender = R"JS(
 const tag = "{0}";
 function send(w) {{
@@ -133,8 +121,6 @@ void append_utf8(std::string& out, char16_t code) {
     out += static_cast<char>(0x80 | (code & 0x3F));
 }
 
-// A JavaScript string literal's body that is ``text``, every character
-// escaped: the tag's characters, and an output's name, whatever it is.
 std::string js_string(std::string_view text) {
     std::string out;
     for (std::size_t at = 0; at < text.size();) {
@@ -183,7 +169,7 @@ int string_call(sd_bus_message* call, void* self, void (KWinPlacement::*method)(
     return sd_bus_reply_method_return(call, "");
 }
 
-}  // namespace
+}
 
 KWinPlacement::KWinPlacement(EventLoop& loop, BusConnection& bus) : bus_(bus) {
     if (!KWinScript::reachable(bus)) {
@@ -208,9 +194,6 @@ KWinPlacement::KWinPlacement(EventLoop& loop, BusConnection& bus) : bus_(bus) {
     expiry_->start(kExpiryCheck, true);
 }
 
-// KWin now and then answers a script's run with a file it cannot open -
-// seen right after other scripts were unloaded - and the same script run
-// again a moment later runs.
 void KWinPlacement::watch() {
     watcher_ = std::make_unique<KWinScript>(
         bus_, script_name("watch"), std::format(kWatcher, service_, kPath, kInterface, ::getpid()),
@@ -278,8 +261,6 @@ void KWinPlacement::send_to_output(std::uint64_t window, const std::string& outp
                                 kInterface));
 }
 
-// One script per window at a time: a newer one replaces what an older one
-// was still waiting to do.
 void KWinPlacement::run_for(std::uint64_t window, const std::string& source) {
     std::erase_if(pending_, [window](const Pending& pending) { return pending.window == window; });
     pending_.push_back(Pending{window, now_ns(), nullptr, false});
@@ -292,15 +273,15 @@ void KWinPlacement::run_for(std::uint64_t window, const std::string& source) {
                                                           });
 }
 
-int KWinPlacement::placed_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+int KWinPlacement::placed_call(sd_bus_message* call, void* self, sd_bus_error* ) {
     return string_call(call, self, &KWinPlacement::placed);
 }
 
-int KWinPlacement::moved_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+int KWinPlacement::moved_call(sd_bus_message* call, void* self, sd_bus_error* ) {
     return string_call(call, self, &KWinPlacement::moved);
 }
 
-int KWinPlacement::outputs_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+int KWinPlacement::outputs_call(sd_bus_message* call, void* self, sd_bus_error* ) {
     return string_call(call, self, &KWinPlacement::outputs);
 }
 
@@ -336,7 +317,6 @@ void KWinPlacement::moved(std::string_view report) {
     window_moved(*window, seen);
 }
 
-// KWin has each output's scale itself, fraction and all.
 void KWinPlacement::outputs(std::string_view report) {
     std::vector<OutputLayout::Output> found;
     for (const std::string_view entry : words_of(report, ';')) {
@@ -366,4 +346,4 @@ void KWinPlacement::expire() {
     }
 }
 
-}  // namespace rwin::host
+}

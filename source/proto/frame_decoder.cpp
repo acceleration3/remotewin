@@ -11,15 +11,13 @@ std::uint32_t read_u32_be(const std::uint8_t* p) {
          | (static_cast<std::uint32_t>(p[2]) << 8)
          | static_cast<std::uint32_t>(p[3]);
 }
-}  // namespace
+}
 
 void FrameDecoder::feed(const std::uint8_t* data, std::size_t size) {
     pending_.insert(pending_.end(), data, data + size);
 }
 
 bool FrameDecoder::next(const std::uint8_t** payload, std::size_t* size) {
-    // Reclaim what previous calls handed out before looking for more, so
-    // a long-lived stream does not grow the buffer without bound.
     if (consumed_ > 0) {
         pending_.erase(pending_.begin(),
                        pending_.begin() + static_cast<std::ptrdiff_t>(consumed_));
@@ -42,4 +40,4 @@ bool FrameDecoder::next(const std::uint8_t** payload, std::size_t* size) {
     return true;
 }
 
-}  // namespace rwin
+}

@@ -21,4 +21,4 @@ std::optional<SysMenu> SysMenu::read(MessageReader& in) {
     return menu;
 }
 
-}  // namespace rwin
+}

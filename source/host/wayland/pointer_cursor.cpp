@@ -20,8 +20,6 @@ constexpr int kNothing = 0;
 constexpr int kShape = 1;
 constexpr int kPicture = 2;
 
-// Straight alpha, as Windows keeps a cursor, to the premultiplied alpha a
-// compositor reads.
 void premultiplied_into(std::uint8_t* to, const std::uint8_t* from, std::size_t pixels) {
     for (std::size_t at = 0; at < pixels; ++at, to += 4, from += 4) {
         const unsigned alpha = from[3];
@@ -32,7 +30,7 @@ void premultiplied_into(std::uint8_t* to, const std::uint8_t* from, std::size_t 
     }
 }
 
-}  // namespace
+}
 
 PointerCursor::PointerCursor(const Globals& globals)
     : globals_(globals), surface_(wl_compositor_create_surface(globals.compositor())),
@@ -109,4 +107,4 @@ void PointerCursor::show_picture(const CursorLook::Frame& frame, double scale) {
     wl_pointer_set_cursor(pointer_, serial_, surface_, hotspot.x, hotspot.y);
 }
 
-}  // namespace rwin::host
+}

@@ -28,11 +28,9 @@ SharedFrameFeed::SharedFrameFeed(EventLoop& loop, GuestLink& link)
         pixels_only_.erase(window);
         drop_window(window);
     });
-    // A window the guest sends as pixels has no ring any more.
     link_.frame_arrived.connect([this](WindowId window, const PixelsView&) { drop_window(window); });
 }
 
-// Leases let go of after the socket: what they free is the guest's.
 SharedFrameFeed::~SharedFrameFeed() = default;
 
 void SharedFrameFeed::open(const std::string& path, const CompositorGpu& compositor) {
@@ -124,8 +122,6 @@ std::optional<WindowId> SharedFrameFeed::window_of(std::uint64_t surface) const 
     return std::nullopt;
 }
 
-// A frame in a ring this side does not hold - one replaced, or one named
-// after this side gave up - is freed at once: the guest waits for it.
 void SharedFrameFeed::take_frame(const FrameInSlot& frame) {
     auto lease = std::make_shared<const SlotLease>(link_, SlotFree{frame.window, frame.ring, frame.slot});
     WindowRing* ring = ring_of(frame.window, frame.ring);
@@ -168,9 +164,6 @@ std::optional<std::uint64_t> SharedFrameFeed::ask(const ExportRequest& request) 
     return tagged.tag;
 }
 
-// Only the application the user is in times the guest's display: there is
-// one display clock, and a mirror on another output would put it in phase
-// with that one instead.
 void SharedFrameFeed::shown(const FrameStamps& stamps, bool active) {
     latency_.take(stamps);
     if (!active) return;
@@ -219,8 +212,6 @@ void SharedFrameFeed::take_answer(ExportSocket::Received received) {
             if (pending == syncing_.end()) return;
             PendingFrame frame = std::move(pending->second);
             syncing_.erase(pending);
-            // Every sync says the rate the guest's display blanks at, which a
-            // host that changed it while the VM runs has changed for the next.
             if (answer.ok()) guest_microhz_ = answer.guest_refresh_microhz();
             synced(answer, std::move(received.descriptor), std::move(frame));
             return;
@@ -235,12 +226,6 @@ void SharedFrameFeed::take_answer(ExportSocket::Received received) {
 }
 
 void SharedFrameFeed::exported(const ExportAnswer& answer, UniqueFd dma_buf) {
-    // The guest names a ring as soon as it has made its textures, and they
-    // reach the GPU device only once the guest's batch making them has run
-    // there: an export asked first finds nothing yet. Asked again a moment
-    // later, while the surface is still one of a ring's - one replaced
-    // meanwhile is nothing to wait for - rather than giving up the GPU for
-    // the whole session, which left Steam's window crossing as pixels.
     if (answer.status == ExportAnswer::Status::NotFound) {
         const bool held = std::any_of(rings_.begin(), rings_.end(), [&](const auto& entry) {
             return entry.second.slot_of(answer.surface).has_value();
@@ -259,12 +244,10 @@ void SharedFrameFeed::exported(const ExportAnswer& answer, UniqueFd dma_buf) {
     export_asks_.erase(answer.surface);
     const std::optional<WindowId> window = window_of(answer.surface);
     if (!window.has_value()) {
-        // Its ring was replaced while it was being exported.
         if (answer.ok()) static_cast<void>(ask(ExportRequest::Operation::Release, answer.surface));
         return;
     }
     if (answer.status == ExportAnswer::Status::Unavailable && other_gpu_) {
-        // Said once: the same GPU refuses every surface alike.
         if (!twin_refusal_said_) {
             twin_refusal_said_ = true;
             RWIN_WARN("export", "the GPU device cannot make a copy in system memory for the compositor's GPU; "
@@ -331,9 +314,6 @@ void SharedFrameFeed::synced(const ExportAnswer& answer, UniqueFd fence, Pending
 
 void SharedFrameFeed::revoked(const ExportAnswer& answer) {
     if (answer.surface == 0) {
-        // The guest makes every window's ring afresh when told again, those
-        // it was sending as pixels included: until then each window would
-        // stop at its last frame.
         RWIN_WARN("export", "the GPU device was reset; every shared surface is gone, asking for new ones");
         rings_.clear();
         syncing_.clear();
@@ -342,12 +322,10 @@ void SharedFrameFeed::revoked(const ExportAnswer& answer) {
         link_.send_route(true);
         return;
     }
-    // A ring the guest let go of whole is forgotten, rather than kept until
-    // its window goes: its ids may be another surface's next.
     for (auto ring = rings_.begin(); ring != rings_.end();) {
         if (const std::optional<std::uint32_t> slot = ring->second.slot_of(answer.surface)) ring->second.revoke(*slot);
         ring = ring->second.revoked() ? rings_.erase(ring) : std::next(ring);
     }
 }
 
-}  // namespace rwin::host
+}

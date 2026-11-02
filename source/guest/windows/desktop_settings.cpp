@@ -53,7 +53,7 @@ LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
     return ::DefWindowProcW(window, message, wparam, lparam);
 }
 
-}  // namespace
+}
 
 DesktopSettings::DesktopSettings(const FrameSignal& changes)
     : changes_(changes), drop_shadows_(read_drop_shadows()), work_area_(read_work_area()), monitor_(read_monitor()) {
@@ -103,8 +103,6 @@ void DesktopSettings::listen() {
         RWIN_WARN("settings", "no window class for settings: error {}", ::GetLastError());
         return;
     }
-    // A top-level window, never shown: a message-only window is not sent
-    // broadcasts.
     HWND window = ::CreateWindowExW(WS_EX_TOOLWINDOW, kClassName, L"", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
                                     ::GetModuleHandleW(nullptr), nullptr);
     if (window == nullptr) {
@@ -113,7 +111,6 @@ void DesktopSettings::listen() {
     }
     ::SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
     thread_id_.store(::GetCurrentThreadId());
-    // Read again now that a change can no longer slip past unannounced.
     reread();
     MSG message;
     while (::GetMessageW(&message, nullptr, 0, 0) > 0) {
@@ -124,4 +121,4 @@ void DesktopSettings::listen() {
     thread_id_.store(0);
 }
 
-}  // namespace rwin::guest
+}

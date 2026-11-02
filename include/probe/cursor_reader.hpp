@@ -12,10 +12,6 @@ namespace rwin::probe {
 
 class PointerActions;
 
-// Reads what Windows says about the cursor and the pointer now
-// (CursorTruth): GetCursorInfo, the clip, the capture, the raw input
-// registration, the ballistics, and the cursor's every picture as the user
-// sees it - DrawIconEx over white and over black, step by step.
 class CursorReader {
 public:
     explicit CursorReader(const PointerActions& pointer);
@@ -23,8 +19,6 @@ public:
     [[nodiscard]] CursorTruth read() const;
 
 private:
-    // GetCursorFrameInfo, which user32 exports without declaring:
-    // HCURSOR (HCURSOR, DWORD reserved, DWORD step, DWORD* jiffies, DWORD* steps).
     using FrameInfo = void* (*)(void*, std::uint32_t, std::uint32_t, std::uint32_t*, std::uint32_t*);
 
     [[nodiscard]] std::uint32_t system_idc_of(HICON__* cursor) const noexcept;
@@ -37,4 +31,4 @@ private:
     FrameInfo frame_info_ = nullptr;
 };
 
-}  // namespace rwin::probe
+}

@@ -84,7 +84,7 @@ bool read_popup(MessageReader& in, WindowFields::Popup& into) {
     return true;
 }
 
-}  // namespace
+}
 
 std::uint32_t WindowFields::differences(const WindowFields& other) const {
     std::uint32_t mask = 0;
@@ -188,4 +188,4 @@ bool WindowFields::read(MessageReader& in, WindowFields& into, std::uint32_t& ma
     return in.ok();
 }
 
-}  // namespace rwin
+}

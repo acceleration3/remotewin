@@ -15,4 +15,4 @@ UniqueFd& UniqueFd::operator=(UniqueFd&& other) noexcept {
     return *this;
 }
 
-}  // namespace rwin::host
+}

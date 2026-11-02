@@ -28,8 +28,6 @@ void a_fraction_of_a_unit_is_cropped_not_stretched() {
     check(view.source_width() <= 1001 && view.source_height() <= 601, "never more than the picture has");
 }
 
-// Every size a window could be asked for comes back as itself, at every
-// scale a compositor offers (120ths, 1 to 2.5).
 void a_size_asked_for_comes_back_as_itself() {
     for (int scale120 = 120; scale120 <= 300; ++scale120) {
         const double scale = scale120 / 120.0;
@@ -77,7 +75,7 @@ void a_side_under_one_unit_shows_its_own_pixels() {
     check(std::abs(view.source_height() - 39.6) < 1e-9, "down it is one to one as before");
 }
 
-}  // namespace
+}
 
 int main() {
     a_fraction_of_a_unit_is_cropped_not_stretched();

@@ -28,4 +28,4 @@ std::optional<SlotRing> SlotRing::read(MessageReader& in) {
     return made;
 }
 
-}  // namespace rwin
+}

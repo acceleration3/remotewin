@@ -37,7 +37,6 @@ short WaylandDisplay::before_wait() {
     }
     reading_ = true;
     if (wl_display_flush(display_) >= 0) return POLLIN;
-    // EAGAIN: the socket is full; the rest goes once it can be written.
     if (errno == EAGAIN) return POLLIN | POLLOUT;
     wl_display_cancel_read(display_);
     reading_ = false;
@@ -74,4 +73,4 @@ void WaylandDisplay::check() {
     loop_.quit(EXIT_FAILURE);
 }
 
-}  // namespace rwin::host
+}

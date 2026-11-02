@@ -34,8 +34,6 @@ SyncTimeline::~SyncTimeline() {
     if (handle_ != 0) drmSyncobjDestroy(device_, handle_);
 }
 
-// Through a binary syncobj: a sync_file is imported only into one, whose
-// fence is then put at the point.
 bool SyncTimeline::signal_with(int sync_file, std::uint64_t point) const {
     std::uint32_t binary = 0;
     if (drmSyncobjCreate(device_, 0, &binary) != 0) return false;
@@ -63,4 +61,4 @@ UniqueFd SyncTimeline::when_signalled(std::uint64_t point) const {
     return signal;
 }
 
-}  // namespace rwin::host
+}

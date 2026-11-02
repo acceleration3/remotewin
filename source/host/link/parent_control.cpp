@@ -16,7 +16,7 @@ namespace {
 constexpr std::size_t kLongestCommand = 1024;
 constexpr std::string_view kRaise = "RAISE";
 
-}  // namespace
+}
 
 ParentControl::ParentControl(EventLoop& loop, int command_fd, int status_fd)
     : command_fd_(command_fd), status_fd_(status_fd),
@@ -76,4 +76,4 @@ void ParentControl::read_commands() {
     }
 }
 
-}  // namespace rwin::host
+}

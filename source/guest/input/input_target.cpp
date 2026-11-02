@@ -30,4 +30,4 @@ void InputTarget::pressed(bool down) noexcept {
     held_ = down ? held_ + 1 : (held_ > 0 ? held_ - 1 : 0);
 }
 
-}  // namespace rwin::guest
+}

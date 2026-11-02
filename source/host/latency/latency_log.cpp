@@ -26,7 +26,7 @@ std::string stages_of(const FrameStamps& frame) {
     return line;
 }
 
-}  // namespace
+}
 
 void LatencyLog::take(const FrameStamps& frame) {
     const std::int64_t now = now_ns();
@@ -42,4 +42,4 @@ void LatencyLog::take(const FrameStamps& frame) {
     since_ = now;
 }
 
-}  // namespace rwin::host
+}

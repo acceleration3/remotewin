@@ -24,7 +24,7 @@ struct Closing {
     bool finished = false;
 };
 
-}  // namespace
+}
 
 struct CaptureCloser::Queue {
     std::mutex lock;
@@ -33,7 +33,6 @@ struct CaptureCloser::Queue {
     std::deque<std::shared_ptr<Closing>> closings;
     bool stopping = false;
 
-    // Until stopping, with nothing left to close.
     void close_queued();
 };
 
@@ -44,10 +43,8 @@ void close_and_release(void* object) {
     static_cast<IUnknown*>(object)->Release();
 }
 
-}  // namespace
+}
 
-// The objects were made in the multithreaded apartment, and are closed
-// from it.
 void CaptureCloser::Queue::close_queued() {
     const HRESULT initialised = ::RoInitialize(RO_INIT_MULTITHREADED);
     if (FAILED(initialised) && initialised != RPC_E_CHANGED_MODE) {
@@ -78,8 +75,6 @@ CaptureCloser::~CaptureCloser() {
     queue_->work.notify_all();
 }
 
-// Detached: a thread stuck in a close cannot be joined, and the queue it
-// shares outlives this.
 void CaptureCloser::start_thread() {
     std::thread([queue = queue_] { queue->close_queued(); }).detach();
 }
@@ -100,4 +95,4 @@ void CaptureCloser::close(std::span<void* const> objects) {
     start_thread();
 }
 
-}  // namespace rwin::guest
+}

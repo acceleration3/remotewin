@@ -15,7 +15,7 @@ namespace {
 
 constexpr std::uint32_t kRepositionVersion = 3;
 
-}  // namespace
+}
 
 PopupRole::PopupRole(const Globals& globals, MirrorSurface& surface, xdg_surface* parent,
                      const PopupPlacement& placement, wl_seat* seat, std::uint32_t grab_serial, PopupEvents& events)
@@ -75,8 +75,6 @@ void PopupRole::surface_configured(void* self, xdg_surface* surface, std::uint32
     const bool first = !role->configured_;
     role->configured_ = true;
     role->events_.popup_placed(role->placed_);
-    // A configure after the first is a reposition: it takes effect with a
-    // commit, and a menu that does not change sends no frame to bring one.
     if (first) {
         role->surface_.allow_commits();
     } else {
@@ -84,13 +82,13 @@ void PopupRole::surface_configured(void* self, xdg_surface* surface, std::uint32
     }
 }
 
-void PopupRole::popup_configured(void* self, xdg_popup* /*popup*/, std::int32_t x, std::int32_t y,
+void PopupRole::popup_configured(void* self, xdg_popup* , std::int32_t x, std::int32_t y,
                                  std::int32_t width, std::int32_t height) {
     static_cast<PopupRole*>(self)->placed_ = Box{x, y, width, height};
 }
 
-void PopupRole::done(void* self, xdg_popup* /*popup*/) { static_cast<PopupRole*>(self)->events_.popup_dismissed(); }
+void PopupRole::done(void* self, xdg_popup* ) { static_cast<PopupRole*>(self)->events_.popup_dismissed(); }
 
-void PopupRole::repositioned(void* /*self*/, xdg_popup* /*popup*/, std::uint32_t /*token*/) {}
+void PopupRole::repositioned(void* , xdg_popup* , std::uint32_t ) {}
 
-}  // namespace rwin::host
+}

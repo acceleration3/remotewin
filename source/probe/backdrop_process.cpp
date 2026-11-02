@@ -34,7 +34,7 @@ BOOL CALLBACK find_backdrop(HWND window, LPARAM param) {
     return FALSE;
 }
 
-}  // namespace
+}
 
 BackdropProcess::BackdropProcess(std::uint32_t rgb) {
     wchar_t executable[MAX_PATH] = {};
@@ -79,4 +79,4 @@ bool BackdropProcess::wait_until_shown() const {
     return false;
 }
 
-}  // namespace rwin::probe
+}

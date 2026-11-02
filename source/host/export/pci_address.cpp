@@ -16,8 +16,6 @@ constexpr int kHex = 16;
 constexpr std::uint8_t kMostDevices = 0x1F;
 constexpr std::uint8_t kMostFunctions = 7;
 
-// One hex field of exactly ``digits`` digits, then ``separator`` unless it
-// ends the text.
 template <typename Number>
 bool take(std::string_view& text, std::size_t digits, char separator, Number& out) {
     if (text.size() < digits) return false;
@@ -32,7 +30,7 @@ bool take(std::string_view& text, std::size_t digits, char separator, Number& ou
     return true;
 }
 
-}  // namespace
+}
 
 std::optional<PciAddress> PciAddress::parse(std::string_view text) {
     PciAddress address;
@@ -44,8 +42,6 @@ std::optional<PciAddress> PciAddress::parse(std::string_view text) {
     return address;
 }
 
-// /sys/dev/char/<major>:<minor>/device is the node's device; for a GPU on
-// PCI it resolves to the PCI device's directory, named by its address.
 std::optional<PciAddress> PciAddress::of_drm_node(const std::string& node) {
     struct stat described {};
     if (::stat(node.c_str(), &described) != 0 || !S_ISCHR(described.st_mode)) return std::nullopt;
@@ -71,4 +67,4 @@ std::string PciAddress::prime_name() const {
     return text;
 }
 
-}  // namespace rwin::host
+}

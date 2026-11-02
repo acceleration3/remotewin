@@ -26,17 +26,6 @@ class GuestLink;
 class SharedFrameFeed;
 struct CursorLook;
 
-// The guest's whole primary monitor, mirrored as one window of this desktop
-// for as long as that window is open (WatchMonitor): its pixels, its
-// cursor, and the pointer and keys put back into it.
-//
-// An ordinary window - decorated by the compositor, resizable, its own
-// title - and the guest's screen does not follow its size: the guest's
-// screen is what it is. The picture is one guest pixel to one device pixel
-// when the window is that size, and fitted - scaled, over black bars -
-// when it is not, so the whole screen is always in view. The pointer is
-// not held, locked or confined here whatever the guest's applications ask:
-// the window is the user's way into the whole guest.
 class MonitorSession final : public SurfaceInput, public ToplevelEvents {
 public:
     MonitorSession(const SurfaceKit& kit, GuestLink& link, SharedFrameFeed& frames, Activation& activation,
@@ -50,12 +39,10 @@ public:
 
     void raise(const std::string& token);
 
-    // The window was closed, or the guest can no longer capture its monitor.
     Signal<> finished;
     Signal<> ready;
 
 private:
-    // SurfaceInput.
     void pointer_entered(PointF at) override;
     void pointer_moved(PointF at) override;
     void pointer_left() override;
@@ -64,7 +51,6 @@ private:
     void keyboard_entered() override;
     void keyboard_left() override;
     void key(const KeyPress& press) override;
-    // ToplevelEvents.
     void configured(const ToplevelConfigure& configure) override;
     void close_requested() override;
 
@@ -85,7 +71,6 @@ private:
     std::unique_ptr<Backdrop> backdrop_;
     ToplevelConfigure configure_;
     HeldKeys held_keys_;
-    // The guest's screen as last whole, kept here: a patch is part of it.
     std::vector<std::uint8_t> canvas_;
     Size canvas_size_;
     std::optional<PointF> pointer_;
@@ -93,4 +78,4 @@ private:
     bool ready_ = false;
 };
 
-}  // namespace rwin::host
+}

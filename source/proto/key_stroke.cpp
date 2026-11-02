@@ -25,4 +25,4 @@ std::optional<KeyStroke> KeyStroke::read(MessageReader& in) {
     return stroke;
 }
 
-}  // namespace rwin
+}

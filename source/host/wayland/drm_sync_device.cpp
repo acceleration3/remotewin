@@ -35,4 +35,4 @@ DrmSyncDevice::DrmSyncDevice(const std::string& render_node, wp_linux_drm_syncob
     RWIN_INFO("sync", "explicit sync on {}", render_node);
 }
 
-}  // namespace rwin::host
+}

@@ -6,11 +6,6 @@
 #include <string>
 
 namespace rwin {
-
-// Reads one message payload. Every getter is bounds-checked and a read
-// past the end poisons the reader rather than throwing: the bytes came
-// from the other side of a boundary, so a malformed message is data to
-// be rejected, not an exception to unwind through.
 class MessageReader {
 public:
     MessageReader(const std::uint8_t* data, std::size_t size);
@@ -25,9 +20,7 @@ public:
     std::uint64_t u64();
     std::int32_t i32();
     std::int64_t i64();
-    // UTF-8, with a u32 length.
     std::string string();
-    // Points into the caller's buffer; valid only while it lives.
     const std::uint8_t* bytes(std::size_t size);
 
 private:
@@ -40,4 +33,4 @@ private:
     bool ok_ = true;
 };
 
-}  // namespace rwin
+}

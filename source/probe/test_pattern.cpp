@@ -16,12 +16,11 @@ constexpr std::uint32_t kCheckDark = 0x00000000;
 constexpr std::uint32_t kCheckLight = 0x00FFFFFF;
 constexpr std::int32_t kCheckRows = 8;
 
-// A COLORREF is 0x00BBGGRR; a DIB pixel is 0x00RRGGBB.
 std::uint32_t dib_from_colorref(std::uint32_t colorref) {
     return ((colorref & 0xFF) << 16) | (colorref & 0xFF00) | ((colorref >> 16) & 0xFF);
 }
 
-}  // namespace
+}
 
 void TestPattern::fill(std::int32_t width, std::int32_t height,
                        std::optional<std::uint32_t> key) {
@@ -55,7 +54,6 @@ void TestPattern::paint(void* device_context, std::int32_t width, std::int32_t h
     BITMAPINFO info{};
     info.bmiHeader.biSize = sizeof(info.bmiHeader);
     info.bmiHeader.biWidth = width;
-    // Negative: top-down, the order the rows were filled in.
     info.bmiHeader.biHeight = -height;
     info.bmiHeader.biPlanes = 1;
     info.bmiHeader.biBitCount = 32;
@@ -65,4 +63,4 @@ void TestPattern::paint(void* device_context, std::int32_t width, std::int32_t h
                         pixels_.data(), &info, DIB_RGB_COLORS);
 }
 
-}  // namespace rwin::probe
+}

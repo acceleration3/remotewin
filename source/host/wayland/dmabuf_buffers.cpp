@@ -78,12 +78,6 @@ void DmabufBuffers::failed(void* self, zwp_linux_buffer_params_v1* params) {
 
 void DmabufBuffers::released(void* self, wl_buffer* buffer) { static_cast<DmabufBuffers*>(self)->released_(buffer); }
 
-// The least lately used whose making is over; a buffer the compositor
-// still holds is destroyed all the same - it keeps its own hold on the
-// memory until it is done.
-// Memory no ring holds any more (its window's ring was made again) goes
-// first, whatever room there is: kept, it would keep the old ring's GPU
-// memory alive.
 void DmabufBuffers::evict() {
     std::erase_if(entries_, [this](Entry& entry) {
         if (entry.memory.use_count() != 1) return false;
@@ -108,4 +102,4 @@ void DmabufBuffers::forget(Entry& entry) {
     }
 }
 
-}  // namespace rwin::host
+}

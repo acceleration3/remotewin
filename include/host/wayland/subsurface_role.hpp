@@ -10,10 +10,6 @@ namespace rwin::host {
 class Globals;
 class MirrorSurface;
 
-// A surface as a part of another (wl_subsurface): drawn with its parent, at
-// a place in its parent's logical units, above it, and moved with it. Its
-// own frames go out as they come (desynchronised); its place is applied
-// with its parent's next commit.
 class SubsurfaceRole {
 public:
     SubsurfaceRole(const Globals& globals, MirrorSurface& surface, wl_surface* parent);
@@ -25,7 +21,6 @@ public:
     SubsurfaceRole& operator=(SubsurfaceRole&&) = delete;
 
     [[nodiscard]] wl_surface* parent() const noexcept { return parent_; }
-    // False when it was where it is asked to be already.
     [[nodiscard]] bool place(Point at);
     void below_parent();
 
@@ -36,4 +31,4 @@ private:
     bool placed_ = false;
 };
 
-}  // namespace rwin::host
+}

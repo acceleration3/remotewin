@@ -6,9 +6,6 @@
 #include <algorithm>
 
 namespace rwin::host {
-
-// A rectangle: its corner and its size, in whole units of the space the
-// caller says. Empty when either side is not positive.
 struct Box {
     int x = 0;
     int y = 0;
@@ -31,7 +28,6 @@ struct Box {
         return other.x >= x && other.y >= y && other.right() <= right() && other.bottom() <= bottom();
     }
     [[nodiscard]] constexpr Box translated(Point by) const noexcept { return Box{x + by.x, y + by.y, width, height}; }
-    // What the two have in common; empty, at no particular place, when nothing.
     [[nodiscard]] constexpr Box intersected(const Box& other) const noexcept {
         const int left = std::max(x, other.x);
         const int top = std::max(y, other.y);
@@ -42,4 +38,4 @@ struct Box {
     [[nodiscard]] constexpr bool operator==(const Box&) const noexcept = default;
 };
 
-}  // namespace rwin::host
+}

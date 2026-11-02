@@ -10,10 +10,6 @@ namespace rwin {
 class MessageReader;
 class MessageWriter;
 
-// A wheel turned over a mirror: where the pointer was, in the window's
-// picture (or the monitor's), and by how much, in Windows' wheel units -
-// WHEEL_DELTA, 120, a notch. Positive dy turns away from the user, which
-// scrolls up; positive dx tilts right.
 struct PointerWheel {
     WindowId window;
     std::int32_t x = 0;
@@ -27,4 +23,4 @@ struct PointerWheel {
     [[nodiscard]] static std::optional<PointerWheel> read(MessageReader& in);
 };
 
-}  // namespace rwin
+}

@@ -26,7 +26,6 @@ std::optional<ExportSocket> ExportSocket::connect(const std::string& path, std::
         why = std::string("no socket: ") + std::strerror(errno);
         return std::nullopt;
     }
-    // A unix socket connects or refuses at once, non-blocking or not.
     if (::connect(socket.get(), reinterpret_cast<const sockaddr*>(&address), sizeof address) != 0) {
         why = "connecting to '" + path + "': " + std::strerror(errno);
         return std::nullopt;
@@ -44,8 +43,6 @@ bool ExportSocket::send(const ExportRequest& request) const {
 }
 
 std::optional<ExportSocket::Received> ExportSocket::receive(bool& gone) const {
-    // One byte more than an answer, so one that is longer shows as longer
-    // rather than as an answer cut to size.
     std::array<std::uint8_t, ExportAnswer::kBytes + 1> bytes{};
     iovec vector{bytes.data(), bytes.size()};
     alignas(cmsghdr) std::array<char, CMSG_SPACE(sizeof(int))> control{};
@@ -86,4 +83,4 @@ bool ExportSocket::wait(int milliseconds) const {
     return ::poll(&watched, 1, milliseconds) == 1 && (watched.revents & POLLIN) != 0;
 }
 
-}  // namespace rwin::host
+}

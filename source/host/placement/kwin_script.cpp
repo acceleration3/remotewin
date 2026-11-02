@@ -26,7 +26,7 @@ std::string error_of(sd_bus_message* reply) {
     return error != nullptr && error->message != nullptr ? error->message : "no answer";
 }
 
-}  // namespace
+}
 
 KWinScript::KWinScript(BusConnection& bus, std::string name, const std::string& source, Done done)
     : bus_(bus), name_(std::move(name)), done_(std::move(done)) {
@@ -76,7 +76,7 @@ bool KWinScript::reachable(BusConnection& bus) {
     return owned != 0;
 }
 
-int KWinScript::loaded(sd_bus_message* reply, void* self, sd_bus_error* /*error*/) {
+int KWinScript::loaded(sd_bus_message* reply, void* self, sd_bus_error* ) {
     auto* script = static_cast<KWinScript*>(self);
     script->call_ = sd_bus_slot_unref(script->call_);
     if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
@@ -93,18 +93,13 @@ int KWinScript::loaded(sd_bus_message* reply, void* self, sd_bus_error* /*error*
         script->fail("loadScript refused " + script->name_ + " (already loaded?)");
         return 0;
     }
-    // Started through Scripting.start, which runs every script loaded and
-    // not yet running, rather than through /Scripting/Script<id>: KWin
-    // numbers a script by how many it has, so after an unload the id can
-    // be a live script's, and its object path that script's - a run there
-    // runs the other script, or fails on its file, and never this one.
     const int asked = sd_bus_call_method_async(script->bus_.bus(), &script->call_, kService, kScripting,
                                                kScriptingInterface, "start", &KWinScript::ran, script, "");
     if (asked < 0) script->fail("start: " + std::string(std::strerror(-asked)));
     return 0;
 }
 
-int KWinScript::ran(sd_bus_message* reply, void* self, sd_bus_error* /*error*/) {
+int KWinScript::ran(sd_bus_message* reply, void* self, sd_bus_error* ) {
     auto* script = static_cast<KWinScript*>(self);
     script->call_ = sd_bus_slot_unref(script->call_);
     if (sd_bus_message_is_method_error(reply, nullptr) != 0) {
@@ -121,4 +116,4 @@ void KWinScript::fail(const std::string& why) {
     if (done_) done_(false, why);
 }
 
-}  // namespace rwin::host
+}

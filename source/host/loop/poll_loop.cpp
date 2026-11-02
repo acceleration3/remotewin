@@ -54,7 +54,6 @@ public:
     [[nodiscard]] bool active() const override { return active_; }
 
     [[nodiscard]] Clock::time_point due() const noexcept { return due_; }
-    // Due by ``now``: rearmed or stopped, then fired.
     void fire() {
         if (period_.count() > 0) {
             due_ += period_;
@@ -75,8 +74,6 @@ private:
 };
 
 PollLoop::~PollLoop() {
-    // Timers and watches still alive outlive nothing they were made by;
-    // their loop going first only stops them being heard.
     for (PollTimer* timer : timers_) timer->stop();
 }
 
@@ -120,7 +117,6 @@ int PollLoop::timeout_ms() const {
     }
     if (!nearest.has_value()) return -1;
     if (*nearest <= now) return 0;
-    // Rounded up: a timer is never fired before it is due and polled again.
     const auto wait = std::chrono::ceil<std::chrono::milliseconds>(*nearest - now).count();
     return static_cast<int>(std::min<long long>(wait, INT_MAX));
 }
@@ -151,7 +147,6 @@ void PollLoop::wait_once() {
     }
     for (std::size_t at = first; ready > 0 && at < polled_.size(); ++at) {
         if (polled_[at].revents == 0) continue;
-        // A callback may have let go of a later watch: it is not called.
         const auto found = watched_.find(polled_ids_[at]);
         if (found == watched_.end()) continue;
         const Ready ready_now = found->second.ready;
@@ -167,10 +162,9 @@ void PollLoop::fire_timers() {
         if (timer->active() && timer->due() <= now) due_.push_back(timer);
     }
     for (PollTimer* timer : due_) {
-        // One fired before may have let go of this one.
         if (std::find(timers_.begin(), timers_.end(), timer) == timers_.end() || !timer->active()) continue;
         timer->fire();
     }
 }
 
-}  // namespace rwin::host
+}

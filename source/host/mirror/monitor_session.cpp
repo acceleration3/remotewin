@@ -32,8 +32,6 @@ MonitorSession::MonitorSession(const SurfaceKit& kit, GuestLink& link, SharedFra
     toplevel_.set_title(title);
     if (!app_id.empty()) toplevel_.set_app_id(app_id);
     toplevel_.start();
-    // Asked once the guest has said it speaks this wire: asked before, the
-    // request goes to nobody, and asked again, a capture is made again.
     link_.connected.connect([this] {
         if (!link_.features().has(Feature::kMonitor)) {
             RWIN_ERROR("monitor", "the guest half cannot show its monitor; it does not speak {}", Feature::kMonitor);
@@ -106,8 +104,6 @@ void MonitorSession::show_pixels(const PixelsView& pixels) {
     note_ready();
 }
 
-// A part of a picture of another size than the one kept is a part of a
-// picture not had yet, and waits for it.
 void MonitorSession::patch(Size picture, Point at, const PixelsView& pixels) {
     if (picture != canvas_size_) return;
     for (int row = 0; row < pixels.height; ++row) {
@@ -124,8 +120,6 @@ void MonitorSession::configured(const ToplevelConfigure& configure) {
 
 void MonitorSession::close_requested() { finished(); }
 
-// One to one where the window is the picture's size; fitted, keeping its
-// shape, over bars where it is not.
 void MonitorSession::fit() {
     if (!toplevel_.configured() || surface_.picture_size().empty()) return;
     const Size picture = surface_.picture_size();
@@ -214,4 +208,4 @@ void MonitorSession::key(const KeyPress& press) {
     link_.send_key(*stroke);
 }
 
-}  // namespace rwin::host
+}

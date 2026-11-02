@@ -8,12 +8,9 @@
 namespace rwin::host {
 
 namespace {
-
-// Long enough for the compositor to have said where the focus went after
-// it left a surface: a leave and the next enter come within a frame or two.
 constexpr std::chrono::milliseconds kFocusSettle{100};
 
-}  // namespace
+}
 
 ActivationSync::ActivationSync(EventLoop& loop, GuestLink& link, Seat& seat)
     : link_(link), seat_(seat), settle_(loop.timer([this] { focus_left(); })) {
@@ -60,4 +57,4 @@ void ActivationSync::focus_left() {
     host_active_ = WindowId{};
 }
 
-}  // namespace rwin::host
+}

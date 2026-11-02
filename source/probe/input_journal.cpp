@@ -11,9 +11,6 @@
 namespace rwin::probe {
 
 namespace {
-
-// The input a window can be given, and the activation and cursor queries
-// that come with it. Painting and sizing are not input.
 bool is_input(std::uint32_t message) {
     switch (message) {
         case WM_MOUSEMOVE:
@@ -47,7 +44,7 @@ bool is_input(std::uint32_t message) {
     }
 }
 
-}  // namespace
+}
 
 void InputJournal::note(const InputRecord& record) {
     if (!is_input(record.message)) return;
@@ -68,4 +65,4 @@ std::vector<InputRecord> InputJournal::drain() {
     return drained;
 }
 
-}  // namespace rwin::probe
+}

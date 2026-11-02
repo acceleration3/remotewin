@@ -45,4 +45,4 @@ std::optional<Rect> WindowDirectory::picture_of(WindowId id) const {
     return found->second.picture;
 }
 
-}  // namespace rwin::guest
+}

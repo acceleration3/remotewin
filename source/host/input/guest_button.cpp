@@ -20,4 +20,4 @@ std::optional<std::uint8_t> guest_button(std::uint32_t code) noexcept {
     }
 }
 
-}  // namespace rwin::host
+}

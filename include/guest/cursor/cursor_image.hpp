@@ -4,13 +4,6 @@
 #include <vector>
 
 namespace rwin::guest {
-
-// One picture of a Windows cursor decoded into pixels the host can show.
-//
-// Two kinds exist. A colour cursor is a bitmap with an alpha channel, or an
-// older one whose transparency is in its mask. A monochrome one is two
-// planes, some of whose pixels invert what is behind them
-// (MonochromePicture).
 class CursorImage {
 public:
     explicit CursorImage(void* cursor_handle);
@@ -20,10 +13,7 @@ public:
     [[nodiscard]] std::uint32_t height() const noexcept { return height_; }
     [[nodiscard]] std::uint32_t hotspot_x() const noexcept { return hotspot_x_; }
     [[nodiscard]] std::uint32_t hotspot_y() const noexcept { return hotspot_y_; }
-    // Some pixel inverts what is under it, and was drawn as MonochromePicture
-    // draws one.
     [[nodiscard]] bool inverts() const noexcept { return inverts_; }
-    // Straight BGRA, top-down, width * 4 per row; moved out.
     [[nodiscard]] std::vector<std::uint8_t> take_pixels() noexcept;
 
 private:
@@ -40,4 +30,4 @@ private:
     bool inverts_ = false;
 };
 
-}  // namespace rwin::guest
+}

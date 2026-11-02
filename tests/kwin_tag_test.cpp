@@ -1,8 +1,3 @@
-// KWinPlacement's caption tag: the window's tag, which the scripts find the
-// window by and read back as the window, then one character saying which of
-// KWin's lists leave it out - a different one for each, and nothing a
-// window's own tag reads as anything else.
-
 #include "host/placement/kwin_placement.hpp"
 
 #include <cstdio>
@@ -44,7 +39,7 @@ void the_caption_tag_is_the_tag_and_what_it_skips() {
     check(said.size() == 4, "each of the four says something else");
 }
 
-}  // namespace
+}
 
 int main() {
     the_tag_names_the_window();

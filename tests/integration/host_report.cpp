@@ -27,7 +27,7 @@ int number_at(std::string_view text, std::size_t& at) {
     return error == std::errc{} ? value : 0;
 }
 
-}  // namespace
+}
 
 HostReport::HostReport(host::BusConnection& bus, pid_t host) : bus_(bus), host_(host) {}
 
@@ -87,8 +87,6 @@ std::optional<HostReport::Picture> HostReport::picture() {
     return Picture{width, height};
 }
 
-// Each mirror's object runs from its "role" to its "surfaces_made", the last
-// of its keys: past that is the next window's guest half, title and all.
 std::optional<HostReport::Mirror> HostReport::mirror(std::string_view title) {
     const std::optional<std::string> report = describe();
     if (!report.has_value()) return std::nullopt;
@@ -116,4 +114,4 @@ std::optional<HostReport::Mirror> HostReport::mirror(std::string_view title) {
     return std::nullopt;
 }
 
-}  // namespace rwin::integration
+}

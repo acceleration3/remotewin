@@ -3,10 +3,6 @@
 #include <cstdint>
 
 namespace rwin {
-
-// Which move or resize Windows' loop is running, as RAIL numbers them
-// (RAIL_WMSZ_*): the edge or corner a resize drags, a move, or a move or
-// resize driven from the keyboard (the window menu's Move and Size).
 enum class MoveSizeKind : std::uint8_t {
     Left = 1,
     Right = 2,
@@ -25,4 +21,4 @@ enum class MoveSizeKind : std::uint8_t {
     return kind >= static_cast<std::uint8_t>(MoveSizeKind::Left) && kind <= static_cast<std::uint8_t>(MoveSizeKind::KeySize);
 }
 
-}  // namespace rwin
+}

@@ -6,14 +6,6 @@
 #include <cstdint>
 
 namespace rwin::host {
-
-// One shared surface's memory, as the GPU device exported it: a dma-buf,
-// and how the picture lies in it.
-//
-// The memory outlives the surface. Once the guest lets go of the surface
-// nothing writes the memory again, but what is drawn from it still reads
-// what was last there, so a frame on screen stays on screen until the next
-// replaces it.
 class SurfaceMemory {
 public:
     SurfaceMemory(std::uint64_t surface, ExportedLayout layout, UniqueFd dma_buf) noexcept
@@ -29,4 +21,4 @@ private:
     UniqueFd dma_buf_;
 };
 
-}  // namespace rwin::host
+}

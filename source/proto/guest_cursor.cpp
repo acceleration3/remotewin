@@ -18,4 +18,4 @@ std::optional<GuestCursor> GuestCursor::read(MessageReader& in) {
     return cursor;
 }
 
-}  // namespace rwin
+}

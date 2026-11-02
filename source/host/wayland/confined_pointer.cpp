@@ -11,7 +11,6 @@ void ConfinedPointer::Release::operator()(zwp_confined_pointer_v1* confinement) 
     zwp_confined_pointer_v1_destroy(confinement);
 }
 
-// The region is copied by the request, so it is gone again at once.
 ConfinedPointer::ConfinedPointer(wl_compositor* compositor, zwp_pointer_constraints_v1* constraints,
                                  wl_surface* surface, wl_pointer* pointer, const Box& area) {
     wl_region* region = wl_compositor_create_region(compositor);
@@ -24,16 +23,16 @@ ConfinedPointer::ConfinedPointer(wl_compositor* compositor, zwp_pointer_constrai
     zwp_confined_pointer_v1_add_listener(confinement_.get(), &kListener, this);
 }
 
-void ConfinedPointer::confined(void* self, zwp_confined_pointer_v1* /*confinement*/) {
+void ConfinedPointer::confined(void* self, zwp_confined_pointer_v1* ) {
     static_cast<ConfinedPointer*>(self)->engaged_ = true;
     RWIN_INFO("pointer", "the compositor confined the pointer");
 }
 
-void ConfinedPointer::unconfined(void* self, zwp_confined_pointer_v1* /*confinement*/) {
+void ConfinedPointer::unconfined(void* self, zwp_confined_pointer_v1* ) {
     auto* confinement = static_cast<ConfinedPointer*>(self);
     confinement->engaged_ = false;
     confinement->over_ = true;
     RWIN_INFO("pointer", "the compositor let the pointer out of its confinement");
 }
 
-}  // namespace rwin::host
+}

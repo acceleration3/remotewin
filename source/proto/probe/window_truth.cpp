@@ -38,7 +38,7 @@ WindowTruth::Rect rect_from(MessageReader& in) {
     return rect;
 }
 
-}  // namespace
+}
 
 void WindowTruth::write(MessageWriter& out) const {
     out.put_u64(handle);
@@ -107,4 +107,4 @@ std::optional<WindowTruth> WindowTruth::read(MessageReader& in) {
     return truth;
 }
 
-}  // namespace rwin
+}

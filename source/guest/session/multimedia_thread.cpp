@@ -8,9 +8,6 @@
 // clang-format on
 
 namespace rwin::guest {
-
-// "Games": the task MMCSS gives the highest priority short of audio, which
-// is for what a player sees and does as it happens.
 MultimediaThread::MultimediaThread() {
     DWORD task = 0;
     registration_ = ::AvSetMmThreadCharacteristicsW(L"Games", &task);
@@ -27,4 +24,4 @@ MultimediaThread::~MultimediaThread() {
     if (registration_ != nullptr) ::AvRevertMmThreadCharacteristics(registration_);
 }
 
-}  // namespace rwin::guest
+}

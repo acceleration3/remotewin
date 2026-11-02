@@ -20,9 +20,6 @@ void check(bool condition, const char* what) {
     ++failures;
 }
 
-// The CSS name wp_cursor_shape_v1 gives each shape it numbers
-// (cursor-shape-v1.xml), which is what the guest's cursor turns into on the
-// glass.
 const char* css_name_of(rwin::host::CursorShape shape) {
     using rwin::host::CursorShape;
     switch (shape) {
@@ -57,7 +54,6 @@ struct Meaning {
     const char* css;
 };
 
-// What each IDC_ cursor means, as a CSS cursor name.
 constexpr std::array kMeanings{
     Meaning{SystemCursor::Arrow, "default"},         Meaning{SystemCursor::IBeam, "text"},
     Meaning{SystemCursor::Wait, "wait"},             Meaning{SystemCursor::Cross, "crosshair"},
@@ -94,7 +90,7 @@ void no_system_cursor_is_left_out() {
     check(named == kMeanings.size(), "every system cursor but IDC_PIN and IDC_PERSON has a meaning here");
 }
 
-}  // namespace
+}
 
 int main() {
     shapes_are_numbered_as_the_protocol_numbers_them();

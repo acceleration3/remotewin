@@ -11,11 +11,6 @@ struct zwp_relative_pointer_v1;
 struct wl_pointer;
 
 namespace rwin::host {
-
-// The pointer's own motion (zwp_relative_pointer_v1), told whenever the
-// pointer moves over one of this client's surfaces - locked or not: in the
-// device's counts before any acceleration, and as the pointer itself moved,
-// in logical units.
 class RelativePointer {
 public:
     using Moved = std::function<void(PointF unaccelerated, PointF accelerated)>;
@@ -35,4 +30,4 @@ private:
     std::unique_ptr<zwp_relative_pointer_v1, Release> relative_;
 };
 
-}  // namespace rwin::host
+}

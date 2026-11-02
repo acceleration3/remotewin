@@ -13,13 +13,9 @@
 namespace rwin::guest {
 
 namespace {
-
-// Enough processes for any session; past it the dead are forgotten.
 constexpr std::size_t kMostRecords = 8192;
 constexpr std::uint64_t kEverythingEveryMs = 1000;
 
-// ProcessBasicInformation, which NtQueryInformationProcess answers for any
-// process one may query the limited information of.
 struct BasicInformation {
     NTSTATUS exit_status;
     void* peb;
@@ -57,14 +53,13 @@ std::wstring_view file_name_of(std::wstring_view path) {
     return slash == std::wstring_view::npos ? path : path.substr(slash + 1);
 }
 
-}  // namespace
+}
 
 std::optional<ProcessTree::Record> ProcessTree::remembered(std::uint32_t pid, std::uint64_t child_created) const {
     const auto known = records_.find(pid);
     if (known == records_.end()) return std::nullopt;
     std::optional<Record> found;
     for (const Record& record : known->second) {
-        // Alive when the child was made: created before it, seen after it.
         if (record.created <= child_created && record.last_seen >= child_created) found = record;
     }
     return found;
@@ -95,8 +90,6 @@ void ProcessTree::prune() {
         }
     }
     std::sort(dead.begin(), dead.end(), [](const Dead& a, const Dead& b) { return a.last_seen < b.last_seen; });
-    // Every dead one nothing needs goes; a memory still full is no fuller of
-    // them than it need be.
     for (const Dead& gone : dead) {
         std::vector<Record>& processes = records_[gone.key.first];
         std::erase_if(processes, [&](const Record& record) { return record.created == gone.key.second; });
@@ -140,8 +133,6 @@ std::optional<ProcessTree::Record> ProcessTree::learn(std::uint32_t pid) {
     }
     std::array<wchar_t, MAX_PATH * 2> path{};
     DWORD length = static_cast<DWORD>(path.size());
-    // An image that cannot be read is a service's or the session's own - the
-    // SYSTEM agent's is one this half is not let look at - and bounds a tree.
     record.boundary = ::QueryFullProcessImageNameW(process, 0, path.data(), &length) == FALSE
                       || boundary_.contains(file_name_of(std::wstring_view(path.data(), length)));
     ::CloseHandle(process);
@@ -150,9 +141,6 @@ std::optional<ProcessTree::Record> ProcessTree::learn(std::uint32_t pid) {
     return record;
 }
 
-// What is alive now, read once, so a parent that is gone by the time its
-// child shows a window was seen. Reading a process costs a handle; once a
-// second at most, and only when a window asks.
 void ProcessTree::learn_everything_alive() {
     const std::uint64_t now = ::GetTickCount64();
     if (learned_all_at_ != 0 && now - learned_all_at_ < kEverythingEveryMs) return;
@@ -184,4 +172,4 @@ std::vector<WindowFields::ProcessRef> ProcessTree::tree_of(std::uint32_t pid) {
     return tree;
 }
 
-}  // namespace rwin::guest
+}

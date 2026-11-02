@@ -20,8 +20,6 @@ void check(bool condition, const char* what) {
 
 constexpr std::size_t kBytesPerPixel = 4;
 
-// The two planes as GetDIBits gives them at 32 bits a pixel: a set bit is
-// white, 0xFFFFFF.
 std::vector<std::uint8_t> planes_of(const std::vector<int>& and_bits, const std::vector<int>& xor_bits) {
     std::vector<std::uint8_t> planes;
     for (const std::vector<int>* plane : {&and_bits, &xor_bits}) {
@@ -52,7 +50,6 @@ void the_four_combinations() {
 }
 
 void an_inverting_pixel_is_ringed_with_white() {
-    // 3x3, the middle inverting, the rest transparent.
     const MonochromePicture picture =
         monochrome_picture(planes_of({1, 1, 1, 1, 1, 1, 1, 1, 1}, {0, 0, 0, 0, 1, 0, 0, 0, 0}), 3, 3);
     check(pixel(picture, 4) == kBlack, "the middle is black");
@@ -73,7 +70,7 @@ void short_planes_are_no_picture() {
     check(monochrome_picture({}, 0, 0).bgra.empty(), "and so is an empty one");
 }
 
-}  // namespace
+}
 
 int main() {
     the_four_combinations();

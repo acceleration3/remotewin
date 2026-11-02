@@ -16,12 +16,8 @@ namespace rwin::guest {
 namespace {
 
 constexpr ULONG_PTR kMenuClassAtom = 32768;
-constexpr UINT kGetMenu = 0x01E1;  // MN_GETHMENU
-// A menu's window answers MN_GETHMENU at once; one that does not in this
-// long is hung, and the popup is placed where Windows put it.
+constexpr UINT kGetMenu = 0x01E1;
 constexpr UINT kAnswerMs = 100;
-// TrackPopupMenu puts a corner of the menu at the point it is given: a
-// pointer within this of a corner is the point the menu was opened at.
 constexpr std::int32_t kNearCorner = 4;
 constexpr std::size_t kClassChars = 64;
 
@@ -53,12 +49,6 @@ GUITHREADINFO input_state_of(HWND window) {
     return gui;
 }
 
-// The window a menu opens from, as one that is on screen. A menu can be
-// tracked for a window nobody sees - the shell's context menu, which
-// WizTree's list shows, is tracked for a hidden ItemPropMenuCallbackHelper
-// - and then it opens from the window its thread has active, the one that
-// was clicked. Against the hidden one it would open from nothing and stand
-// alone, behind the window it belongs to.
 HWND shown_owner_of_menu(HWND owner, const GUITHREADINFO& input) {
     const HWND root = root_of(owner);
     if (::IsWindowVisible(root) != FALSE) return root;
@@ -74,7 +64,7 @@ BOOL CALLBACK collect_menus(HWND window, LPARAM into) {
     return TRUE;
 }
 
-}  // namespace
+}
 
 PopupIntent::PopupIntent(void* window, const Rect& frame, std::optional<Point> opened_at) : frame_(frame) {
     const auto hwnd = static_cast<HWND>(window);
@@ -116,7 +106,6 @@ void PopupIntent::read_menu(void* window, const std::optional<Point>& opened_at)
     open(Kind::Exact, owner, frame_.x, frame_.y, right, bottom);
 }
 
-// GetMenuBarInfo numbers the bar's items from 1; 0 is the bar itself.
 bool PopupIntent::read_menu_bar_item(void* menu, void* owner) {
     const auto bar_owner = static_cast<HWND>(owner);
     const HMENU bar = ::GetMenu(bar_owner);
@@ -136,8 +125,6 @@ bool PopupIntent::read_menu_bar_item(void* menu, void* owner) {
     return false;
 }
 
-// The menu it opens out of is another menu window of the same thread,
-// whose menu has this one as an item's submenu.
 bool PopupIntent::read_parent_item(void* window, void* menu) {
     const auto hwnd = static_cast<HWND>(window);
     std::vector<HWND> menus;
@@ -161,8 +148,6 @@ bool PopupIntent::read_parent_item(void* window, void* menu) {
     return false;
 }
 
-// The list's combo box has the focus while it is dropped (or its edit
-// field does), and owns the capture.
 void PopupIntent::read_combo_list(void* window) {
     const auto hwnd = static_cast<HWND>(window);
     const GUITHREADINFO gui = input_state_of(hwnd);
@@ -195,12 +180,6 @@ void PopupIntent::read_tooltip(void* window, const std::optional<Point>& opened_
     direct(Edge::TopLeft, Edge::BottomRight, Popup::kFlipY | Popup::kSlideX | Popup::kSlideY, false);
 }
 
-// A window nothing owns that Windows places against another: the
-// association lives in the thread's input state. GUITHREADINFO names the
-// window whose menu is up while one is, and the active window while a
-// child of the desktop or the capture's window is up. That window is often
-// one nobody sees (an application draws its menu bar in an internal
-// window), so it is taken up to its root owner.
 void PopupIntent::read_placed_against(void* window) {
     const auto hwnd = static_cast<HWND>(window);
     if (::GetWindow(hwnd, GW_OWNER) != nullptr) return;
@@ -230,7 +209,6 @@ void PopupIntent::open(Kind kind, void* anchor, std::int32_t left, std::int32_t 
 
 void PopupIntent::point_at(Kind kind, void* anchor, Point point) { open(kind, anchor, point.x, point.y, point.x, point.y); }
 
-// A right-to-left window's menus open leftwards from the right edge.
 void PopupIntent::direct(Edge edge, Edge gravity, std::uint8_t adjust, bool rtl) {
     const auto mirror = [rtl](Edge side) {
         if (!rtl) return side;
@@ -249,4 +227,4 @@ void PopupIntent::direct(Edge edge, Edge gravity, std::uint8_t adjust, bool rtl)
     popup_.adjust = adjust;
 }
 
-}  // namespace rwin::guest
+}

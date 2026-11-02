@@ -1,7 +1,3 @@
-# The conformance probe: the guest end of the harness in source/conform.
-# It makes windows to a spec and reports what Windows made of them, so the
-# mirror can be compared against the truth rather than against itself.
-# Built by name only, like the harness: nothing ships it.
 add_executable(remotewin-probe EXCLUDE_FROM_ALL
     main.cpp
     ani_file.cpp
@@ -20,7 +16,6 @@ add_executable(remotewin-probe EXCLUDE_FROM_ALL
     test_pattern.cpp
     window_actions.cpp
     window_reading.cpp
-    # The same socket the guest half dials out on.
     ../guest/session/tcp_client.cpp
 )
 target_link_libraries(remotewin-probe PRIVATE

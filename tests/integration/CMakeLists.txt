@@ -1,16 +1,9 @@
-# Resizing, maximising and minimising a mirror end to end, against a
-# headless KWin of the test's own and a played guest: no VM. Label
-# "integration"; run with `ctest -L integration`. Skipped (77) where
-# kwin_wayland or dbus-run-session is not installed.
 enable_language(C)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(RWIN_IT_WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(RWIN_IT_SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
 pkg_get_variable(RWIN_IT_SCANNER wayland-scanner wayland_scanner)
 
-# KWin's fake input, which gives its virtual backend a pointer to drive
-# (plasma-wayland-protocols, LGPL-2.1-or-later; copied here, since that
-# package is rarely installed).
 set(fake_input_dir "${CMAKE_CURRENT_BINARY_DIR}/protocol")
 file(MAKE_DIRECTORY "${fake_input_dir}")
 add_custom_command(

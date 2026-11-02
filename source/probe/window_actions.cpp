@@ -50,7 +50,7 @@ std::string refused(const char* call, const ProbeAction& action) {
     return std::format("{} on {:#x} failed: error {}", call, action.window, ::GetLastError());
 }
 
-}  // namespace
+}
 
 WindowActions::WindowActions(ProbeWindows& windows, DialogBoxes& dialogs, PointerActions& pointer)
     : windows_(windows), dialogs_(dialogs), pointer_(pointer) {}
@@ -61,7 +61,6 @@ std::optional<std::uint64_t> WindowActions::perform(const ProbeAction& action, s
     bool done = true;
     switch (action.kind) {
         case Kind::Enable:
-            // Answers what the window was before, not whether it worked.
             static_cast<void>(::EnableWindow(window, action.on ? TRUE : FALSE));
             break;
         case Kind::Show:
@@ -74,8 +73,6 @@ std::optional<std::uint64_t> WindowActions::perform(const ProbeAction& action, s
             if (!done) failure = refused("SetWindowLongPtr(GWLP_HWNDPARENT)", action);
             break;
         case Kind::Foreground:
-            // Whether Windows let it is what the truth shows next, not a
-            // failure of the probe's.
             RWIN_INFO("action", "SetForegroundWindow {:#x}: {}", action.window,
                       ::SetForegroundWindow(window) != FALSE);
             break;
@@ -151,4 +148,4 @@ bool WindowActions::show_message_box(const ProbeAction& action, std::string& fai
     return false;
 }
 
-}  // namespace rwin::probe
+}

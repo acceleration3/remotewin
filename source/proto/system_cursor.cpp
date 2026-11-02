@@ -31,7 +31,7 @@ constexpr std::array kCursors{
     Entry{SystemCursor::Person, 32672, "IDC_PERSON"},
 };
 
-}  // namespace
+}
 
 std::uint32_t idc_of(SystemCursor cursor) noexcept {
     for (const Entry& entry : kCursors) {
@@ -54,4 +54,4 @@ const char* name_of(SystemCursor cursor) noexcept {
     return "none";
 }
 
-}  // namespace rwin
+}

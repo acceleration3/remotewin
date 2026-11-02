@@ -19,23 +19,17 @@
 namespace rwin::guest {
 
 namespace {
-
-// RichEdit's own dropdowns, the one kind RAIL deletes on hide rather than
-// keeping hidden: they are made again for every drop.
 bool rich_edit_dropdown(HWND window) {
     wchar_t name[32] = {};
     if (::GetClassNameW(window, name, 32) <= 0) return false;
     return std::wcscmp(name, L"REComboBox20W") == 0 || std::wcscmp(name, L"REListBox20W") == 0;
 }
 
-// rdpshell spares this class when it is made a child (OnHookEventParentChange).
 bool spared_as_child(HWND window) {
     wchar_t name[16] = {};
     return ::GetClassNameW(window, name, 16) > 0 && std::wcscmp(name, L"WBPOPUP") == 0;
 }
 
-// The style words as sent, against the window's now, the tool-window bit
-// RAIL forces aside.
 bool restyled(HWND window, const WindowFields::Style& sent) {
     const auto style = static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_STYLE));
     const auto extended = static_cast<std::uint32_t>(::GetWindowLongPtrW(window, GWL_EXSTYLE));
@@ -56,7 +50,7 @@ std::uint32_t fields_for(const FeatureSet& features) {
     return fields;
 }
 
-}  // namespace
+}
 
 WindowTracker::WindowTracker(WindowDirectory& directory, const WindowReader& reader, Outbox& outbox,
                              const FeatureSet& features)
@@ -78,7 +72,6 @@ void WindowTracker::sync(SyncBegin::Reason reason) {
     std::vector<void*> known;
     known.reserve(records_.size());
     for (const auto& entry : records_) known.push_back(entry.first);
-    // Reading a window may admit its owner, which adds to records_.
     for (void* window : known) {
         Record& record = records_.at(window);
         record.sent = fields_of(window, record, reader_.read_app_id(window));
@@ -106,8 +99,6 @@ void WindowTracker::changed(void* window, Change change) {
             refresh(window);
             return;
         case Change::Reparented:
-            // Made a child (RAIL deletes it), or a child of something else:
-            // nothing that was or is to be admitted.
             if (!WindowReader::top_level(window)) {
                 if (known && !spared_as_child(static_cast<HWND>(window))) forget(window);
                 return;
@@ -175,7 +166,6 @@ void WindowTracker::sweep() {
     for (const auto& [window, record] : records_) look_at_icon(window, record);
 }
 
-// Only a window with a taskbar button has an icon anyone sees.
 void WindowTracker::look_at_icon(void* window, const Record& record) {
     if (icons_.has_value() && (record.sent.taskbar & WindowFields::kTaskbarButton) != 0) icons_->look(window, record.id);
 }
@@ -202,8 +192,6 @@ std::optional<WindowId> WindowTracker::admit(void* window) {
     ++admitting_;
     const WindowId id{static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(window)), ++serial_};
     directory_.admit(id);
-    // Placed before it is read: a window owning itself through a loop finds
-    // itself tracked rather than admitting itself again.
     Record& record = records_.insert_or_assign(window, Record{id, {}}).first->second;
     record.sent = fields_of(window, record, reader_.read_app_id(window));
     --admitting_;
@@ -257,9 +245,6 @@ WindowFields WindowTracker::fields_of(void* window, Record& record, const Window
     return std::move(reading.fields);
 }
 
-// An owner the host is not told about - one of the shell's - is named by
-// its handle alone, which names nothing on the host: the window stands on
-// its own there.
 WindowId WindowTracker::owner_id(const WindowReader::Reading& reading) {
     if (reading.hidden_owner) return WindowId::hidden_owner();
     if (reading.owner == nullptr) return WindowId{};
@@ -267,4 +252,4 @@ WindowId WindowTracker::owner_id(const WindowReader::Reading& reading) {
     return WindowId{static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(reading.owner)), 0};
 }
 
-}  // namespace rwin::guest
+}

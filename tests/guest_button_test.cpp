@@ -31,7 +31,7 @@ void every_button_is_its_own() {
     check(!rwin::host::guest_button(BTN_TASK).has_value(), "a button Windows has no number for is no click");
 }
 
-}  // namespace
+}
 
 int main() {
     every_button_is_its_own();

@@ -18,4 +18,4 @@ std::optional<WindowId> WindowId::read(MessageReader& in) {
     return id;
 }
 
-}  // namespace rwin
+}

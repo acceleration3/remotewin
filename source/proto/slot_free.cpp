@@ -22,4 +22,4 @@ std::optional<SlotFree> SlotFree::read(MessageReader& in) {
     return freed;
 }
 
-}  // namespace rwin
+}

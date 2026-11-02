@@ -100,8 +100,6 @@ void an_application_id_is_claimed_and_followed() {
     check(store.belongs(WindowId{0x30, 3}, windows), "an id given at launch belongs from the start");
 }
 
-// Steam's one window is its web helper's, a child of the launcher the mirror was
-// started for; the tree's root is the launcher, whose parent is the shell.
 void the_launched_programs_whole_process_tree_belongs() {
     GuestWindows windows;
     const WindowId helper{0x10, 1};
@@ -109,10 +107,10 @@ void the_launched_programs_whole_process_tree_belongs() {
     const WindowId parent{0x30, 3};
     const WindowId stranger{0x40, 4};
     WindowFields grandchild = made_by(900);
-    grandchild.app_id.tree = {{900, 9}, {800, 8}, {kApp, 4}, {300, 3}};   // helper <- child <- launched <- root
+    grandchild.app_id.tree = {{900, 9}, {800, 8}, {kApp, 4}, {300, 3}};
     static_cast<void>(windows.tell(helper, grandchild));
     WindowFields cousin = made_by(901);
-    cousin.app_id.tree = {{901, 10}, {301, 5}, {300, 3}};   // beside the launched process, under its root
+    cousin.app_id.tree = {{901, 10}, {301, 5}, {300, 3}};
     static_cast<void>(windows.tell(sibling, cousin));
     WindowFields root = made_by(300);
     root.app_id.tree = {{300, 3}};
@@ -132,8 +130,6 @@ void the_launched_programs_whole_process_tree_belongs() {
     MirrorScope exact{MirrorScope::Launch{kApp, {}, {}, {}, false}};
     check(!exact.belongs(helper, windows) && exact.claim(windows).empty(),
           "kept to the process alone, no tree is followed");
-    // Windows gives a pid out again: the launched process, as created at
-    // tick 4, is not a process of the same pid created at tick 99.
     MirrorScope created{MirrorScope::Launch{kApp, 4, {}, {}}};
     check(created.belongs(helper, windows), "the same pid and creation time is the launched process");
     MirrorScope reused{MirrorScope::Launch{kApp, 99, {}, {}}};
@@ -178,7 +174,7 @@ void the_stacking_comes_first() {
           "found by its handle alone");
 }
 
-}  // namespace
+}
 
 int main() {
     nothing_to_go_by_is_everything();

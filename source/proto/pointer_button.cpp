@@ -26,4 +26,4 @@ std::optional<PointerButton> PointerButton::read(MessageReader& in) {
     return press;
 }
 
-}  // namespace rwin
+}

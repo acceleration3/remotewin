@@ -12,7 +12,7 @@ namespace {
 
 constexpr std::string_view kBuild = "remotewin wire 7";
 
-}  // namespace
+}
 
 Hello Hello::ours() {
     Hello hello;
@@ -23,8 +23,6 @@ Hello Hello::ours() {
           Feature::kIcons}) {
         hello.features.push_back(Feature{std::string(name), name == Feature::kAppId ? Feature::kAppIdVersion : std::uint16_t{1}});
     }
-    // 2: POPUP carries the popup's kind and where it was meant to open, and
-    // the host can dismiss one.
     hello.features.push_back(Feature{std::string(Feature::kPopupIntent), 2});
     return hello;
 }
@@ -56,4 +54,4 @@ std::optional<Hello> Hello::read(MessageReader& in) {
     return hello;
 }
 
-}  // namespace rwin
+}

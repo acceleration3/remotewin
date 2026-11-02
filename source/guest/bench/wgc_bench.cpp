@@ -1,22 +1,3 @@
-// remotewin-wgcbench: how steadily Windows.Graphics.Capture hands over the
-// guest's monitor, through the same capture the mirror runs (CaptureStream).
-//
-// A window that changes every vsync keeps DWM composing - the compositor
-// hands over a frame only when the screen changed - and the monitor is
-// captured for the given seconds. Each frame's SystemRelativeTime is when
-// DWM showed it, so the spacing between them is the capture's own rhythm:
-// at 60 Hz every gap is one vsync, and a freeze is a long one.
-//
-//   remotewin-wgcbench [seconds=10] [d3d|gdi] [monitor|window]
-//
-// The window draws through a Direct3D 11 flip swap chain (d3d, a game's
-// path) or GDI (gdi, a desktop app's), each frame paced to DWM's own
-// (DwmFlush), so what is measured is the capture and not a flood of
-// presents.
-//
-// Prints a line a second and a summary; exits 0 when the capture kept up -
-// at least 57 frames a second and no gap past 50 ms - and 1 when it did not.
-
 #include "guest/capture/capture_clock.hpp"
 #include "guest/capture/capture_closer.hpp"
 #include "guest/capture/capture_stream.hpp"
@@ -45,12 +26,9 @@ using rwin::guest::CaptureStream;
 using rwin::guest::FrameSignal;
 using rwin::guest::GraphicsDevice;
 
-constexpr double kTicksPerMs = 10000.0;  // SystemRelativeTime is in 100 ns
+constexpr double kTicksPerMs = 10000.0;
 constexpr double kPassFps = 57.0;
 constexpr double kFrameMs = 1000.0 / 60.0;
-// Frames arrive on the display's refresh, so a gap is a whole number of its
-// intervals plus the clock's jitter: three intervals measure 49.98 ms or
-// 50.02 ms alike. A gap is judged by the intervals it spans.
 constexpr long long kPassGapFrames = 3;
 
 long long frames_spanned(double gap_ms) { return std::llround(gap_ms / kFrameMs); }
@@ -68,7 +46,7 @@ HWND make_window() {
     kind.lpfnWndProc = window_proc;
     kind.hInstance = ::GetModuleHandleW(nullptr);
     kind.lpszClassName = L"rwin-wgcbench";
-    kind.hCursor = ::LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));  // IDC_ARROW
+    kind.hCursor = ::LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
     ::RegisterClassW(&kind);
     HWND window = ::CreateWindowExW(WS_EX_TOPMOST, kind.lpszClassName, L"WGC benchmark",
                                     WS_OVERLAPPEDWINDOW | WS_VISIBLE, 200, 200, 640, 360, nullptr,
@@ -103,8 +81,6 @@ IDXGISwapChain1* make_swap_chain(ID3D11Device* device, HWND window) {
     return chain;
 }
 
-// One frame drawn: the whole window a colour that cycles, so every vsync
-// is a change DWM composes.
 void draw(ID3D11Device* device, ID3D11DeviceContext* context, IDXGISwapChain1* chain,
           std::uint64_t frame) {
     ID3D11Texture2D* buffer = nullptr;
@@ -133,9 +109,6 @@ void draw_gdi(HWND window, std::uint64_t frame) {
     ::GdiFlush();
 }
 
-// One BGRA pixel of a captured frame, read through a staging texture: what
-// tells a frame that holds the window's picture from one that lost it (an
-// overlay plane the capture left out shows the desktop behind instead).
 struct Pixel {
     bool read = false;
     std::uint8_t blue = 0, green = 0, red = 0;
@@ -180,7 +153,7 @@ double percentile(std::vector<double> values, double fraction) {
     return values[at];
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     const int seconds = argc > 1 ? std::max(1, std::atoi(argv[1])) : 10;
@@ -251,7 +224,6 @@ int main(int argc, char** argv) {
                 second_worst = std::max(second_worst, gap);
             }
             if (source > last_source) last_source = source;
-            // The window's middle, in the captured picture's coordinates.
             if (!gdi) {
                 RECT placed{};
                 ::GetWindowRect(window, &placed);
@@ -289,8 +261,6 @@ int main(int argc, char** argv) {
     std::printf("gap ms: p50 %.1f  p95 %.1f  p99 %.1f  worst %.1f;  >20 ms %lld,  >3 frames %lld\n",
                 percentile(gaps_ms, 0.50), percentile(gaps_ms, 0.95), percentile(gaps_ms, 0.99), worst,
                 static_cast<long long>(late), static_cast<long long>(stalls));
-    // The window draws blue 128 and red and green that add up to 255, all
-    // through its cycle; a frame without the window's picture shows neither.
     const bool pictured = gdi || (last_pixel.read && last_pixel.blue >= 120 && last_pixel.blue <= 136 &&
                                   last_pixel.red + last_pixel.green >= 245 && last_pixel.red + last_pixel.green <= 265);
     if (!gdi)

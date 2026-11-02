@@ -32,4 +32,4 @@ std::optional<PointerGrab> PointerGrab::read(MessageReader& in) {
     return grab;
 }
 
-}  // namespace rwin
+}

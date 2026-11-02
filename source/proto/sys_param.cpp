@@ -38,4 +38,4 @@ std::optional<SysParam> SysParam::read(MessageReader& in) {
     return std::nullopt;
 }
 
-}  // namespace rwin
+}

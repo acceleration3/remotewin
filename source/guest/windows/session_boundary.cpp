@@ -21,7 +21,7 @@ bool same_name(std::wstring_view a, std::wstring_view b) {
     return true;
 }
 
-}  // namespace
+}
 
 bool SessionBoundary::contains(std::wstring_view image_name) const {
     for (const std::wstring_view name : kBoundary) {
@@ -30,4 +30,4 @@ bool SessionBoundary::contains(std::wstring_view image_name) const {
     return false;
 }
 
-}  // namespace rwin::guest
+}

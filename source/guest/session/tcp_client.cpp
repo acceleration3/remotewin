@@ -51,8 +51,6 @@ bool TcpClient::connect(const std::string& host, std::uint16_t port) {
         ::closesocket(s);
         return false;
     }
-    // Frames are latency-sensitive and small control messages must not
-    // wait behind Nagle for one.
     const int one = 1;
     ::setsockopt(s, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&one),
                  sizeof(one));
@@ -72,7 +70,6 @@ bool TcpClient::connect(const std::string& host, std::uint16_t port) {
 
 bool TcpClient::wait_readable(std::uint32_t timeout_ms) const {
     if (::WaitForSingleObject(static_cast<HANDLE>(readable_), timeout_ms) != WAIT_OBJECT_0) return false;
-    // Resets the event; Winsock sets it again while unread bytes remain.
     WSANETWORKEVENTS happened{};
     ::WSAEnumNetworkEvents(static_cast<SOCKET>(socket_), static_cast<WSAEVENT>(readable_), &happened);
     return true;
@@ -136,4 +133,4 @@ bool TcpClient::receive(std::vector<std::uint8_t>& into) {
     return true;
 }
 
-}  // namespace rwin::guest
+}

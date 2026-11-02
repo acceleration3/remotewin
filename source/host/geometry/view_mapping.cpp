@@ -6,22 +6,14 @@
 namespace rwin::host {
 
 namespace {
-
-// Within this of a whole number is that number. A fractional scale comes in
-// 120ths, so a size times one that is not whole misses a whole number by at
-// least 1/120; 5 * 1.2 is 6, and a floor that saw 5.9999999 would be a
-// pixel short.
 constexpr double kWhole = 1e-6;
 
 int floor_of(double value) { return static_cast<int>(std::floor(value + kWhole)); }
 
 int ceil_of(double value) { return static_cast<int>(std::ceil(value - kWhole)); }
 
-}  // namespace
+}
 
-// A side of fewer pixels than the scale covers no whole unit: it shows on
-// one unit, over its own pixels and no more, or the viewport's source would
-// reach past the buffer (wp_viewport.out_of_buffer, which ends the client).
 ViewMapping ViewMapping::one_to_one(Size picture, double scale) noexcept {
     const int width = floor_of(picture.width / scale);
     const int height = floor_of(picture.height / scale);
@@ -67,4 +59,4 @@ Box ViewMapping::logical_box_inside(const Box& picture) const noexcept {
     return Box{left, top, right - left, bottom - top};
 }
 
-}  // namespace rwin::host
+}

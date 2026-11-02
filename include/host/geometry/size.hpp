@@ -1,8 +1,6 @@
 #pragma once
 
 namespace rwin::host {
-
-// A width and a height, in whatever units the caller says.
 struct Size {
     int width = 0;
     int height = 0;
@@ -11,4 +9,4 @@ struct Size {
     [[nodiscard]] constexpr bool operator==(const Size&) const noexcept = default;
 };
 
-}  // namespace rwin::host
+}

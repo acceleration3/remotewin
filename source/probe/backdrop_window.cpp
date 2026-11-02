@@ -22,7 +22,6 @@ BackdropWindow::BackdropWindow(std::uint32_t rgb) {
         RWIN_ERROR("backdrop", "RegisterClassEx failed: error {}", ::GetLastError());
         return;
     }
-    // Never activated and never in the taskbar or alt-tab: it is scenery.
     window_ = ::CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kClassName, L"", WS_POPUP,
                                 ::GetSystemMetrics(SM_XVIRTUALSCREEN),
                                 ::GetSystemMetrics(SM_YVIRTUALSCREEN),
@@ -62,4 +61,4 @@ void BackdropWindow::stay_while(std::uint32_t parent_process_id) const {
     ::CloseHandle(parent);
 }
 
-}  // namespace rwin::probe
+}

@@ -17,10 +17,6 @@ void check(bool condition, const char* what) {
 using rwin::host::Win32Style;
 using Words = Win32Style::Words;
 
-// Each check below is one word and the one behaviour Windows documents
-// for it. No window is named; no two words are read together except
-// where Windows itself reads them together.
-
 void plain_words_are_a_plain_toplevel() {
     const Win32Style style{Words{}};
     check(!style.sizable(), "no WS_THICKFRAME: not sizable");
@@ -64,7 +60,6 @@ void extended_style_bits() {
           "WS_EX_TRANSPARENT alone is a paint order, not a hole");
 }
 
-// Windows' own rule, applied in the guest: the words are not read again.
 void the_taskbar_is_the_guests_to_say() {
     const Win32Style button{Words{.owned = true, .taskbar_button = true}};
     check(button.in_taskbar(), "a button said: on the taskbar, owned or not");
@@ -79,8 +74,6 @@ void class_style_bits() {
     check(!stuck.closable(), "CS_NOCLOSE: not closable");
 }
 
-// Windows' answer, from the guest: CS_DROPSHADOW, DWM's frame and the
-// desktop's "Show shadows under windows" are its to weigh.
 void shading_is_the_guests_to_say() {
     const Win32Style shaded{Words{.shaded = true}};
     check(shaded.casts_shadow(), "shaded: casts a shadow");
@@ -122,7 +115,6 @@ bool owned_stands_alone(std::uint32_t style, std::uint32_t extended) {
     return Win32Style{Words{.style = style, .extended_style = extended, .owned = true}}.stands_alone();
 }
 
-// What the guest lists for windows met in the field.
 void owned_windows_as_listed() {
     constexpr std::uint32_t kPopup = Win32Style::kWsPopup;
     constexpr std::uint32_t kNoActivate = Win32Style::kWsExNoActivate;
@@ -143,12 +135,8 @@ void equality_is_over_every_word() {
           "one word apart, not equal");
 }
 
-}  // namespace
+}
 
-// RAIL's server forces WS_EX_TOOLWINDOW on a window the taskbar rule gives
-// no button, so its client's taskbar leaves it out: here, a window of its
-// own with no button is left off this desktop's taskbar and switcher. An
-// owned one is the compositor's to keep with its owner.
 void off_this_taskbar() {
     check(Win32Style{Words{}}.off_taskbar() && Win32Style{Words{}}.off_switcher(),
           "a window of its own the guest gives no button: off the taskbar and the switcher");

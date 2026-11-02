@@ -19,8 +19,6 @@
 namespace rwin::host {
 
 namespace {
-
-// One entry of the format table (linux-dmabuf-v1's format_table fd).
 struct TableEntry {
     std::uint32_t format;
     std::uint32_t padding;
@@ -31,7 +29,6 @@ static_assert(sizeof(TableEntry) == 16);
 struct Feedback {
     std::optional<dev_t> device;
     std::vector<TableEntry> table;
-    // The tranche being read targets the main device.
     bool on_main = false;
     std::set<std::pair<std::uint32_t, std::uint64_t>> formats;
     bool done = false;
@@ -76,7 +73,7 @@ void tranche_flags(void*, zwp_linux_dmabuf_feedback_v1*, std::uint32_t) {}
 
 constexpr std::uint32_t kFeedbackVersion = 4;
 
-}  // namespace
+}
 
 CompositorGpu::CompositorGpu(const Globals& globals) {
     if (globals.dmabuf() == nullptr || globals.dmabuf_version() < kFeedbackVersion) {
@@ -105,4 +102,4 @@ CompositorGpu::CompositorGpu(const Globals& globals) {
               render_node_.empty() ? "no render node" : render_node_);
 }
 
-}  // namespace rwin::host
+}

@@ -10,19 +10,9 @@ namespace rwin {
 class MessageReader;
 class MessageWriter;
 
-// The pointer at a point of the guest's screen, rather than of a window:
-// while a button pressed in a mirror is held. Windows may be moving that
-// very window under the pointer - a tool panel being dragged - and the
-// mirror is a step behind it, so a point taken against the mirror and
-// sent against the window lands a step ahead and drags the window
-// further. The host works the screen point out from where the press was
-// and the pointer's own motion since, which no window's place enters.
-// ``button`` is kNoButton for a move, else the PointerButton::Button
-// coming up or going down there.
 struct PointerAt {
     static constexpr std::uint8_t kNoButton = 0xFF;
 
-    // The guest window the button was pressed in.
     WindowId window;
     std::int32_t x = 0;
     std::int32_t y = 0;
@@ -32,8 +22,7 @@ struct PointerAt {
     [[nodiscard]] bool operator==(const PointerAt&) const noexcept = default;
 
     void write(MessageWriter& out) const;
-    // Refused for a button PointerButton does not number.
     [[nodiscard]] static std::optional<PointerAt> read(MessageReader& in);
 };
 
-}  // namespace rwin
+}

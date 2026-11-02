@@ -7,12 +7,6 @@
 struct wp_linux_drm_syncobj_manager_v1;
 
 namespace rwin::host {
-
-// The DRM device explicit sync is done on (wp_linux_drm_syncobj_v1): the
-// compositor's render node, opened here for its timeline syncobjs. Not
-// usable where the compositor lacks the protocol, the node cannot be
-// opened, or its driver has no timeline syncobjs; frames are then waited
-// for here before they are shown.
 class DrmSyncDevice {
 public:
     DrmSyncDevice(const std::string& render_node, wp_linux_drm_syncobj_manager_v1* manager);
@@ -26,4 +20,4 @@ private:
     wp_linux_drm_syncobj_manager_v1* manager_ = nullptr;
 };
 
-}  // namespace rwin::host
+}

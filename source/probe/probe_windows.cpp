@@ -12,9 +12,6 @@
 namespace rwin::probe {
 
 namespace {
-
-// The class atom every dialog box is made of, named as the system classes
-// are documented: "#32770".
 constexpr const wchar_t* kDialogClass = L"#32770";
 
 HWND as_window(std::uint64_t handle) {
@@ -40,7 +37,7 @@ BOOL CALLBACK look_for_dialog(HWND window, LPARAM param) {
     return FALSE;
 }
 
-}  // namespace
+}
 
 void ProbeWindows::adopt(std::unique_ptr<ProbeWindow> window) {
     handles_.push_back(window->handle());
@@ -105,4 +102,4 @@ void ProbeWindows::destroy_all() {
     handles_.clear();
 }
 
-}  // namespace rwin::probe
+}

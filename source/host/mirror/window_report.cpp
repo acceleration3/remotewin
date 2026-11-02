@@ -23,7 +23,6 @@ namespace {
 constexpr const char* kPath = "/org/remotewin/Windows";
 constexpr const char* kInterface = "org.remotewin.Windows";
 
-// "0x30a2c:7", as the logs name it; null for none.
 void name(JsonText& json, WindowId window) {
     if (window.none()) {
         json.null();
@@ -111,7 +110,7 @@ void mirror_of(JsonText& json, const MirrorState& state) {
     json.close_object();
 }
 
-}  // namespace
+}
 
 WindowReport::WindowReport(BusConnection& bus, const MirrorSession& session) : session_(session) {
     if (!bus.connected()) return;
@@ -131,7 +130,7 @@ WindowReport::~WindowReport() {
     if (object_ != nullptr) sd_bus_slot_unref(object_);
 }
 
-int WindowReport::described(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+int WindowReport::described(sd_bus_message* call, void* self, sd_bus_error* ) {
     const std::string report = static_cast<WindowReport*>(self)->describe();
     return sd_bus_reply_method_return(call, "s", report.c_str());
 }
@@ -161,4 +160,4 @@ std::string WindowReport::describe() const {
     return json.text();
 }
 
-}  // namespace rwin::host
+}

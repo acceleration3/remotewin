@@ -8,7 +8,6 @@ namespace rwin {
 namespace {
 
 constexpr std::size_t kBytesPerPixel = 4;
-// Past any cursor Windows draws, so a malformed answer asks for little.
 constexpr std::uint32_t kMaxSide = 1024;
 constexpr std::uint32_t kMaxFrames = 512;
 
@@ -34,7 +33,7 @@ bool read_frame(MessageReader& in, CursorTruth::Frame& frame) {
     return read_pixels(in, size, frame.over_white) && read_pixels(in, size, frame.over_black);
 }
 
-}  // namespace
+}
 
 void CursorTruth::write(MessageWriter& out) const {
     out.put_u32(flags);
@@ -107,4 +106,4 @@ std::optional<CursorTruth> CursorTruth::read(MessageReader& in) {
     return truth;
 }
 
-}  // namespace rwin
+}

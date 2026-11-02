@@ -26,8 +26,6 @@ namespace {
 
 constexpr UINT kCommandsArrived = WM_APP + 1;
 constexpr const wchar_t* kSessionClass = L"rwin-probe-session";
-// A modal call's window is looked for this often, and for this long: it
-// is made before the modal loop starts, and shown as it does.
 constexpr UINT_PTR kDialogTimer = 1;
 constexpr UINT kDialogLookMs = 10;
 constexpr int kDialogLooks = 300;
@@ -53,8 +51,6 @@ HWND make_session_window(ProbeSession* session, WNDPROC procedure) {
     described.hInstance = ::GetModuleHandleW(nullptr);
     described.lpszClassName = kSessionClass;
     ::RegisterClassExW(&described);
-    // Message-only: nothing to show, nothing to mirror, never in the
-    // z-order the probe reports.
     HWND window = ::CreateWindowExW(0, kSessionClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr,
                                     ::GetModuleHandleW(nullptr), nullptr);
     if (window != nullptr) {
@@ -63,7 +59,7 @@ HWND make_session_window(ProbeSession* session, WNDPROC procedure) {
     return window;
 }
 
-}  // namespace
+}
 
 ProbeSession::ProbeSession(guest::TcpClient& link) : link_(link) {
     window_ = make_session_window(this, reinterpret_cast<WNDPROC>(&ProbeSession::procedure));
@@ -105,8 +101,6 @@ std::intptr_t __stdcall ProbeSession::procedure(HWND window, unsigned message,
     return ::DefWindowProcW(window, message, wparam, lparam);
 }
 
-// Re-entered from inside a modal loop that a command started: each call
-// takes commands one at a time, so the nesting is the harness's order.
 void ProbeSession::serve() {
     while (running_) {
         std::optional<std::vector<std::uint8_t>> command = reader_->next();
@@ -143,7 +137,6 @@ void ProbeSession::handle(MessageReader& message) {
             destroy_window(message);
             break;
         case MessageId::ProbeDestroyAll:
-            // While the windows whose class cursors it changed still exist.
             pointer_.reset();
             windows_.destroy_all();
             pump_messages();
@@ -170,8 +163,6 @@ void ProbeSession::handle(MessageReader& message) {
     }
 }
 
-// Every modal loop on the stack sees the WM_QUIT and ends, passing it on
-// to the loop below, until run's own takes it.
 void ProbeSession::quit() {
     if (!running_) return;
     running_ = false;
@@ -193,8 +184,6 @@ void ProbeSession::create_window(MessageReader& message) {
         answer_failure(MessageId::ProbeWindowCreated, window->failure());
         return;
     }
-    // Painted before it is answered for: the harness's next question is
-    // what the window looks like.
     pump_messages();
     MessageWriter out{MessageId::ProbeWindowCreated};
     out.put_u8(1);
@@ -222,8 +211,6 @@ void ProbeSession::observe(MessageReader& message) {
     send(out);
 }
 
-// The cursor as the windows' messages left it: those queued are handled
-// first, as WM_SETCURSOR is what sets it.
 void ProbeSession::observe_cursor() {
     pump_messages();
     MessageWriter out{MessageId::ProbeCursorTruth};
@@ -272,8 +259,6 @@ void ProbeSession::destroy_window(MessageReader& message) {
 }
 
 void ProbeSession::drain_input() {
-    // The messages already queued for the windows are input they have
-    // been given; they are delivered before the journal is read.
     pump_messages();
     const std::vector<InputRecord> records = journal_.drain();
     MessageWriter out{MessageId::ProbeInput};
@@ -299,9 +284,6 @@ void ProbeSession::set_backdrop(MessageReader& message) {
     answer_done();
 }
 
-// A modal dialog or a message box does not return until it ends, which
-// is a later command's doing: it is answered for once it is up, from the
-// timer its own modal loop dispatches.
 void ProbeSession::act(MessageReader& message) {
     const std::optional<ProbeAction> action = ProbeAction::read(message);
     if (!action.has_value()) {
@@ -374,4 +356,4 @@ void ProbeSession::send(MessageWriter& message) {
     if (!link_.send(message.take())) quit();
 }
 
-}  // namespace rwin::probe
+}

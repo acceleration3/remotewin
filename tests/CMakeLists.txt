@@ -14,7 +14,6 @@ add_executable(rwin_pointer_grab_rule_test pointer_grab_rule_test.cpp)
 target_link_libraries(rwin_pointer_grab_rule_test PRIVATE rwin::proto)
 add_test(NAME rwin_pointer_grab_rule_test COMMAND rwin_pointer_grab_rule_test)
 
-# The guest half's logic that needs no Windows, built here.
 add_executable(rwin_monochrome_picture_test
     monochrome_picture_test.cpp
     "${PROJECT_SOURCE_DIR}/source/guest/cursor/monochrome_picture.cpp")
@@ -41,8 +40,6 @@ add_executable(rwin_slot_ledger_test
 target_link_libraries(rwin_slot_ledger_test PRIVATE rwin::proto)
 add_test(NAME rwin_slot_ledger_test COMMAND rwin_slot_ledger_test)
 
-# The host half: what knows nothing of a window system against the link
-# library, what does against the host library.
 if(TARGET rwin_link)
     foreach(name export_wire guest_window latency mirror_scope picture_limits emulated_cursor unit_padding
                  native_cursor_shape

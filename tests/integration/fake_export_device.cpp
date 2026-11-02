@@ -46,7 +46,7 @@ Number get(std::span<const std::uint8_t> bytes, std::size_t at) {
     return static_cast<Number>(value);
 }
 
-}  // namespace
+}
 
 FakeExportDevice::FakeExportDevice(host::EventLoop& loop, std::string path, std::optional<host::PciAddress> gpu)
     : loop_(loop), path_(std::move(path)), gpu_(gpu), udmabuf_(::open("/dev/udmabuf", O_RDWR | O_CLOEXEC)) {
@@ -106,7 +106,6 @@ void FakeExportDevice::read_requests() {
     }
 }
 
-// Every request is answered, in order, as the device answers them.
 void FakeExportDevice::answer(std::span<const std::uint8_t> request) {
     const auto operation = get<std::uint32_t>(request, 8);
     const auto id = get<std::uint64_t>(request, 16);
@@ -181,4 +180,4 @@ void FakeExportDevice::send(std::uint32_t operation, ExportAnswer::Status status
     }
 }
 
-}  // namespace rwin::integration
+}

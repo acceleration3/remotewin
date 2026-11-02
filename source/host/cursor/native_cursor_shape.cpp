@@ -1,11 +1,6 @@
 #include "host/cursor/native_cursor_shape.hpp"
 
 namespace rwin::host {
-
-// By what each is for, as the CSS cursor names describe it: IDC_APPSTARTING
-// is an arrow with a busy sign ("progress"), IDC_WAIT the busy sign alone
-// ("wait"), IDC_SIZEALL a move in any direction ("all-scroll"), IDC_UPARROW
-// the north edge ("n-resize").
 std::optional<CursorShape> native_shape_for(SystemCursor cursor) noexcept {
     switch (cursor) {
         case SystemCursor::Arrow: return CursorShape::Default;
@@ -30,4 +25,4 @@ std::optional<CursorShape> native_shape_for(SystemCursor cursor) noexcept {
     return std::nullopt;
 }
 
-}  // namespace rwin::host
+}

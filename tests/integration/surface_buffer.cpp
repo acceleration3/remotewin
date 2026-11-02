@@ -25,7 +25,7 @@ std::size_t page_rounded(std::size_t bytes) {
     return (bytes + page - 1) / page * page;
 }
 
-}  // namespace
+}
 
 SurfaceBuffer::SurfaceBuffer(int udmabuf, std::uint32_t width, std::uint32_t height)
     : stride_((width * kBytesPerPixel + kPitchAlignment - 1) / kPitchAlignment * kPitchAlignment), height_(height) {
@@ -88,4 +88,4 @@ void SurfaceBuffer::copy(std::span<const std::uint8_t> pixels, std::uint32_t wid
     }
 }
 
-}  // namespace rwin::integration
+}

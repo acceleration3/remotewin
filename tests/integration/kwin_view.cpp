@@ -17,7 +17,6 @@ namespace {
 constexpr const char* kPath = "/remotewin/integration";
 constexpr const char* kInterface = "org.remotewin.Integration";
 
-// $SERVICE, $PATH, $INTERFACE, $PID are put in before the script runs.
 constexpr std::string_view kWatcher = R"JS(
 function report(w, what) {
     const g = w.frameGeometry;
@@ -46,9 +45,6 @@ workspace.windowList().forEach(function(w) {
 callDBus("$SERVICE", "$PATH", "$INTERFACE", "done", "");
 )JS";
 
-// Every window of the host's, popups and dialogs too, bottom to top: title,
-// popup, transient, active, left off the taskbar and the switcher, and frame,
-// a window a line.
 constexpr std::string_view kSurvey = R"JS(
 const marker = String.fromCharCode(0x2063);
 const lines = workspace.stackingOrder.filter(function(w) { return w.pid === $PID; }).map(function(w) {
@@ -62,7 +58,6 @@ const lines = workspace.stackingOrder.filter(function(w) { return w.pid === $PID
 callDBus("$SERVICE", "$PATH", "$INTERFACE", "surveyed", lines.join("\n"));
 )JS";
 
-// $BODY done to the host's windows whose title begins with $TITLE, as ``w``.
 constexpr std::string_view kOnTitled = R"JS(
 workspace.stackingOrder.forEach(function(w) {
     const caption = w.captionNormal || "";
@@ -103,9 +98,9 @@ int string_call(sd_bus_message* call, void* self, void (KWinView::*method)(std::
     return sd_bus_reply_method_return(call, "");
 }
 
-}  // namespace
+}
 
-KWinView::KWinView(host::EventLoop& /*loop*/, host::BusConnection& bus, pid_t host)
+KWinView::KWinView(host::EventLoop& , host::BusConnection& bus, pid_t host)
     : bus_(bus), host_(host), service_(bus.unique_name()) {
     static const sd_bus_vtable kVtable[] = {
         SD_BUS_VTABLE_START(0),
@@ -136,11 +131,11 @@ KWinView::~KWinView() {
     if (object_ != nullptr) sd_bus_slot_unref(object_);
 }
 
-int KWinView::seen_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+int KWinView::seen_call(sd_bus_message* call, void* self, sd_bus_error* ) {
     return string_call(call, self, &KWinView::seen);
 }
 
-int KWinView::done_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+int KWinView::done_call(sd_bus_message* call, void* self, sd_bus_error* ) {
     ++static_cast<KWinView*>(self)->done_;
     return sd_bus_reply_method_return(call, "");
 }
@@ -154,7 +149,7 @@ void KWinView::seen(std::string_view report) {
     journal_.push_back(std::move(seen));
 }
 
-int KWinView::surveyed_call(sd_bus_message* call, void* self, sd_bus_error* /*error*/) {
+int KWinView::surveyed_call(sd_bus_message* call, void* self, sd_bus_error* ) {
     return string_call(call, self, &KWinView::surveyed);
 }
 
@@ -224,4 +219,4 @@ void KWinView::minimize(bool minimized) {
     command(minimized ? "w.minimized = true;" : "w.minimized = false; workspace.activeWindow = w;");
 }
 
-}  // namespace rwin::integration
+}

@@ -15,11 +15,6 @@ struct Mapping {
     std::uint16_t windows;
 };
 
-// Linux numbered the keys of the PC keyboard by their XT scan codes, so
-// from Escape (1) to F12 (88) the two agree code for code; past that, and
-// for every key with an 0xE0 prefix, they do not, and each is listed.
-// Sources: linux/input-event-codes.h, and Microsoft's "Keyboard Scan Code
-// Specification" (USB HID usage to set 1).
 constexpr std::array kBeyondXt{
     Mapping{KEY_RO, 0x73},
     Mapping{KEY_KATAKANA, 0x78},
@@ -87,8 +82,6 @@ constexpr std::array kBeyondXt{
     Mapping{KEY_MEDIA, kE0 | 0x6D},
 };
 
-// Inside the XT range: the one code Linux left unassigned, and one it gave
-// to a key the XT keyboard did not have.
 constexpr std::uint32_t kUnassigned = 84;
 
 bool same_as_xt(std::uint32_t evdev_code) {
@@ -96,7 +89,7 @@ bool same_as_xt(std::uint32_t evdev_code) {
            && evdev_code != KEY_ZENKAKUHANKAKU;
 }
 
-}  // namespace
+}
 
 std::uint16_t windows_scan_code(std::uint32_t evdev_code) noexcept {
     if (same_as_xt(evdev_code)) return static_cast<std::uint16_t>(evdev_code);
@@ -106,4 +99,4 @@ std::uint16_t windows_scan_code(std::uint32_t evdev_code) noexcept {
     return 0;
 }
 
-}  // namespace rwin::host
+}

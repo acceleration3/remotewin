@@ -39,4 +39,4 @@ void Backdrop::cover(const Box& area) {
     wl_surface_commit(surface_);
 }
 
-}  // namespace rwin::host
+}

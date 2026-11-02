@@ -1,18 +1,3 @@
-// Resizing, maximising and minimising a mirror, end to end: a headless KWin,
-// the remotewin host under test, and a played guest (TestDesktop). Each case
-// is one ctest test in the "integration" label; a case runs in a D-Bus
-// session of its own, which it starts by running itself again under
-// dbus-run-session.
-//
-//   rwin_resize_integration <case>      one case
-//   rwin_resize_integration             the list
-//
-// RWIN_INTEGRATION_HOST runs another remotewin than the one built with it;
-// RWIN_INTEGRATION_HOST_LOG sets its log level (debug), and
-// RWIN_INTEGRATION_WAYLAND_DEBUG=1 adds its Wayland traffic to its log.
-//
-// Exit 0 passed, 1 failed, 77 skipped (no kwin_wayland or dbus-run-session).
-
 #include "test_desktop.hpp"
 
 #include "host/latency/frame_stamps.hpp"
@@ -48,19 +33,14 @@ using host::ViewMapping;
 
 constexpr int kSkipped = 77;
 constexpr const char* kInPrivateBus = "RWIN_INTEGRATION_BUS";
-// How long a state change may take to settle, and how long it has to hold
-// to count as settled.
 constexpr milliseconds kSettleBound{1000};
 constexpr milliseconds kSettleWait{3000};
 constexpr milliseconds kHold{250};
-// A drag's pointer steps: a pointer reports about this often.
 constexpr milliseconds kDragStep{8};
 constexpr double kNear = 1.01;
-// How long KWin has to say it ran a command, and how often it is asked.
 constexpr milliseconds kKWinAnswer{500};
 constexpr int kKWinAttempts = 3;
 
-// One case's verdicts, said as they are reached.
 class Verdicts {
 public:
     void check(bool ok, const std::string& what) {
@@ -84,7 +64,6 @@ std::string rect_text(const Rect& rect) { return std::format("{},{} {}x{}", rect
 
 double ms_since(std::int64_t from_ns, std::int64_t to_ns) { return static_cast<double>(to_ns - from_ns) / 1e6; }
 
-// What one case has to run and judge with.
 class Case {
 public:
     Case(TestDesktop& desktop, Verdicts& verdicts) : desktop_(desktop), verdicts_(verdicts) {}
@@ -95,9 +74,6 @@ public:
     FakeGuest& guest() { return desktop_.guest(); }
     ModelWindow& window() { return desktop_.window(); }
 
-    // Has KWin carry ``command`` out (a KWinView call), asking again when it
-    // does not say it did: KWin now and then fails to open a script's file
-    // and says nothing of it.
     void in_kwin(const std::function<void(KWinView&)>& command) {
         for (int attempt = 0; attempt < kKWinAttempts; ++attempt) {
             const std::size_t done = kwin().done();
@@ -107,7 +83,6 @@ public:
         }
     }
 
-    // Marks where the journals stand, so what follows is judged alone.
     void mark() {
         kwin_mark_ = kwin().journal().size();
         asked_mark_ = guest().asked().size();
@@ -115,14 +90,12 @@ public:
         pictured_mark_ = guest().pictured().size();
     }
 
-    // The guest window's size, shown by the host: the mirror's picture.
     [[nodiscard]] bool host_shows(std::uint32_t width, std::uint32_t height) {
         const std::optional<HostReport::Picture> picture = desktop_.host_report().picture();
         return picture.has_value() && picture->width == static_cast<int>(width)
                && picture->height == static_cast<int>(height);
     }
 
-    // How many times KWin's maximise mode or minimised flag changed since the mark.
     [[nodiscard]] int flips(const std::function<int(const KWinView::Seen&)>& state) const {
         const auto& journal = desktop_.kwin().journal();
         int flips = 0;
@@ -150,7 +123,6 @@ public:
         return moves;
     }
 
-    // Frames the guest window had since the mark that were neither of these.
     [[nodiscard]] std::vector<Rect> placed_other_than(const std::vector<Rect>& expected) const {
         std::vector<Rect> others;
         const auto& placed = desktop_.guest().placed();
@@ -162,8 +134,6 @@ public:
         return others;
     }
 
-    // Frames KWin had for the window since the mark at another size than
-    // ``width`` by ``height`` - a state's aside.
     [[nodiscard]] int resized_since_mark(double width, double height) const {
         int resized = 0;
         const auto& journal = desktop_.kwin().journal();
@@ -206,9 +176,6 @@ private:
 int maximize_mode(const KWinView::Seen& seen) { return seen.maximize_mode; }
 int minimized(const KWinView::Seen& seen) { return seen.minimized ? 1 : 0; }
 
-// The compositor maximises the mirror (its maximise button, a shortcut) and
-// restores it: the guest window does the same once each, nothing flips
-// back, and the restore puts both where they were.
 void maximize_here(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     const Rect guest_before = run.window().frame();
@@ -259,8 +226,6 @@ void maximize_here(Case& run) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
-// The guest maximises its window itself (its own caption's button) and
-// restores it: the mirror follows, and nothing is asked back of the guest.
 void maximize_in_guest(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     const Rect guest_before = run.window().frame();
@@ -298,8 +263,6 @@ void maximize_in_guest(Case& run) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
-// The compositor minimises the mirror (the taskbar, a shortcut) and brings
-// it back: the guest window is minimised and restored with it, once each.
 void minimize_here(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     const Rect guest_before = run.window().frame();
@@ -341,8 +304,6 @@ void minimize_here(Case& run) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
-// The guest minimises its window itself and restores it: the mirror goes
-// and comes back where it was, and nothing is asked back of the guest.
 void minimize_in_guest(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     const Rect guest_before = run.window().frame();
@@ -380,30 +341,21 @@ void minimize_in_guest(Case& run) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
-// A drag of one edge or corner, by the pointer, as the user makes it.
 struct Drag {
-    // Where the press is, on the mirror, in its logical units.
     double press_x = 0;
     double press_y = 0;
-    // Each step's pointer motion, and how many steps.
     double step_x = 0;
     double step_y = 0;
     int steps = 0;
-    // Which edges move with the pointer.
     bool moves_left = false;
     bool moves_top = false;
 
-    // Which way the width and the height go: 1 growing, -1 shrinking, 0 not
-    // at all.
     [[nodiscard]] int widening() const noexcept { return sign(moves_left ? -step_x : step_x); }
     [[nodiscard]] int heightening() const noexcept { return sign(moves_top ? -step_y : step_y); }
-    // Whether ``now`` is ``want`` or past it, the way the drag goes; within
-    // ``slack`` of it on a side the drag does not change.
     [[nodiscard]] bool reached(double now_width, double now_height, double want_width, double want_height,
                                double slack) const noexcept {
         return along(now_width - want_width, widening(), slack) && along(now_height - want_height, heightening(), slack);
     }
-    // Whether going from one size to the next went against the drag.
     [[nodiscard]] bool against(double width, double height, double next_width, double next_height,
                                double slack) const noexcept {
         return (next_width - width) * widening() < -slack || (next_height - height) * heightening() < -slack;
@@ -416,7 +368,6 @@ private:
     }
 };
 
-// The mirror's frame each step should have made, in logical units.
 KWinView::Seen dragged_to(const KWinView::Seen& before, const Drag& drag, int step) {
     KWinView::Seen after = before;
     const double dx = drag.step_x * step;
@@ -433,7 +384,6 @@ Size pixels_of(const KWinView::Seen& seen, double scale) {
         Size{static_cast<int>(std::lround(seen.width)), static_cast<int>(std::lround(seen.height))}, scale);
 }
 
-// When each pointer step was made, and when the button came up.
 struct Dragged {
     std::vector<std::int64_t> steps;
     std::int64_t released = 0;
@@ -492,8 +442,6 @@ void judge_drag_end(Case& run, const KWinView::Seen& end, const Dragged& dragged
                          std::format("settled {:.0f} ms after the release", after_release));
 }
 
-// The mirror's frame through the drag, as the compositor had it: it never
-// goes back the way the drag came, and it follows each step at once.
 void judge_drag_frames(Case& run, const KWinView::Seen& before, const Drag& drag, const Dragged& dragged) {
     const auto& journal = run.kwin().journal();
     std::vector<const KWinView::Seen*> frames;
@@ -528,8 +476,6 @@ void judge_drag_frames(Case& run, const KWinView::Seen& before, const Drag& drag
                                      lags.size(), drag.steps, median, worst));
 }
 
-// How long each step took to reach a picture the guest sent: said, not
-// judged - it is the guest's speed as much as the host's.
 void note_drag_pictures(Case& run, const KWinView::Seen& before, const Drag& drag, const Dragged& dragged) {
     const auto& pictured = run.guest().pictured();
     std::vector<double> lags;
@@ -550,8 +496,6 @@ void note_drag_pictures(Case& run, const KWinView::Seen& before, const Drag& dra
                                     lags.empty() ? -1.0 : lags.back()));
 }
 
-// What the guest was asked, in order: never back against the drag, and the
-// edges the drag does not move kept where they were.
 void judge_drag_asked(Case& run, const Drag& drag, const Rect& guest_before) {
     const std::vector<Rect> moves = run.moves_asked();
     int asked_back = 0;
@@ -575,8 +519,6 @@ void judge_drag_asked(Case& run, const Drag& drag, const Rect& guest_before) {
                                                rect_text(guest_before)));
 }
 
-// The user drags an edge: the compositor runs the resize, and the mirror
-// keeps up. The end settles everywhere at the size the pointer left it.
 void drag(Case& run, const Drag& drag, const std::string& what) {
     const KWinView::Seen before = *run.kwin().now();
     const Rect guest_before = run.window().frame();
@@ -590,38 +532,26 @@ void drag(Case& run, const Drag& drag, const std::string& what) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
-// The bottom-right corner, in the band the host gives a window's invisible
-// borders: the host asks the compositor to resize.
 void drag_corner(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     drag(run, Drag{before.width - 2, before.height - 2, 8, 6, 30, false, false}, "bottom-right");
 }
 
-// The top edge, which a Windows 10 or 11 window sizes from inside its frame:
-// the press goes to the guest, Windows begins its own size loop
-// (MoveSizeStart), and the host hands that to the compositor.
 void drag_top(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     drag(run, Drag{before.width / 2, 2, 0, -5, 30, false, true}, "top");
 }
 
-// The same corner, inwards: the window shrinks, its picture cropped until
-// the guest's catches up.
 void drag_corner_in(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     drag(run, Drag{before.width - 2, before.height - 2, -6, -4, 30, false, false}, "bottom-right inwards");
 }
 
-// Windows' left edge, by the band: the guest window grows to the left.
 void drag_left(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     drag(run, Drag{2, before.height / 2, -6, 0, 30, true, false}, "left");
 }
 
-// The application resizes its own window (a dialog showing more, an
-// installer's next page): the mirror takes the guest's size where the guest
-// has the window, and the guest is not asked back to the size the
-// compositor last gave.
 void resize_in_guest(Case& run) {
     const Rect before = run.window().frame();
     const Rect grown{before.x, before.y, before.width + 144, before.height + 96};
@@ -648,8 +578,6 @@ void resize_in_guest(Case& run) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
-// The compositor resizes the mirror itself, a step at a time (a script, a
-// tiling shortcut): the mirror ends at the last size, and does not go back.
 void resize_by_compositor(Case& run) {
     const KWinView::Seen before = *run.kwin().now();
     run.mark();
@@ -688,15 +616,11 @@ void resize_by_compositor(Case& run) {
     if (!run.verdicts().passed()) run.dump_kwin_since_mark();
 }
 
-// Windows of the application other than the main one, and what is judged of
-// them: where KWin stacks them, and which it has active.
-
 using Stacking = std::vector<KWinView::Stacked>;
 
 constexpr const char* kMainTitle = "Integration window";
 constexpr WindowId kMainId{0x10a42, 1};
 constexpr milliseconds kStackBound{1500};
-// Window styles as the guest sends them (RAIL's masks).
 constexpr std::uint32_t kWsPopup = 0x80000000;
 constexpr std::uint32_t kWsVisible = 0x10000000;
 constexpr std::uint32_t kWsClipSiblings = 0x04000000;
@@ -708,8 +632,6 @@ constexpr std::uint32_t kWsExTopmost = 0x00000008;
 constexpr std::uint32_t kWsExNoActivate = 0x08000000;
 constexpr std::uint32_t kWsExNoRedirectionBitmap = 0x00200000;
 
-// A window of the played application: the main window's process and
-// image, at ``frame`` on the guest's screen, drawn whole.
 WindowFields played_window(const ModelWindow& main, std::string title, std::string class_name, std::uint32_t style,
                            std::uint32_t extended, Rect frame, WindowId owner) {
     WindowFields fields = main.fields();
@@ -734,7 +656,6 @@ const KWinView::Stacked* stacked(const Stacking& stacking, std::string_view titl
     return found == stacking.end() ? nullptr : &*found;
 }
 
-// A popup has no title of its own to KWin: it is known by its width.
 const KWinView::Stacked* popup_of_width(const Stacking& stacking, double width) {
     const auto found = std::find_if(stacking.begin(), stacking.end(), [width](const KWinView::Stacked& entry) {
         return entry.popup && std::abs(entry.width - width) < 2;
@@ -742,7 +663,6 @@ const KWinView::Stacked* popup_of_width(const Stacking& stacking, double width) 
     return found == stacking.end() ? nullptr : &*found;
 }
 
-// Whether ``upper`` is stacked above ``lower`` (stackingOrder is bottom first).
 bool above(const Stacking& stacking, std::string_view upper, std::string_view lower) {
     const KWinView::Stacked* top = stacked(stacking, upper);
     const KWinView::Stacked* bottom = stacked(stacking, lower);
@@ -759,8 +679,6 @@ std::string stacking_text(const Stacking& stacking) {
     return text.empty() ? " nothing" : text;
 }
 
-// Surveys KWin's stacking again and again until ``wanted`` holds of it, as a
-// settle does of anything else.
 std::optional<milliseconds> stacking_settles(Case& run, const std::function<bool(const Stacking&)>& wanted,
                                              milliseconds hold) {
     std::size_t answered = run.kwin().surveys();
@@ -796,8 +714,6 @@ void main_window_active(Case& run) {
     run.verdicts().check(active.has_value(), "the main window's mirror is the active window to start with");
 }
 
-// The application opens a dialog it owns, and Windows makes it active: its
-// mirror is kept above the main window's and is the active window here.
 void dialog_in_front(Case& run) {
     main_window_active(run);
     const Rect main = run.window().frame();
@@ -818,8 +734,6 @@ void dialog_in_front(Case& run) {
     judge_stacking(run, took, "the dialog's mirror is above the main window's, transient for it, and active");
 }
 
-// A menu dropped from the menu bar and a submenu out of it: each is a popup
-// above what it opens from.
 void menus_in_front(Case& run) {
     main_window_active(run);
     const Rect main = run.window().frame();
@@ -853,9 +767,6 @@ void menus_in_front(Case& run) {
     judge_stacking(run, took, "the menu is a popup above the main window, and the submenu one above the menu");
 }
 
-// A WinUI popup (Notepad's menus): shown at 0x0, sized a frame later, hidden
-// between uses and shown again. Its mirror shows it once it has its size,
-// above the window it belongs to, each time.
 void winui_popup(Case& run) {
     main_window_active(run);
     const Rect main = run.window().frame();
@@ -902,10 +813,6 @@ void winui_popup(Case& run) {
     run.judge_settled(run.desktop().settle(shown_whole, kSettleWait, kHold), "the popup shown again, the same window");
 }
 
-// Windows makes a dialog active, and the application shows another window
-// without activating it (a panel, a palette): the compositor focuses the new
-// mirror as it maps it, but that is no choice of the user's - the guest is
-// not told to activate it, and the dialog stays the active window here.
 void map_keeps_guest_active(Case& run) {
     main_window_active(run);
     const Rect main = run.window().frame();
@@ -943,10 +850,6 @@ void map_keeps_guest_active(Case& run) {
     run.verdicts().check(!stolen, "the guest was not asked to activate the panel for being mapped");
 }
 
-// Windows' taskbar rule, worked out in the guest (TASKBAR), on this
-// desktop's taskbar and switcher: a tool window of its own is on neither,
-// the application's window on both - and a window the guest gives a button
-// later is put on them.
 void taskbar_presence(Case& run) {
     const Rect main = run.window().frame();
     constexpr WindowId kPalette{0x50a70, 2};
@@ -978,9 +881,6 @@ void taskbar_presence(Case& run) {
     judge_stacking(run, put_on, "given a button, it is on both");
 }
 
-// Focus going to another mirror by other means than a press (Alt+Tab, the
-// taskbar) is said to the guest; the guest's own activation of a window is
-// followed here while the user is in one of these mirrors.
 void activation_both_ways(Case& run) {
     main_window_active(run);
     const Rect main = run.window().frame();
@@ -1015,16 +915,6 @@ void activation_both_ways(Case& run) {
     judge_stacking(run, followed, "the window the guest activated is active and on top here");
 }
 
-// An application of WPF windows, as Affinity is: a main window that comes up
-// after the window shown first (here the harness's own, as its splash), and
-// windows it owns that Windows activates as they open - a welcome shown
-// 1.4 s after the main window, a close confirmation shown when the main
-// window is closed, which disables it while it is up. Rounded, each has the
-// window region WPF's WindowChrome rounds its corners with when it has no
-// glass frame, and its pictures are clear outside it, as Windows' capture
-// hands them over: they stay on the GPU, and the corners show what is under
-// them.
-
 constexpr const char* kAppTitle = "Played application";
 constexpr const char* kWelcomeTitle = "Played welcome";
 constexpr const char* kConfirmTitle = "Played close confirmation";
@@ -1036,8 +926,6 @@ constexpr milliseconds kWelcomeAfter{1400};
 
 enum class Corners { Square, Rounded };
 
-// WPF's rounded region (SetWindowRgn of a rounded rectangle), in the rows
-// GetRegionData gives, coarsely: the corners left out.
 std::vector<Rect> rounded_region(const Rect& frame) {
     const auto inset = static_cast<std::uint32_t>(kWpfCorner);
     return {Rect{kWpfCorner, 0, frame.width - 2 * inset, inset},
@@ -1052,8 +940,6 @@ WindowFields wpf_window(const ModelWindow& main, std::string title, std::uint32_
     return fields;
 }
 
-// The application's main window shown and made active by Windows: its
-// mirror is the active window here.
 WindowFields show_application(Case& run, Corners corners) {
     const Rect at = run.window().frame();
     WindowFields main = wpf_window(run.window(), kAppTitle, kWsOverlappedWindow, Rect{at.x + 40, at.y + 30, 900, 600},
@@ -1071,9 +957,6 @@ WindowFields show_application(Case& run, Corners corners) {
     return main;
 }
 
-// A window the main window owns, shown and activated by Windows: its mirror
-// is above the main window's, transient for it, and active - with no
-// minimise and restore to bring it there.
 void owned_in_front(Case& run, WindowId id, const std::string& title, Corners corners, const std::string& what) {
     const Rect at = run.window().frame();
     run.guest().show_window(id, wpf_window(run.window(), title, kWsCaption | kWsSysMenu,
@@ -1090,10 +973,6 @@ void owned_in_front(Case& run, WindowId id, const std::string& title, Corners co
     judge_stacking(run, took, what);
 }
 
-// A rounded window's pictures stay on the GPU: a ring made for them, none
-// sent back to pixels, and its mirror showing the guest's own buffer. Where
-// the played device's surfaces are no dma-bufs (no /dev/udmabuf) the
-// compositor refuses them, and only the ring is judged.
 void judge_on_gpu(Case& run, WindowId id, const std::string& title, const std::string& what) {
     const std::size_t rings = run.guest().rings_made(id);
     if (!run.desktop().gpu_frames_shown()) {
@@ -1114,9 +993,6 @@ void judge_on_gpu(Case& run, WindowId id, const std::string& title, const std::s
                                      what, rings, back ? "" : "not ", shown.has_value() ? "" : "not "));
 }
 
-// The logical units round a window's top left that are looked at, and the
-// picture pixels in it that are: one in the corner a rounded region leaves
-// out, one well inside.
 constexpr int kLookUnits = 24;
 constexpr int kCornerPixel = 1;
 constexpr int kInsidePixel = 2 * kWpfCorner;
@@ -1131,10 +1007,6 @@ bool same_colour(std::uint32_t a, std::uint32_t b) {
     return true;
 }
 
-// What the compositor shows in a rounded window's corner is what is under
-// it - the window below's colour - and inside, the window's own: the corner
-// comes clear, and the mirror neither shows it opaque (a format without
-// alpha) nor says it is (its opaque region), either of which draws it black.
 void judge_corner(Case& run, const std::string& title, WindowId id, WindowId below, const std::string& what) {
     run.desktop().pass(milliseconds(100));
     std::size_t answered = run.kwin().surveys();
@@ -1179,8 +1051,6 @@ void welcome(Case& run, Corners corners) {
     judge_corner(run, kWelcomeTitle, kWelcome, kAppId, "the welcome over the main window");
 }
 
-// The main window closed here: the guest is asked to close it, and the
-// application asks first, in a modal dialog it owns.
 void close_confirmation(Case& run, Corners corners) {
     WindowFields main = show_application(run, corners);
     const std::size_t asked = run.guest().asked().size();
@@ -1216,16 +1086,11 @@ struct Named {
     std::string_view name;
     void (*run)(Case&);
     FakeGuest::Timing timing;
-    // The guest's pictures go on the GPU, through a played GPU device.
     bool gpu_frames = false;
 };
 
-// The guest's timing: an application that lays itself out in 25 ms and a
-// capture a frame later; one five times as slow; and one slower than the
-// host's wait for an answer.
 constexpr FakeGuest::Timing kQuick{milliseconds(25), milliseconds(16)};
 constexpr FakeGuest::Timing kSlow{milliseconds(120), milliseconds(33)};
-// One slower than the host waits for an answer: asks overtake answers.
 constexpr FakeGuest::Timing kSluggish{milliseconds(400), milliseconds(33)};
 
 constexpr Named kCases[] = {
@@ -1287,9 +1152,9 @@ int run_case(const Named& named) {
     return EXIT_FAILURE;
 }
 
-}  // namespace
+}
 
-}  // namespace rwin::integration
+}
 
 int main(int argc, char** argv) {
     using namespace rwin::integration;

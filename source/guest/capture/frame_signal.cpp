@@ -16,4 +16,4 @@ void FrameSignal::raise() const noexcept {
     if (event_ != nullptr) ::SetEvent(event_);
 }
 
-}  // namespace rwin::guest
+}

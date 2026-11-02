@@ -29,20 +29,11 @@ int serve_backdrop(const std::string& colour, const std::string& parent) {
     return EXIT_SUCCESS;
 }
 
-}  // namespace
+}
 
-// remotewin-probe.exe --harness <ipv4>:<port> [--log <file>]
-//   makes the windows a conformance harness asks for and reports on them.
-// remotewin-probe.exe --backdrop <rrggbb> --parent <pid>
-//   the probe's own backdrop, started by it.
 int main(int argc, char** argv) {
-    // Physical pixels throughout, for the same reason as remotewin-guest:
-    // the truth is compared against frames that are physical whatever the
-    // process declares. Declared before the first window call fixes it.
     ::SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-    // Started by a service with no console, there is nowhere for stderr
-    // to go but a file.
     if (const std::string log = option(argc, argv, "--log"); !log.empty()) {
         if (std::freopen(log.c_str(), "w", stderr) == nullptr) return EXIT_FAILURE;
     }

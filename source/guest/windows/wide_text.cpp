@@ -16,4 +16,4 @@ std::string utf8_of(std::wstring_view wide) {
     return out;
 }
 
-}  // namespace rwin::guest
+}

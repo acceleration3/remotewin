@@ -35,22 +35,11 @@ namespace {
 
 using Popup = WindowFields::Popup;
 
-// A press this recent on the surface the keyboard comes to is what brought
-// the keyboard there.
 constexpr std::int64_t kPressBroughtFocusNs = 500'000'000;
-// The first focus a surface gets this soon after it is mapped is the
-// compositor focusing what it mapped.
 constexpr std::int64_t kMapBroughtFocusNs = 500'000'000;
-// A press older than this opened no popup: a grab with its serial would be
-// refused, and the popup dismissed as it opens.
 constexpr std::int64_t kGrabPressNs = 2'000'000'000;
-// The compositor says a popup is dismissed before it hands on the press that
-// dismissed it; a press this soon after, on a surface of this
-// application's, is that press.
 constexpr std::chrono::milliseconds kDismissingPress{80};
 
-// Every surface made gets the next number: a surface made where a freed one
-// was is still told apart from it.
 std::uint64_t surfaces_made = 0;
 
 bool opened_by_press(Popup::Kind kind) {
@@ -58,7 +47,7 @@ bool opened_by_press(Popup::Kind kind) {
            || kind == Popup::Kind::Context;
 }
 
-}  // namespace
+}
 
 WindowMirror::WindowMirror(const MirrorKit& kit, const GuestWindow& window)
     : kit_(kit), window_(window), style_(window),
@@ -127,8 +116,6 @@ Size WindowMirror::shown_picture() const noexcept {
 
 Size WindowMirror::window_size() const noexcept { return wanted_.value_or(logical_of(picture_)); }
 
-// The same role against the same parent's same surface keeps its surface,
-// and is only placed again.
 void WindowMirror::show_as(const MirrorRole& role, WindowMirror* parent) {
     const bool same = surface_ != nullptr && role == role_ && parent == parent_
                       && (parent == nullptr || (parent->shown() && parent->surface_serial_ == made_against_));
@@ -142,7 +129,6 @@ void WindowMirror::show_as(const MirrorRole& role, WindowMirror* parent) {
         return;
     }
     drop_surface();
-    // A popup or a part waits for what it is placed against to be on screen.
     if (role.kind != MirrorRole::Kind::Toplevel && (parent == nullptr || !parent->mapped())) return;
     make_surface();
 }
@@ -158,8 +144,6 @@ void WindowMirror::orphan() {
     role_ = MirrorRole{};
 }
 
-// The stack takes popups down topmost first, and this one is topmost by
-// now: nothing more is to be asked of it.
 void WindowMirror::drop_popup() {
     if (popup_ == nullptr) return;
     kit_.grabber.forget(*this);
@@ -229,8 +213,6 @@ void WindowMirror::show_last_frame() {
     }
 }
 
-// Children first: a popup under this one goes before it, and every popup
-// made after it - the compositor takes popups down only from the top.
 void WindowMirror::drop_surface() {
     if (surface_ == nullptr) return;
     kit_.grabber.forget(*this);
@@ -271,8 +253,6 @@ void WindowMirror::dress_toplevel() {
     follow_state();
 }
 
-// The title, and the tag the compositor knows the window by, saying
-// whether this desktop's taskbar and switcher leave it out.
 std::string WindowMirror::caption() const {
     return (window_.title().empty() ? std::string("Guest window") : window_.title())
            + kit_.placement.caption_tag(window(), KWinPlacement::Skips{style_.off_taskbar(), style_.off_switcher()});
@@ -285,8 +265,6 @@ void WindowMirror::place_popup() {
     if (owner == nullptr || owner->xdg() == nullptr) return;
     PopupPlacement placement =
         popup_layout(window_, parent_->window_, parent_->mapping(), logical_of(window_.picture_size()));
-    // A positioner's anchor is on its parent's window geometry, which on a
-    // picture centred in a larger window starts left of and above it.
     placement.anchor = placement.anchor.translated(offset - owner->geometry_corner_);
     if (popup_ != nullptr) {
         if (popup_->repositions()) popup_->reposition(placement);
@@ -313,8 +291,6 @@ void WindowMirror::place_subsurface() {
     if (subsurface_->place(at) && parent_->surface_ != nullptr) parent_->surface_->commit();
 }
 
-// A frame of another size has come, or the scale changed: it is shown
-// within the window as it is.
 void WindowMirror::picture_changed() {
     if (toplevel_ != nullptr) {
         apply_limits();
@@ -325,8 +301,6 @@ void WindowMirror::picture_changed() {
     reshaped(window());
 }
 
-// At another scale the same logical size is another picture: the guest is
-// asked for it, as for a size the compositor gave.
 void WindowMirror::rescaled() {
     if (toplevel_ != nullptr && style_.sizable() && !configure_.size.empty() && !configure_.maximized
         && !configure_.fullscreen) {
@@ -336,9 +310,6 @@ void WindowMirror::rescaled() {
     picture_changed();
 }
 
-// The guest said its window is another size: the size the compositor gave,
-// once the guest has it, is the window's own; a size the guest took by
-// itself is the window's from now on.
 void WindowMirror::resized_in_guest() {
     if (toplevel_ == nullptr || !toplevel_->configured()) return;
     const Size natural = logical_of(picture_);
@@ -354,8 +325,6 @@ void WindowMirror::resized_in_guest() {
 
 void WindowMirror::follow(const GuestWindow& window) {
     window_ = window;
-    // A minimised window's frame is the stub Windows parks off screen: the
-    // window keeps the size it had.
     const Size before = picture_;
     if (!window.minimized() && !window.picture_size().empty()) picture_ = window.picture_size();
     style_ = Win32Style{window};
@@ -387,8 +356,6 @@ void WindowMirror::follow(const GuestWindow& window) {
     surface_->commit();
 }
 
-// What the window answered WM_GETMINMAXINFO, applied side by side
-// (PictureLimits); a fixed size for a window with no sizing border.
 void WindowMirror::apply_limits() {
     if (toplevel_ == nullptr) return;
     if (window_.maximized() || asked_fullscreen_ || configure_.maximized || configure_.fullscreen) {
@@ -405,17 +372,11 @@ void WindowMirror::apply_limits() {
     toplevel_->limit(logical_limit(picture.smallest), logical_limit(picture.largest));
 }
 
-// A side of no limit stays one: logical_of makes the least picture a unit.
 Size WindowMirror::logical_limit(Size picture) const noexcept {
     const Size logical = logical_of(picture);
     return Size{picture.width > 0 ? logical.width : 0, picture.height > 0 ? logical.height : 0};
 }
 
-// The guest window's state, asked of the compositor: minimised, maximised,
-// fullscreen - a window with no caption and no sizing border covering the
-// guest's monitor, which on Windows is how a game is fullscreen. Where
-// nothing reports the compositor's minimising (off KWin), it is taken to
-// have done as asked.
 void WindowMirror::follow_state() {
     if (toplevel_ == nullptr) return;
     const std::int64_t now = now_ns();
@@ -431,8 +392,6 @@ void WindowMirror::follow_state() {
     }
 }
 
-// A client cannot unminimise itself; it can ask to be activated, which
-// brings a window back.
 void WindowMirror::minimize_here(bool minimized) {
     if (toplevel_ == nullptr) return;
     if (!minimized) {
@@ -456,9 +415,6 @@ void WindowMirror::hold_shortcuts_for_lock(bool held) {
     inhibit_shortcuts();
 }
 
-// One inhibitor a surface and seat, whichever reasons want it: a second is
-// a protocol error (already_inhibited), and fullscreen with the pointer
-// locked - a game - is both.
 void WindowMirror::inhibit_shortcuts() {
     const bool wanted = surface_ != nullptr && (asked_fullscreen_ || lock_holds_shortcuts_)
                         && kit_.surfaces.globals.shortcuts_inhibit() != nullptr;
@@ -488,9 +444,6 @@ void WindowMirror::configured(const ToplevelConfigure& configure) {
     if (!before.activated && configure.activated) RWIN_DEBUG("focus", "{} activated by the compositor", window());
 }
 
-// A size the compositor gives that it did not give before - a step of a
-// drag, a restore, a tiling - is the window's: asked of the guest. One it
-// says again is not news: the guest may have taken another since.
 void WindowMirror::take_size(const ToplevelConfigure& configure, const ToplevelConfigure& before) {
     if (configure.maximized || configure.fullscreen || configure.size.empty() || !style_.sizable()) {
         wanted_.reset();
@@ -501,9 +454,6 @@ void WindowMirror::take_size(const ToplevelConfigure& configure, const ToplevelC
     ask_for_wanted();
 }
 
-// Not while the guest window is maximised or minimised, or on its way to or
-// from either: Windows sizes it by its state then, and a move would land on
-// the window in a state it is leaving.
 void WindowMirror::ask_for_wanted() {
     if (!wanted_.has_value() || toplevel_ == nullptr) return;
     if (logical_of(picture_) == *wanted_) {
@@ -516,9 +466,6 @@ void WindowMirror::ask_for_wanted() {
     moves_.want_size(Size{picture.width + padding.width, picture.height + padding.height}, resize_edges_);
 }
 
-// The guest made its window another size than it was asked - its smallest,
-// the most its work area holds - and that is the window's size: the
-// compositor is shown it.
 void WindowMirror::answered(const Box& asked, const Box& got) {
     if (!moves_.idle() || !wanted_.has_value() || got.size() == asked.size()) return;
     RWIN_DEBUG("mirror", "{} asked {}x{}, made {}x{}: the guest's size is taken", window(), asked.width,
@@ -527,14 +474,6 @@ void WindowMirror::answered(const Box& asked, const Box& got) {
     if (toplevel_ != nullptr && toplevel_->configured()) fit_into(configure_);
 }
 
-// The window is as large as the guest says its picture is, and the frames
-// are shown in it one to one from its corner: cropped where a frame is
-// larger, over black bars where it is smaller - a frame from before a
-// resize, one Windows captured as the window was minimised. A size the
-// compositor gave and the guest has not answered yet is the window's,
-// meanwhile, the same way: the window follows the compositor at once, and
-// the guest's picture catches up within it. Maximised or fullscreen the
-// compositor's size is the window's, the frame centred on it.
 void WindowMirror::fit_into(const ToplevelConfigure& configure) {
     if (toplevel_ == nullptr || surface_ == nullptr) return;
     const Size shown = logical_of(shown_picture());
@@ -576,23 +515,16 @@ void WindowMirror::fit_given(Size given, Size natural) {
 }
 
 void WindowMirror::close_requested() {
-    // CS_NOCLOSE: Windows would not act on this, so neither does the mirror.
     if (!style_.closable()) {
         RWIN_DEBUG("win32", "{} does not close: CS_NOCLOSE", window());
         return;
     }
-    // Closed by the guest, if it closes: an application that hides to its
-    // tray, or asks first, stays - and so does its mirror.
     RWIN_DEBUG("win32", "{} closed here; asking the guest to close it", window());
     kit_.link.send_sys_command(window(), SysCommand::Command::Close);
 }
 
 void WindowMirror::popup_placed(const Box& where) { placed_ = where; }
 
-// A press on another application's window reaches nothing here: the guest
-// is told to close the popup. A press on one of this application's own
-// surfaces reaches the guest, which closes it - or opens the next menu of a
-// menu bar - by itself; told to close it as well, it would close that one.
 void WindowMirror::popup_dismissed() {
     drop_surface();
     dismissed_ = true;
@@ -616,10 +548,6 @@ void WindowMirror::ask_guest_for(const Box& frame) {
                                               static_cast<std::uint32_t>(frame.height)});
 }
 
-// Not while either side has the window in a state, or is on its way into
-// or out of one: the frame a state gives is no place for the guest window,
-// which Windows keeps one of its own for. KWin reports a maximised frame
-// before its maximise mode, so its report alone cannot tell.
 void WindowMirror::move_guest_to(Point picture_corner) {
     if (configure_.maximized || configure_.fullscreen || window_.maximized() || window_.minimized()
         || maximize_.guest_heading() || minimize_.guest_heading()) {
@@ -672,8 +600,6 @@ void WindowMirror::activate(const std::string& token) {
     }
 }
 
-// A keyboard move or size has no press to give back, and Windows runs it
-// against the window's own geometry, which the mirror follows.
 void WindowMirror::take_over_move_size(MoveSizeKind kind) {
     if (toplevel_ == nullptr || buttons_held_ == 0) {
         RWIN_DEBUG("chrome", "{}: Windows moves or sizes it with no press held here; left to Windows", window());
@@ -689,8 +615,6 @@ void WindowMirror::take_over_move_size(MoveSizeKind kind) {
         toplevel_->move(kit_.surfaces.seat.seat(), press.serial);
     }
     drag_handed(window());
-    // The compositor owns the release now, which never reaches this
-    // surface: the guest's press is let go at once, where it was made.
     send_button(pressed_button_, pressed_at_, false);
     buttons_held_ = 0;
     held_at_.reset();
@@ -718,8 +642,6 @@ void WindowMirror::wear_cursor(const CursorLook* look, std::size_t step) {
     apply_cursor();
 }
 
-// Not while the pointer is in the resize band: there the shape says the
-// edge can be dragged, and the guest has no idea that band exists.
 void WindowMirror::apply_cursor() {
     if (surface_ == nullptr || kit_.surfaces.seat.pointer_focus() != surface()) return;
     PointerCursor& cursor = kit_.surfaces.seat.cursor();
@@ -756,14 +678,10 @@ void WindowMirror::pointer_moved(PointF at) {
         hovered_edges_ = edges;
         apply_cursor();
     }
-    // Held, the pointer's own motion moves the guest's (held_motion); held
-    // still by a lock, only its motion reaches the guest at all.
     if (held_at_.has_value() || kit_.grabber.locked_on(*this)) return;
     if (const std::optional<Point> point = picture_point(at)) kit_.link.send_pointer_move(window(), *point);
 }
 
-// Not while a button is held: the guest holds the capture, and goes on
-// being told where the pointer is until it comes up.
 void WindowMirror::pointer_left() {
     pointer_.reset();
     hovered_edges_ = 0;
@@ -779,8 +697,6 @@ void WindowMirror::button(std::uint32_t code, bool pressed) {
             swallow_release_ = false;
             return;
         }
-        // A release the guest saw the press of goes to it wherever it
-        // happens: left out, the guest holds the button down for good.
         if (buttons_held_ == 0) return;
         --buttons_held_;
         if (kit_.grabber.locked_on(*this)) {
@@ -796,7 +712,6 @@ void WindowMirror::button(std::uint32_t code, bool pressed) {
         let_go(window());
         return;
     }
-    // WS_DISABLED: "A disabled window cannot receive input from the user."
     if (style_.disabled()) {
         pressed_while_disabled(window());
         return;
@@ -825,7 +740,6 @@ void WindowMirror::button(std::uint32_t code, bool pressed) {
     }
 }
 
-// Logical units of this surface to the guest's pixels.
 void WindowMirror::held_motion(PointF logical) {
     if (!held_at_.has_value()) return;
     held_at_->x += logical.x * scale();
@@ -835,8 +749,6 @@ void WindowMirror::held_motion(PointF logical) {
                                         false});
 }
 
-// 120ths of a notch, which is Windows' own WHEEL_DELTA; Windows' vertical
-// wheel is positive away from the user, Wayland's towards.
 void WindowMirror::wheel(Wheel turned) {
     if (style_.disabled() || !pointer_.has_value()) return;
     const std::optional<Point> at = picture_point(*pointer_);
@@ -849,8 +761,6 @@ bool WindowMirror::pressed_into() const noexcept {
     return press.valid() && press.surface == surface() && now_ns() - press.at < kPressBroughtFocusNs;
 }
 
-// A window minimised in the guest that the user brings back here is
-// restored there: Windows does not restore a window for being activated.
 void WindowMirror::keyboard_entered() {
     kit_.grabber.keyboard_moved();
     if (toplevel_ == nullptr || !style_.activates()) return;
@@ -870,7 +780,6 @@ void WindowMirror::keyboard_left() {
     kit_.grabber.keyboard_moved();
 }
 
-// A held key repeats here as presses alone, as Windows repeats one.
 void WindowMirror::key(const KeyPress& press) {
     if (kit_.grabber.intercept(press) || style_.disabled()) return;
     const std::optional<KeyStroke> stroke = stroke_for(press, window());
@@ -904,4 +813,4 @@ MirrorState WindowMirror::state() const {
     return state;
 }
 
-}  // namespace rwin::host
+}

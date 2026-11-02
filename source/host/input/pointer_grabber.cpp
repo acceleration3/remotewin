@@ -25,7 +25,7 @@ const char* kind_name(PointerGrab::Kind kind) {
     return "none";
 }
 
-}  // namespace
+}
 
 PointerGrabber::PointerGrabber(GuestLink& link, const Globals& globals, Seat& seat)
     : link_(link), globals_(globals), seat_(seat) {}
@@ -77,8 +77,6 @@ void PointerGrabber::hold() {
     }
     const ViewMapping view = mirror_->mapping();
     if (grab_.kind == PointerGrab::Kind::Confine) {
-        // The part of the guest's clip the mirror shows, rounded inward: a
-        // pointer kept inside it is over guest pixels inside the clip.
         const Box clip{grab_.area.left - origin_.x, grab_.area.top - origin_.y, grab_.area.width(), grab_.area.height()};
         const Box inside = view.logical_box_inside(clip.intersected(Box::of(Point{}, mirror_->picture_size())));
         if (inside.empty()) {
@@ -113,8 +111,6 @@ void PointerGrabber::let_go() {
     owed_y_ = 0.0;
 }
 
-// The compositor ended a hold of its own accord while the mirror still has
-// the focus: its own unlock, which counts as the user's escape.
 void PointerGrabber::notice_compositor_let_go() {
     const bool over = (lock_ != nullptr && lock_->over()) || (confinement_ != nullptr && confinement_->over());
     if (!over) return;
@@ -161,4 +157,4 @@ bool PointerGrabber::locked_on(const WindowMirror& mirror) const {
     return &mirror == mirror_ && lock_ != nullptr && lock_->engaged() && !escaped_;
 }
 
-}  // namespace rwin::host
+}

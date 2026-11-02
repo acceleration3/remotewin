@@ -33,4 +33,4 @@ bool WindowRing::show(std::uint64_t order) noexcept {
     return true;
 }
 
-}  // namespace rwin::host
+}

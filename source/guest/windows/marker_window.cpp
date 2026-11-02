@@ -15,8 +15,6 @@ namespace {
 constexpr const wchar_t* kMarkerClass = L"rwin-guest-marker";
 constexpr const wchar_t* kKeysClass = L"rwin-guest-hotkey";
 constexpr UINT kCarryOut = WM_APP + 1;
-// rdpshell's: VK 0xB9, a key no keyboard has, and the next lower one when
-// another process holds it, twenty tries at most.
 constexpr UINT kFirstHotkey = 0xB9;
 constexpr int kHotkeyTries = 20;
 constexpr UINT kHotkeyWithinMs = 1000;
@@ -60,7 +58,7 @@ void send_key(WORD key, bool pressed) {
     ::SendInput(1, &input, sizeof(input));
 }
 
-}  // namespace
+}
 
 MarkerWindow::MarkerWindow() {
     worker_ = std::thread([this] { run(); });
@@ -131,8 +129,6 @@ void MarkerWindow::register_hotkey() {
 }
 
 void MarkerWindow::carry_out() {
-    // The hotkey's wait pumps this thread's messages, which may carry a
-    // newer request out from inside an older one.
     if (carrying_out_) return;
     carrying_out_ = true;
     for (void* window = wanted_.exchange(nullptr); window != nullptr; window = wanted_.exchange(nullptr)) {
@@ -166,7 +162,6 @@ bool MarkerWindow::take_with_hotkey(void* window) {
     MSG message;
     while (!hotkey_heard_ && !timed_out_) {
         if (::GetMessageW(&message, nullptr, 0, 0) <= 0) {
-            // The quit is the outer loop's to see.
             ::PostQuitMessage(0);
             break;
         }
@@ -178,4 +173,4 @@ bool MarkerWindow::take_with_hotkey(void* window) {
     return ::SetForegroundWindow(static_cast<HWND>(window)) != FALSE;
 }
 
-}  // namespace rwin::guest
+}

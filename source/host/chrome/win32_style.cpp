@@ -18,4 +18,4 @@ Win32Style::Win32Style(const GuestWindow& window) noexcept
              .in_switchers = (window.fields().taskbar & WindowFields::kInSwitchers) != 0,
              .shaded = (window.fields().frame & WindowFields::kDropShadow) != 0} {}
 
-}  // namespace rwin::host
+}

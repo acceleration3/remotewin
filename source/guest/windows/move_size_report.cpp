@@ -56,7 +56,7 @@ Rect frame_of(void* window) {
     return Rect{surface.screen_x(0), surface.screen_y(0), surface.width(), surface.height()};
 }
 
-}  // namespace
+}
 
 MoveSizeReport::MoveSizeReport(WindowTracker& tracker, Outbox& outbox)
     : tracker_(tracker), outbox_(outbox), ignored_(read_ignore_list()) {
@@ -115,4 +115,4 @@ void MoveSizeReport::ended(void* window) {
     RWIN_DEBUG("movesize", "{} ended", *id);
 }
 
-}  // namespace rwin::guest
+}

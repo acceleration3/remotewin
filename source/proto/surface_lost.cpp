@@ -19,4 +19,4 @@ std::optional<SurfaceLost> SurfaceLost::read(MessageReader& in) {
     return SurfaceLost{*window, static_cast<Reason>(reason)};
 }
 
-}  // namespace rwin
+}

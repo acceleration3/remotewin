@@ -24,15 +24,6 @@ class WindowTracker;
 class ZOrderReport;
 class MoveSizeReport;
 
-// The guest half's window thread: what Windows says of the session's
-// windows, and what the host asks done to them, in arrival order on one
-// thread, as rdpshell runs them on its one worker queue
-// (docs/rail-model.md §2.2).
-//
-// Windows speaks through out-of-context WinEvent hooks over rdpshell's
-// eight ranges, on this thread's queue; EnumWindows is used once, for the
-// first full synchronisation. The thread is a single-threaded COM
-// apartment, which the shell's undocumented interfaces it asks need.
 class WindowWatch {
 public:
     WindowWatch(WindowDirectory& directory, Outbox& outbox, FeatureSet features);
@@ -43,19 +34,13 @@ public:
     WindowWatch(WindowWatch&&) = delete;
     WindowWatch& operator=(WindowWatch&&) = delete;
 
-    // From any thread; carried out on the window thread, in order.
     void ask(const Activate& request);
     void ask(const SysCommand& request);
     void ask(const SysMenu& request);
     void ask(const WindowMove& request);
-    // The host's compositor dismissed the window's popup: its menu or list
-    // is closed here too.
     void dismiss(WindowId popup);
-    // ``window``'s frames now lie elsewhere in its frame: its GEOMETRY is
-    // said again.
     void reread(WindowId window);
 
-    // Called from the hook, on the window thread.
     void heard(unsigned long event, void* window, long child);
 
 private:
@@ -95,4 +80,4 @@ private:
     std::thread worker_;
 };
 
-}  // namespace rwin::guest
+}

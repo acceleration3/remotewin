@@ -10,12 +10,10 @@
 namespace rwin::guest {
 
 namespace {
-
-// GetCursorFrameInfo's rate is in jiffies, sixtieths of a second.
 constexpr std::uint32_t kJiffiesPerSecond = 60;
 constexpr std::uint32_t kMsPerSecond = 1000;
 
-}  // namespace
+}
 
 CursorDecoder::CursorDecoder() {
     std::size_t next = 0;
@@ -67,4 +65,4 @@ std::optional<CursorPicture> CursorDecoder::decode(void* cursor_handle) const {
     return picture;
 }
 
-}  // namespace rwin::guest
+}

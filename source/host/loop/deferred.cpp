@@ -23,7 +23,6 @@ void Deferred::fire() {
                                            [now](const Pending& pending) { return pending.due > now; });
     std::move(due, pending_.end(), std::back_inserter(firing_));
     pending_.erase(due, pending_.end());
-    // An action may defer another, or clear: it lands in pending_.
     for (Pending& pending : firing_) pending.action();
     firing_.clear();
     arm();
@@ -40,4 +39,4 @@ void Deferred::arm() {
     timer_->start(std::max(wait, std::chrono::milliseconds::zero()), false);
 }
 
-}  // namespace rwin::host
+}

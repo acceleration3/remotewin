@@ -22,4 +22,4 @@ std::optional<PictureRect> PictureRect::read(MessageReader& in) {
     return rect;
 }
 
-}  // namespace rwin
+}

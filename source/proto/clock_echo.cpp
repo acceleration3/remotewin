@@ -18,4 +18,4 @@ std::optional<ClockEcho> ClockEcho::read(MessageReader& in) {
     return echo;
 }
 
-}  // namespace rwin
+}

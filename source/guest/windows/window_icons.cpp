@@ -13,9 +13,6 @@
 namespace rwin::guest {
 
 namespace {
-
-// WM_GETICON enters the window's thread; a hung one is asked no longer than
-// this, and its class's icon is taken instead.
 constexpr UINT kAnswerMs = 50;
 
 HICON asked_icon(HWND window, WPARAM kind) {
@@ -26,8 +23,6 @@ HICON asked_icon(HWND window, WPARAM kind) {
     return reinterpret_cast<HICON>(icon);
 }
 
-// What the taskbar shows: the window's own big icon, else its small one,
-// else its class's.
 HICON icon_of(HWND window) {
     if (HICON icon = asked_icon(window, ICON_BIG)) return icon;
     if (HICON icon = asked_icon(window, ICON_SMALL2)) return icon;
@@ -35,7 +30,7 @@ HICON icon_of(HWND window) {
     return reinterpret_cast<HICON>(::GetClassLongPtrW(window, GCLP_HICONSM));
 }
 
-}  // namespace
+}
 
 void WindowIcons::look(void* window, WindowId id) {
     HICON icon = icon_of(static_cast<HWND>(window));
@@ -59,4 +54,4 @@ void WindowIcons::look(void* window, WindowId id) {
 
 void WindowIcons::forget(WindowId id) { sent_.erase(id.key()); }
 
-}  // namespace rwin::guest
+}

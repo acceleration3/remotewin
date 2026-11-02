@@ -45,12 +45,6 @@
 namespace rwin::guest {
 
 namespace {
-
-// "Show window contents while dragging", on for this logon. Off, Windows
-// moves a dragged window only when the button comes up, drawing an outline
-// meanwhile on a desktop nobody sees: a mirror following the window sits
-// still for the whole drag and jumps at the end. Not written to the
-// profile: the user's own choice comes back at the next logon.
 void show_contents_while_dragging() {
     BOOL full = FALSE;
     if (::SystemParametersInfoW(SPI_GETDRAGFULLWINDOWS, 0, &full, 0) == FALSE || full != FALSE) return;
@@ -62,9 +56,6 @@ void show_contents_while_dragging() {
     RWIN_INFO("drag", "showing window contents while dragging, for this logon");
 }
 
-// A cursor's id is its handle and its picture together: Windows hands a
-// destroyed cursor's handle to the next one made, and a host that kept
-// pictures by handle alone showed the old picture for the new cursor.
 std::uint64_t cursor_id_of(std::uint64_t handle, const CursorPicture& picture) {
     constexpr std::uint64_t kOffset = 0xcbf29ce484222325ULL;
     constexpr std::uint64_t kPrime = 0x100000001b3ULL;
@@ -84,7 +75,6 @@ std::uint64_t cursor_id_of(std::uint64_t handle, const CursorPicture& picture) {
             hash *= kPrime;
         }
     }
-    // Never 0, which a hidden cursor is.
     return hash == 0 ? 1 : hash;
 }
 
@@ -94,7 +84,7 @@ bool is_input(MessageId id) {
            || id == MessageId::PointerLeave;
 }
 
-}  // namespace
+}
 
 GuestSession::GuestSession(TcpClient& link, std::uint32_t frames_per_second)
     : link_(link), outbox_(link), frame_interval_ms_(1000 / (frames_per_second != 0 ? frames_per_second : 1)) {}
@@ -120,8 +110,6 @@ void GuestSession::run() {
     windows_.reset();
 }
 
-// The reader's: every message decoded here, input put into the guest at
-// once and the rest handed to the main loop.
 void GuestSession::read_link() {
     const MultimediaThread timely;
     std::vector<std::uint8_t> incoming;
@@ -206,7 +194,6 @@ void GuestSession::handle(MessageReader& message) {
             if (const std::optional<WindowId> window = WindowId::read(message)) unsubscribe(*window);
             return;
         case MessageId::WatchMonitor:
-            // Said once per connection; a second is the same request.
             if (monitor_ != nullptr) return;
             RWIN_INFO("scope", "asked to mirror the whole monitor");
             monitor_ = std::make_unique<MonitorCapture>(graphics_, frames_, closer_);
@@ -295,8 +282,6 @@ void GuestSession::unsubscribe(WindowId window) {
     RWIN_INFO("session", "unsubscribed from window {}", window);
 }
 
-// Put into the guest from the thread that read it, whatever the main loop
-// is doing. What it shares with the main loop is under shared_.
 bool GuestSession::handle_input(MessageReader& message) {
     const MessageId id = message.id();
     if (id == MessageId::Activate) {
@@ -379,8 +364,6 @@ void GuestSession::move_pointer(const PointerMove& move) {
     std::int32_t into_y = 0;
     const std::optional<WindowSurface> surface = surface_of(move.window, into_x, into_y);
     if (!surface.has_value()) return;
-    // What became of the last move is weighed before this one is made: the
-    // evidence of mouse look (PointerGrabRule).
     report_grab();
     target_.raise(surface->handle(), surface->screen_x(move.x + into_x), surface->screen_y(move.y + into_y), false);
     if (const auto at = move_pointer_to(*surface, move.x + into_x, move.y + into_y)) {
@@ -432,10 +415,6 @@ void GuestSession::turn_wheel_over(const PointerWheel& wheel) {
     turn_wheel(*surface, wheel.x + into_x, wheel.y + into_y, wheel.dx, wheel.dy);
 }
 
-// The pointer left the mirror, and the guest's cursor is still over the
-// window: hover highlights and tooltips stay up until it is not. It goes to
-// a corner of the work area that no window the host is told about covers -
-// the desktop's, which nobody sees - and the window gets its mouse leave.
 void GuestSession::leave(WindowId window) {
     if (grabs_.current().kind != PointerGrab::Kind::None) return;
     std::int32_t into_x = 0;
@@ -526,8 +505,6 @@ void GuestSession::take_route(bool shared_surfaces) {
     shared_route_ = true;
 }
 
-// The monitor's tiles are weighed against the last picture sent as pixels,
-// which is not what the host shows after frames that stayed on the GPU.
 void GuestSession::stop_sharing() {
     shared_route_ = false;
     rings_.clear();
@@ -539,7 +516,6 @@ void GuestSession::recapture() {
     recapture(kMonitorWindow);
 }
 
-// A capture's first frame comes at once, the window still or not.
 void GuestSession::recapture(WindowId window) {
     if (window == kMonitorWindow) {
         if (monitor_ == nullptr) return;
@@ -565,9 +541,6 @@ SurfaceRing& GuestSession::ring_for(WindowId window) {
     return *ring->second;
 }
 
-// Where the frames lie in the window's frame, when the capture trimmed a
-// margin away: the GEOMETRY of the window says so, and input is measured
-// from there.
 void GuestSession::note_drawn(WindowId id, const WindowCapture& capture, const WindowSurface& surface) {
     const bool whole = capture.offset_x() == 0 && capture.offset_y() == 0 && capture.width() == surface.width()
                        && capture.height() == surface.height();
@@ -591,7 +564,6 @@ void GuestSession::send_frames() {
         send_window_frame(id, subscription);
         if (!running_) return;
     }
-    // WindowGone said it already; the host's Unsubscribe may never come.
     for (const std::uint64_t key : gone) {
         subscriptions_.erase(key);
         rings_.erase(key);
@@ -602,11 +574,6 @@ void GuestSession::send_frames() {
     }
 }
 
-// A capture that fails is not the window gone - that is WindowGone's to say
-// - and the window is captured afresh a while later, without being asked.
-// A window that is hidden or has no size is no failure: there is nothing to
-// capture yet (a WinUI popup is shown at 0x0 and sized a frame later), and
-// it is captured as soon as there is.
 void GuestSession::send_window_frame(WindowId id, Subscription& subscription) {
     const WindowSurface surface{static_cast<std::uint64_t>(id.hwnd)};
     if (surface.minimized()) {
@@ -645,15 +612,12 @@ void GuestSession::send_window_frame(WindowId id, Subscription& subscription) {
 CaptureResult GuestSession::send_pixel_frame(WindowId id, WindowCapture& capture, const WindowSurface& surface) {
     const CaptureResult grabbed = capture.grab(surface);
     if (grabbed != CaptureResult::Fresh) return grabbed;
-    // A window that went back to pixels has no use for its ring.
     rings_.erase(id.key());
     note_drawn(id, capture, surface);
     send_pixels(id, capture);
     return grabbed;
 }
 
-// A frame is taken only with a slot to put it in: one taken and dropped is
-// a picture lost, and a window sitting still sends no other.
 CaptureResult GuestSession::send_shared_frame(WindowId id, WindowCapture& capture, const WindowSurface& surface) {
     SurfaceRing& ring = ring_for(id);
     if (!ring.has_free_slot()) {
@@ -663,8 +627,6 @@ CaptureResult GuestSession::send_shared_frame(WindowId id, WindowCapture& captur
     std::optional<CaptureStream::Frame> frame;
     const CaptureResult grabbed = capture.grab(surface, frame);
     if (grabbed != CaptureResult::Fresh) return grabbed;
-    // A margin round what the window draws is trimmed away, which takes its
-    // pixels: such a frame goes as pixels, and its ring waits for the next.
     if (surface.margin_is_reserved() && !edges_for(id).all_drawn(*frame)) {
         rings_.erase(id.key());
         if (capture.keep(*frame, surface)) {
@@ -797,4 +759,4 @@ void GuestSession::send_monitor_patch() {
     send(out.take());
 }
 
-}  // namespace rwin::guest
+}

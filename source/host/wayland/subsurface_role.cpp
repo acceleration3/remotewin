@@ -27,4 +27,4 @@ bool SubsurfaceRole::place(Point at) {
 
 void SubsurfaceRole::below_parent() { wl_subsurface_place_below(subsurface_, parent_); }
 
-}  // namespace rwin::host
+}

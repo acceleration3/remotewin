@@ -17,4 +17,4 @@ std::optional<WindowMove> WindowMove::read(MessageReader& in) {
     return WindowMove{*window, *frame};
 }
 
-}  // namespace rwin
+}

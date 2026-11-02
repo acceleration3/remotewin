@@ -10,8 +10,6 @@ namespace rwin {
 class MessageReader;
 class MessageWriter;
 
-// Open the window's own menu (RAIL's Client System Menu) at (x, y),
-// relative to the window's frame.
 struct SysMenu {
     WindowId window;
     std::int32_t x = 0;
@@ -23,4 +21,4 @@ struct SysMenu {
     [[nodiscard]] static std::optional<SysMenu> read(MessageReader& in);
 };
 
-}  // namespace rwin
+}

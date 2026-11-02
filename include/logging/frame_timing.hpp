@@ -6,8 +6,6 @@
 #include <vector>
 
 namespace rwin {
-
-// Opt-in bounded recording, written only at teardown to avoid per-frame file I/O.
 class FrameTiming {
 public:
     explicit FrameTiming(const char* stage);

@@ -41,8 +41,6 @@
 namespace rwin::host {
 
 namespace {
-
-// Read this much at a time; a frame of pixels takes many reads.
 constexpr std::size_t kChunk = 256 * 1024;
 constexpr int kBacklog = 4;
 
@@ -55,7 +53,7 @@ Box box_of(const Rect& rect) {
     return Box{rect.x, rect.y, static_cast<int>(rect.width), static_cast<int>(rect.height)};
 }
 
-}  // namespace
+}
 
 GuestLink::GuestLink(EventLoop& loop) : loop_(loop), chunk_(kChunk) {}
 
@@ -97,8 +95,6 @@ void GuestLink::accept_guest() {
                                 SOCK_NONBLOCK | SOCK_CLOEXEC)};
     if (!incoming.valid()) return;
     if (guest_.valid()) {
-        // One guest per link. A second dial-in is a stale process that has
-        // not noticed it was replaced.
         RWIN_WARN("link", "a guest is already connected; refusing the second");
         return;
     }
@@ -357,8 +353,6 @@ bool GuestLink::dispatch_pointer(MessageReader& message) {
     }
 }
 
-// A WindowNew for a window known already is that window said whole again,
-// as a resync says it.
 void GuestLink::read_window_new(MessageReader& message) {
     const std::optional<WindowId> id = WindowId::read(message);
     WindowFields fields;
@@ -381,8 +375,6 @@ void GuestLink::read_window_new(MessageReader& message) {
     }
 }
 
-// Read over the window's own fields: what the change leaves out is what
-// the window still is.
 void GuestLink::read_window_changed(MessageReader& message) {
     const std::optional<WindowId> id = WindowId::read(message);
     const GuestWindow* known = id.has_value() ? windows_.find(*id) : nullptr;
@@ -465,8 +457,6 @@ void GuestLink::read_frame(MessageReader& message) {
 
 void GuestLink::read_patch(MessageReader& message) {
     const std::optional<WindowId> window = WindowId::read(message);
-    // Read one at a time: a function's arguments are evaluated in no set
-    // order, and the height read first is a picture on its side.
     const auto width = message.u32();
     const auto height = message.u32();
     if (!window.has_value() || !message.ok() || !valid_picture_size(width, height)) {
@@ -617,4 +607,4 @@ void GuestLink::send_clock_probe() {
     send(Feature::kLatency, out.take());
 }
 
-}  // namespace rwin::host
+}

@@ -36,11 +36,8 @@ bool signalled(int fence) {
     return ::poll(&ready, 1, 0) > 0 && (ready.revents & POLLIN) != 0;
 }
 
-}  // namespace
+}
 
-// The surface's explicit sync: the syncobj surface and its two timelines,
-// the guest's copies acquired on one and the compositor's releases on the
-// other, at the same point for one commit.
 struct MirrorSurface::SyncObjects {
     SyncObjects(const DrmSyncDevice& device, wl_surface* surface)
         : acquire(device), release(device),
@@ -94,25 +91,23 @@ MirrorSurface::~MirrorSurface() {
     wl_surface_destroy(surface_);
 }
 
-// Only a mirror's surfaces have a listener: the cursor's and a backdrop's
-// carry no data, and take no input.
 SurfaceInput* MirrorSurface::input_of(wl_surface* surface) noexcept {
     auto* mirror = surface == nullptr ? nullptr : static_cast<MirrorSurface*>(wl_surface_get_user_data(surface));
     return mirror == nullptr ? nullptr : &mirror->input_;
 }
 
-void MirrorSurface::preferred_scale(void* self, wp_fractional_scale_v1* /*fractional*/, std::uint32_t scale) {
+void MirrorSurface::preferred_scale(void* self, wp_fractional_scale_v1* , std::uint32_t scale) {
     static_cast<MirrorSurface*>(self)->take_scale(scale / kFractionalDenominator);
 }
 
-void MirrorSurface::preferred_buffer_scale(void* self, wl_surface* /*surface*/, std::int32_t factor) {
+void MirrorSurface::preferred_buffer_scale(void* self, wl_surface* , std::int32_t factor) {
     auto* surface = static_cast<MirrorSurface*>(self);
     if (surface->fractional_ == nullptr) surface->take_scale(std::max(1, factor));
 }
 
-void MirrorSurface::entered_output(void* /*self*/, wl_surface* /*surface*/, wl_output* /*output*/) {}
-void MirrorSurface::left_output(void* /*self*/, wl_surface* /*surface*/, wl_output* /*output*/) {}
-void MirrorSurface::preferred_buffer_transform(void* /*self*/, wl_surface* /*surface*/, std::uint32_t /*transform*/) {}
+void MirrorSurface::entered_output(void* , wl_surface* , wl_output* ) {}
+void MirrorSurface::left_output(void* , wl_surface* , wl_output* ) {}
+void MirrorSurface::preferred_buffer_transform(void* , wl_surface* , std::uint32_t ) {}
 
 void MirrorSurface::take_scale(double scale) {
     if (scale <= 0.0 || scale == scale_) return;
@@ -226,8 +221,6 @@ void MirrorSurface::apply_input() {
     wl_region_destroy(region);
 }
 
-// Whole logical units only: a unit partly over a transparent pixel, said to
-// be opaque, would be drawn black there.
 void MirrorSurface::apply_opaque() {
     if (opaque_rects_.empty() || opaque_for_ != picture_) {
         wl_surface_set_opaque_region(surface_, nullptr);
@@ -244,8 +237,6 @@ void MirrorSurface::apply_opaque() {
 }
 
 void MirrorSurface::show(const PixelsView& pixels) {
-    // A surface going back to pixels from the GPU is no longer explicitly
-    // synced: a shared-memory buffer cannot be.
     drop_sync_objects();
     shared_waiting_.reset();
     fence_watch_.reset();
@@ -280,8 +271,6 @@ void MirrorSurface::attach_pixels() {
     commit_attached(buffer->buffer(), pixels_stamps_);
 }
 
-// The newest frame wins: one that comes while another still waits for its
-// buffer or its copy replaces it, and the replaced one's slot goes back.
 void MirrorSurface::show(const SharedFrame& frame) {
     pixels_waiting_ = nullptr;
     frame_dropped_ = false;
@@ -335,8 +324,6 @@ void MirrorSurface::attach_shared(wl_buffer* buffer) {
     SharedFrame frame = std::move(*shared_waiting_);
     shared_waiting_.reset();
     frame.stamps.note_now(FrameStamps::Stage::Acquired);
-    // Said before the sync points are: whatever is said with the new size
-    // goes out with this buffer's commit, and no commit comes between.
     if (frame.size() != picture_) {
         picture_ = frame.size();
         announce_resize();
@@ -348,7 +335,6 @@ void MirrorSurface::attach_shared(wl_buffer* buffer) {
         if (fence < 0) {
             sync_->acquire.signal_now(point);
         } else if (!sync_->acquire.signal_with(fence, point)) {
-            // The copy is waited for here instead; the frame is late, not lost.
             pollfd ready{fence, POLLIN, 0};
             static_cast<void>(::poll(&ready, 1, -1));
             sync_->acquire.signal_now(point);
@@ -361,8 +347,6 @@ void MirrorSurface::attach_shared(wl_buffer* buffer) {
     }
     on_gpu_ = true;
     commit_attached(buffer, frame.stamps);
-    // Let go of whatever the compositor held of this buffer before: it is
-    // the same slot, which the guest does not fill again until let go of.
     std::erase_if(held_, [buffer](const Held& earlier) { return earlier.buffer == buffer; });
     held_.push_back(std::move(held));
     Held& kept = held_.back();
@@ -384,15 +368,10 @@ void MirrorSurface::buffer_made(const SurfaceMemory& memory, wl_buffer* buffer, 
     if (shared_waiting_.has_value() && shared_waiting_->memory.get() == &memory) try_attach_shared();
 }
 
-// Without explicit sync, the compositor's release of a buffer is when its
-// slot goes back; with it, the release point says so instead.
 void MirrorSurface::buffer_released(wl_buffer* buffer) {
     std::erase_if(held_, [buffer](const Held& held) { return held.buffer == buffer && !held.released.valid(); });
 }
 
-// Whoever hears of a new size sets what goes with it; the commit carrying
-// the picture of that size carries it too. Committed before, the viewport
-// would be cut from a buffer the old size.
 void MirrorSurface::announce_resize() {
     attaching_ = true;
     picture_resized();
@@ -412,4 +391,4 @@ void MirrorSurface::commit_attached(wl_buffer* buffer, const FrameStamps& stamps
     first_mapped();
 }
 
-}  // namespace rwin::host
+}

@@ -13,4 +13,4 @@ std::optional<SyncBegin> SyncBegin::read(MessageReader& in) {
     return SyncBegin{static_cast<Reason>(reason)};
 }
 
-}  // namespace rwin
+}

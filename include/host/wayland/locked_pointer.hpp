@@ -11,18 +11,8 @@ struct zwp_locked_pointer_v1;
 struct zwp_pointer_constraints_v1;
 
 namespace rwin::host {
-
-// The pointer held still on one surface (zwp_pointer_constraints_v1
-// lock_pointer), for as long as this lives: what a game's mouse look asks
-// for. Asked once (oneshot): when the compositor lets go of it - the window
-// lost focus, its own unlock - it is over, and holding again is a new one.
-//
-// The compositor engages it when it chooses (the surface has the pointer
-// and the focus) and says so; until then it is only asked for.
 class LockedPointer {
 public:
-    // ``hint`` is where the pointer is to be when it is let go, in the
-    // surface's logical units.
     LockedPointer(zwp_pointer_constraints_v1* constraints, wl_surface* surface, wl_pointer* pointer,
                   std::optional<PointF> hint);
 
@@ -33,12 +23,9 @@ public:
     ~LockedPointer() = default;
 
     [[nodiscard]] bool engaged() const noexcept { return engaged_; }
-    // Engaged and then let go of by the compositor.
     [[nodiscard]] bool over() const noexcept { return over_; }
 
 private:
-    // zwp_locked_pointer_v1.destroy, which its generated header defines
-    // inline: kept out of this one.
     struct Release {
         void operator()(zwp_locked_pointer_v1* lock) const noexcept;
     };
@@ -51,4 +38,4 @@ private:
     bool over_ = false;
 };
 
-}  // namespace rwin::host
+}

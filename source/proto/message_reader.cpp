@@ -54,4 +54,4 @@ const std::uint8_t* MessageReader::bytes(std::size_t size) {
     return from;
 }
 
-}  // namespace rwin
+}

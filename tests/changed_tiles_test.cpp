@@ -1,7 +1,3 @@
-// What of a monitor's picture is sent again: nothing for the same
-// picture, the tiles a change touched (side by side ones as one), and the
-// whole picture when it is new, resized or mostly changed.
-
 #include "guest/capture/changed_tiles.hpp"
 
 #include <cstdint>
@@ -26,7 +22,7 @@ void paint(std::vector<std::uint8_t>& picture, std::uint32_t x, std::uint32_t y,
     picture[(static_cast<std::size_t>(y) * kWidth + x) * 4] = value;
 }
 
-}  // namespace
+}
 
 int main() {
     using rwin::PictureRect;
@@ -39,9 +35,9 @@ int main() {
     check(tiles.weigh(picture.data(), kWidth, kHeight) && tiles.changed().empty(),
           "the same picture again changes nothing");
 
-    paint(picture, 70, 10, 1);   // second tile of the first row
-    paint(picture, 130, 20, 1);  // third, beside it
-    paint(picture, 199, 149, 1); // the last, a partial tile in both directions
+    paint(picture, 70, 10, 1);
+    paint(picture, 130, 20, 1);
+    paint(picture, 199, 149, 1);
     check(tiles.weigh(picture.data(), kWidth, kHeight), "a few pixels are a patch");
     const std::vector<PictureRect> expected{{kTile, 0, 2 * kTile, kTile},
                                             {3 * kTile, 2 * kTile, kWidth - 3 * kTile, kHeight - 2 * kTile}};

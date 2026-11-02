@@ -5,13 +5,6 @@
 #include <utility>
 
 namespace rwin::host {
-
-// Something that happened, told to everyone who asked to hear of it, in
-// the order they asked. Whoever connects outlives the emitter or is torn
-// down with it: there is no disconnecting.
-//
-// A deque: a slot that connects another while it is being called is not
-// moved under itself.
 template <typename... Args>
 class Signal {
 public:
@@ -27,4 +20,4 @@ private:
     std::deque<Slot> slots_;
 };
 
-}  // namespace rwin::host
+}

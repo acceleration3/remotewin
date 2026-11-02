@@ -66,6 +66,6 @@ void Seat::capable(void* self, wl_seat* seat, std::uint32_t capabilities) {
     RWIN_INFO("seat", "pointer {}, keyboard {}", pointing ? "yes" : "no", typing ? "yes" : "no");
 }
 
-void Seat::named(void* /*self*/, wl_seat* /*seat*/, const char* /*name*/) {}
+void Seat::named(void* , wl_seat* , const char* ) {}
 
-}  // namespace rwin::host
+}

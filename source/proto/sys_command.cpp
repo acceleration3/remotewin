@@ -14,7 +14,7 @@ constexpr std::array kCommands{SysCommand::Command::Size,     SysCommand::Comman
                                SysCommand::Command::Close,    SysCommand::Command::KeyMenu,
                                SysCommand::Command::Restore,  SysCommand::Command::Default};
 
-}  // namespace
+}
 
 void SysCommand::write(MessageWriter& out) const {
     window.write(out);
@@ -31,4 +31,4 @@ std::optional<SysCommand> SysCommand::read(MessageReader& in) {
     return std::nullopt;
 }
 
-}  // namespace rwin
+}

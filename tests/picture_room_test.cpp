@@ -1,7 +1,3 @@
-// The room a window's pictures are captured and shared in: larger than the
-// picture, so a resize fills the same buffers, and smaller again once the
-// window has shrunk a long way.
-
 #include "guest/capture/picture_room.hpp"
 
 #include <cstdio>
@@ -20,7 +16,7 @@ using rwin::guest::CaptureStream;
 using rwin::guest::room_for;
 using rwin::guest::room_holds;
 
-}  // namespace
+}
 
 int main() {
     const CaptureStream::Extent room = room_for({960, 720});

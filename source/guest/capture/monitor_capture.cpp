@@ -34,9 +34,6 @@ bool MonitorCapture::keep(const CaptureStream::Frame& frame) {
     return true;
 }
 
-// Physical pixels throughout: the process is per-monitor DPI aware, so the
-// monitor's rectangle is in the same pixels as the frames and as the
-// screen the pointer is put on.
 bool MonitorCapture::follow() {
     HMONITOR monitor = ::MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO described{};
@@ -64,4 +61,4 @@ bool MonitorCapture::follow() {
     return true;
 }
 
-}  // namespace rwin::guest
+}

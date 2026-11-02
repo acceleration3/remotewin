@@ -17,14 +17,12 @@
 namespace rwin::host {
 
 namespace {
-
-// XKB keycodes are evdev's plus 8, the offset X11 kept below its own.
 constexpr std::uint32_t kXkbOffset = 8;
 constexpr int kMillisecondsPerSecond = 1000;
 
 SurfaceInput* input_of(wl_surface* surface) { return MirrorSurface::input_of(surface); }
 
-}  // namespace
+}
 
 void KeyboardEvents::XkbRelease::operator()(xkb_context* context) const noexcept { xkb_context_unref(context); }
 void KeyboardEvents::XkbRelease::operator()(xkb_keymap* keymap) const noexcept { xkb_keymap_unref(keymap); }
@@ -61,7 +59,7 @@ bool KeyboardEvents::control_alt() const {
            && xkb_state_mod_name_is_active(state_.get(), XKB_MOD_NAME_ALT, XKB_STATE_MODS_EFFECTIVE) > 0;
 }
 
-void KeyboardEvents::mapped(void* self, wl_keyboard* /*keyboard*/, std::uint32_t format, std::int32_t fd,
+void KeyboardEvents::mapped(void* self, wl_keyboard* , std::uint32_t format, std::int32_t fd,
                             std::uint32_t size) {
     auto* events = static_cast<KeyboardEvents*>(self);
     if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 || events->context_ == nullptr) {
@@ -81,15 +79,15 @@ void KeyboardEvents::mapped(void* self, wl_keyboard* /*keyboard*/, std::uint32_t
     if (events->state_ == nullptr) RWIN_WARN("keyboard", "the compositor's keymap does not compile");
 }
 
-void KeyboardEvents::entered(void* self, wl_keyboard* /*keyboard*/, std::uint32_t /*serial*/, wl_surface* surface,
-                             wl_array* /*keys*/) {
+void KeyboardEvents::entered(void* self, wl_keyboard* , std::uint32_t , wl_surface* surface,
+                             wl_array* ) {
     auto* events = static_cast<KeyboardEvents*>(self);
     events->focus_ = surface;
     if (SurfaceInput* input = input_of(surface)) input->keyboard_entered();
     events->moved_();
 }
 
-void KeyboardEvents::left(void* self, wl_keyboard* /*keyboard*/, std::uint32_t /*serial*/, wl_surface* surface) {
+void KeyboardEvents::left(void* self, wl_keyboard* , std::uint32_t , wl_surface* surface) {
     auto* events = static_cast<KeyboardEvents*>(self);
     events->repeater_->stop();
     events->repeating_any_ = false;
@@ -98,7 +96,7 @@ void KeyboardEvents::left(void* self, wl_keyboard* /*keyboard*/, std::uint32_t /
     events->moved_();
 }
 
-void KeyboardEvents::keyed(void* self, wl_keyboard* /*keyboard*/, std::uint32_t serial, std::uint32_t /*time*/,
+void KeyboardEvents::keyed(void* self, wl_keyboard* , std::uint32_t serial, std::uint32_t ,
                            std::uint32_t key, std::uint32_t state) {
     auto* events = static_cast<KeyboardEvents*>(self);
     const bool down = state == WL_KEYBOARD_KEY_STATE_PRESSED;
@@ -119,14 +117,14 @@ void KeyboardEvents::keyed(void* self, wl_keyboard* /*keyboard*/, std::uint32_t 
     events->repeater_->start(std::chrono::milliseconds(events->delay_ms_), false);
 }
 
-void KeyboardEvents::modified(void* self, wl_keyboard* /*keyboard*/, std::uint32_t /*serial*/,
+void KeyboardEvents::modified(void* self, wl_keyboard* , std::uint32_t ,
                               std::uint32_t depressed, std::uint32_t latched, std::uint32_t locked,
                               std::uint32_t group) {
     auto* events = static_cast<KeyboardEvents*>(self);
     if (events->state_ != nullptr) xkb_state_update_mask(events->state_.get(), depressed, latched, locked, 0, 0, group);
 }
 
-void KeyboardEvents::repeats(void* self, wl_keyboard* /*keyboard*/, std::int32_t rate, std::int32_t delay) {
+void KeyboardEvents::repeats(void* self, wl_keyboard* , std::int32_t rate, std::int32_t delay) {
     auto* events = static_cast<KeyboardEvents*>(self);
     events->rate_ = rate;
     events->delay_ms_ = delay;
@@ -147,4 +145,4 @@ void KeyboardEvents::deliver(std::uint32_t code, bool pressed, bool repeat) {
     if (SurfaceInput* input = input_of(focus_)) input->key(press);
 }
 
-}  // namespace rwin::host
+}

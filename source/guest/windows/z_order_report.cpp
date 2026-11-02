@@ -28,7 +28,6 @@ bool cloaked(HWND window) {
     return SUCCEEDED(::DwmGetWindowAttribute(window, DWMWA_CLOAKED, &state, sizeof(state))) && state != 0;
 }
 
-// GetGUIThreadInfo's active window, taken to its root: what RAIL reports.
 HWND active_window() {
     GUITHREADINFO gui{};
     gui.cbSize = sizeof(gui);
@@ -37,7 +36,7 @@ HWND active_window() {
     return root != nullptr ? root : gui.hwndActive;
 }
 
-}  // namespace
+}
 
 void ZOrderReport::expect(void* window) noexcept {
     expected_ = window;
@@ -73,8 +72,6 @@ ZOrderReport::Stacking ZOrderReport::current() const {
     return stacking;
 }
 
-// Ready is sent at once, whenever it is looked at. Not ready, the wait
-// goes on, and each time it runs out it is longer, until the last.
 void ZOrderReport::look(Clock::time_point now) {
     const Stacking stacking = current();
     void* wanted = expected_ != nullptr ? expected_ : stacking.active;
@@ -105,4 +102,4 @@ void ZOrderReport::send(const ZOrder& order) {
     sent_ = order;
 }
 
-}  // namespace rwin::guest
+}

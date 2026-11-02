@@ -37,4 +37,4 @@ std::optional<FrameInSlot> FrameInSlot::read(MessageReader& in) {
     return frame;
 }
 
-}  // namespace rwin
+}

@@ -31,8 +31,6 @@ void EmulatedCursor::remember(const CursorPicture& picture) {
     looks_.insert_or_assign(picture.id, Kept{std::move(look), ++shows_});
 }
 
-// A picture is sent as it is about to be shown: it counts as shown then.
-// The one worn now stays whatever else arrives: every mirror holds it.
 void EmulatedCursor::make_room() {
     if (looks_.size() < kCapacity) return;
     const auto oldest = std::min_element(looks_.begin(), looks_.end(), [this](const auto& a, const auto& b) {
@@ -57,4 +55,4 @@ const CursorLook* EmulatedCursor::find(std::uint64_t id) const {
     return found == looks_.end() ? nullptr : &found->second.look;
 }
 
-}  // namespace rwin::host
+}

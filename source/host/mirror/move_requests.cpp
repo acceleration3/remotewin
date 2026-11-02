@@ -11,10 +11,6 @@ namespace rwin::host {
 MoveRequests::MoveRequests(EventLoop& loop, Ask ask, Answered answered)
     : ask_(std::move(ask)), answered_(std::move(answered)), answer_due_(loop.timer([this] { overdue(); })) {}
 
-// The guest applies what it is sent in order: a frame it reports that is
-// one asked is that ask landing, and every one before it with it; any other
-// change of the frame is the end of the newest ask, whatever it came out
-// as. A report that leaves the frame as it was (a new title) is neither.
 void MoveRequests::reported(const Box& frame) {
     reported_ = frame;
     if (outstanding_.empty()) return;
@@ -43,7 +39,6 @@ void MoveRequests::want_corner(Point corner) {
     if (outstanding_.empty()) ask_next();
 }
 
-// Measured from the frame the guest has now: the last ask's answer.
 void MoveRequests::ask_next() {
     Box target = reported_;
     if (size_.has_value()) {
@@ -66,8 +61,6 @@ void MoveRequests::ask_next() {
     ask_(target);
 }
 
-// The newest ask has not landed in time: what waits is asked regardless,
-// and the asks still out may land yet.
 void MoveRequests::overdue() {
     if (size_.has_value() || corner_.has_value()) ask_next();
 }
@@ -78,4 +71,4 @@ void MoveRequests::settle(const Box& asked) {
     answered_(asked, reported_);
 }
 
-}  // namespace rwin::host
+}

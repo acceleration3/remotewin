@@ -23,14 +23,9 @@
 namespace rwin::guest {
 
 namespace {
-
-// The Explorer shell's own windows, which a full desktop has and RAIL's
-// session never did: the desktop, its wallpaper workers, the taskbars.
 constexpr std::array<std::wstring_view, 4> kShellClasses{L"Progman", L"WorkerW", L"Shell_TrayWnd",
                                                          L"Shell_SecondaryTrayWnd"};
-// The guest half's own windows, in this and any other guest half's process.
 constexpr std::wstring_view kOwnClassPrefix = L"rwin-guest-";
-// Office's frame-shadow windows, which RAIL keeps next to their neighbours.
 constexpr std::wstring_view kOfficeBorderClass = L"MSO_BORDEREFFECT_WINDOW_CLASS";
 constexpr std::wstring_view kMenuClass = L"#32768";
 constexpr std::wstring_view kGhostClass = L"Ghost";
@@ -54,9 +49,6 @@ bool dwm_draws_frame(HWND window) {
            && enabled != FALSE;
 }
 
-// GetWindowBand is exported by user32 and declared by no header: the
-// z-order bands are Windows' own, and how the shell keeps its windows above
-// every application's. Resolved once.
 std::uint32_t band_of(HWND window) {
     using GetWindowBandFn = BOOL(WINAPI*)(HWND, PDWORD);
     static const auto get_window_band = reinterpret_cast<GetWindowBandFn>(
@@ -71,9 +63,6 @@ WindowFields::Layering layering_of(HWND window) {
     COLORREF key = 0;
     BYTE alpha = 255;
     DWORD flags = 0;
-    // Fails for a window that never called SetLayeredWindowAttributes,
-    // including one drawn with UpdateLayeredWindow, whose alpha is in its
-    // pixels already.
     if (::GetLayeredWindowAttributes(window, &key, &alpha, &flags) == FALSE) return layering;
     layering.flags = flags;
     layering.alpha = alpha;
@@ -81,8 +70,6 @@ WindowFields::Layering layering_of(HWND window) {
     return layering;
 }
 
-// GetWindowRgn answers in the window rectangle's coordinates; the
-// rectangles go relative to the frame.
 std::vector<Rect> region_of(HWND window, std::int32_t inset_x, std::int32_t inset_y) {
     std::vector<Rect> rects;
     HRGN region = ::CreateRectRgn(0, 0, 0, 0);
@@ -119,10 +106,6 @@ bool owner_hidden(HWND owner) {
     return ::GetWindowPlacement(owner, &placement) != FALSE && ::IsRectEmpty(&placement.rcNormalPosition) != FALSE;
 }
 
-// The shell's own helpers - the snap bar shown during a drag, thumbnail
-// and DWM listeners, the edge input strips - are tool windows of the
-// process that owns the desktop's shell window. File Explorer's windows
-// share that process and are no tool windows; its menus are, and stay.
 bool shell_tool_window(HWND window, DWORD process, std::wstring_view name) {
     if (name == kMenuClass) return false;
     if ((::GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOOLWINDOW) == 0) return false;
@@ -140,8 +123,6 @@ Rect frame_of_surface(HWND window, const WindowSurface& surface) {
     return Rect{rect.left, rect.top, 0, 0};
 }
 
-// A maximised window overhangs its monitor by its border; RAIL cuts the
-// overhang away.
 Rect clipped_to_monitor(HWND window, Rect frame) {
     MONITORINFO monitor{};
     monitor.cbSize = sizeof(monitor);
@@ -160,7 +141,6 @@ Rect client_of(HWND window, const Rect& frame) {
     RECT client{};
     POINT corner{0, 0};
     if (::GetClientRect(window, &client) == FALSE || ::ClientToScreen(window, &corner) == FALSE) return Rect{};
-    // A maximised window's client overhangs the frame its monitor clipped.
     const std::int32_t x = std::clamp<std::int32_t>(corner.x - frame.x, 0, static_cast<std::int32_t>(frame.width));
     const std::int32_t y = std::clamp<std::int32_t>(corner.y - frame.y, 0, static_cast<std::int32_t>(frame.height));
     return Rect{x, y, std::min(static_cast<std::uint32_t>(client.right), frame.width - static_cast<std::uint32_t>(x)),
@@ -171,7 +151,7 @@ std::uint16_t margin(std::int32_t pixels) {
     return static_cast<std::uint16_t>(std::clamp<std::int32_t>(pixels, 0, 0xFFFF));
 }
 
-}  // namespace
+}
 
 bool WindowReader::effectively_visible(void* window) {
     const auto hwnd = static_cast<HWND>(window);
@@ -261,13 +241,6 @@ WindowFields::Geometry WindowReader::geometry_of(void* window, WindowId id) cons
     return geometry;
 }
 
-// Windows' own taskbar rule: a button for a visible window nothing owns
-// that is no tool window, and for any visible window that asks with
-// WS_EX_APPWINDOW - unless the shell refuses it one. RAIL's server reads
-// the tool-window bit as winning over WS_EX_APPWINDOW; Explorer's taskbar,
-// which is the one on this desktop, gives the button, and leaves out a
-// WS_EX_NOACTIVATE window that does not ask ("does not appear on the
-// taskbar by default").
 std::uint8_t WindowReader::taskbar_of(void* window, std::uint32_t extended, bool& refused) const {
     const auto hwnd = static_cast<HWND>(window);
     refused = shell_.shell_managed(window) && !shell_.shown_in_switchers(window);
@@ -276,8 +249,6 @@ std::uint8_t WindowReader::taskbar_of(void* window, std::uint32_t extended, bool
     const bool tool = !asks && (extended & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE)) != 0;
     const bool unowned = ::GetWindow(hwnd, GW_OWNER) == nullptr || asks;
     std::uint8_t bits = 0;
-    // Alt+Tab follows the same rule; only the shell's own view can say
-    // otherwise, and it is the refusal above.
     if (visible && unowned && !tool && !refused) bits |= WindowFields::kTaskbarButton | WindowFields::kInSwitchers;
     return bits;
 }
@@ -302,10 +273,6 @@ void WindowReader::read_owner(void* window, Reading& into) const {
 }
 
 namespace {
-
-// The window a ghost stands in for while it does not answer: Windows shows
-// its ghost (class "Ghost", in DWM's process) in place of a hung window.
-// HungWindowFromGhostWindow is exported by user32 and declared by no header.
 HWND hung_behind(HWND window) {
     if (class_of(window) != kGhostClass) return nullptr;
     using HungWindowFromGhostFn = HWND(WINAPI*)(HWND);
@@ -314,11 +281,8 @@ HWND hung_behind(HWND window) {
     return hung_window_from_ghost != nullptr ? hung_window_from_ghost(window) : nullptr;
 }
 
-}  // namespace
+}
 
-// A ghost is the hung window's application's (rdpshell's
-// WindowGetAppIDOrder asks again for the hung window): its mirror stands in
-// for the hung window's, in the same application.
 WindowFields::AppId WindowReader::read_app_id(void* shown) const {
     HWND hung = hung_behind(static_cast<HWND>(shown));
     void* window = hung != nullptr ? static_cast<void*>(hung) : shown;
@@ -339,4 +303,4 @@ WindowFields::AppId WindowReader::read_app_id(void* shown) const {
     return app;
 }
 
-}  // namespace rwin::guest
+}

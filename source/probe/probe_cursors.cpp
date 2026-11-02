@@ -40,9 +40,6 @@ void put(std::vector<std::uint8_t>& bgra, std::size_t at, std::uint32_t argb) {
     bgra[at * 4 + 3] = static_cast<std::uint8_t>(argb >> 24);
 }
 
-// A disc in four colours with a translucent ring and a soft edge: alpha
-// that is neither 0 nor 255 is what a colour cursor has and a monochrome
-// one cannot.
 std::vector<std::uint8_t> disc(std::uint32_t side) {
     std::vector<std::uint8_t> bgra(static_cast<std::size_t>(side) * side * 4, 0);
     const double middle = side / 2.0;
@@ -61,8 +58,6 @@ std::vector<std::uint8_t> disc(std::uint32_t side) {
     return bgra;
 }
 
-// A square of one colour with a white bar that moves a quarter along at
-// each step, so every step differs from the others in pixels too.
 std::vector<std::uint8_t> step_picture(std::uint32_t step) {
     const std::uint32_t side = ProbeCursors::kAnimatedSide;
     std::vector<std::uint8_t> bgra(static_cast<std::size_t>(side) * side * 4, 0);
@@ -99,7 +94,7 @@ HCURSOR cursor_from(const std::vector<std::uint8_t>& bgra, std::uint32_t side, s
     return ::CreateIconIndirect(&described);
 }
 
-}  // namespace
+}
 
 ProbeCursors::ProbeCursors()
     : colour_(make_colour(kColourSide, kColourHotspot)),
@@ -117,8 +112,6 @@ HCURSOR ProbeCursors::make_colour(std::uint32_t side, std::uint32_t hotspot) {
     return cursor_from(disc(side), side, hotspot);
 }
 
-// AND 1 XOR 0 transparent, AND 0 XOR 0 black, AND 0 XOR 1 white, AND 1
-// XOR 1 inverted: a black frame, a white square, a middle that inverts.
 HCURSOR ProbeCursors::make_monochrome() {
     constexpr std::uint32_t kRow = kMonochromeSide / 8;
     std::array<std::uint8_t, kRow * kMonochromeSide> and_plane{};
@@ -148,8 +141,6 @@ HCURSOR ProbeCursors::load_animated(std::string& failure) {
     ::GetTempPathW(MAX_PATH, folder);
     const std::wstring path = std::wstring{folder} + L"rwin-probe.ani";
     if (!file.write(path, failure)) return nullptr;
-    // LR_LOADFROMFILE at size 0: the file's own size, as LoadCursorFromFile
-    // would give it.
     auto* cursor = static_cast<HCURSOR>(::LoadImageW(nullptr, path.c_str(), IMAGE_CURSOR, 0, 0, LR_LOADFROMFILE));
     if (cursor == nullptr) failure = std::format("LoadImage of the animated cursor failed: error {}", ::GetLastError());
     return cursor;
@@ -184,4 +175,4 @@ std::optional<HCURSOR> ProbeCursors::cursor_for(std::uint32_t code, std::string&
     return made == nullptr ? std::nullopt : std::optional<HCURSOR>{made};
 }
 
-}  // namespace rwin::probe
+}

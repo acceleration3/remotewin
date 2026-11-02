@@ -30,4 +30,4 @@ std::optional<std::int64_t> ClockOffset::round_trip() const noexcept {
     return trusted->round_trip;
 }
 
-}  // namespace rwin::host
+}

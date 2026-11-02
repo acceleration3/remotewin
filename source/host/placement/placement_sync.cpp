@@ -9,16 +9,10 @@
 namespace rwin::host {
 
 namespace {
-
-// A report this soon after this side placed a window, of a place it did not
-// ask for, is KWin finishing its own placement of it: a user's drag is
-// reported only once it ends, and nobody drags a window that has just
-// appeared within a second of it appearing.
 constexpr std::int64_t kCompositorAfterPlacementNs = 1'000'000'000;
-// KWin answers a client's own resize with a frame of that size at once.
 constexpr std::int64_t kRegravitatedWithinNs = 1'000'000'000;
 
-}  // namespace
+}
 
 PlacementSync::PlacementSync(EventLoop& loop, BusConnection& bus) : kwin_(loop, bus) {
     kwin_.window_placed.connect([this](std::uint64_t key, PointF corner, std::int64_t) { placed(key, corner); });
@@ -35,7 +29,6 @@ void PlacementSync::follow_guest(const GuestWindow& window, std::uint32_t genera
                                  bool answering) {
     const Point guest = window.picture_origin();
     Tracked& tracked = tracked_[window.id().key()];
-    // The first surface is the one the first placement waits for.
     const bool remade = tracked.generation != 0 && tracked.generation != generation;
     const bool moved_in_guest = remade || !tracked.asked.has_value() || guest != tracked.guest;
     tracked.guest = guest;
@@ -45,7 +38,6 @@ void PlacementSync::follow_guest(const GuestWindow& window, std::uint32_t genera
                active(), placeable, moved_in_guest, tracked.held ? ", dragged here" : "",
                answering ? ", answering" : "");
     if (!active() || !placeable || !moved_in_guest || tracked.held || answering) return;
-    // Where the guest went because it was moved from here: already there.
     if (!remade && tracked.awaiting_guest == guest) {
         tracked.awaiting_guest.reset();
         return;
@@ -61,8 +53,6 @@ void PlacementSync::place_at_guest(WindowId window, Tracked& tracked, bool remad
     }
     const Point guest = tracked.guest;
     if (!remade && tracked.reported.has_value() && outputs.guest_point(*tracked.reported) == guest) return;
-    // On the output the window is on now: a guest move is no move between
-    // outputs.
     const PointF corner = outputs.host_point(guest, tracked.reported);
     RWIN_DEBUG("placement", "{} to {:.2f},{:.2f} (surface {}{})", window, corner.x, corner.y, tracked.generation,
                remade ? ", new" : "");
@@ -125,10 +115,6 @@ void PlacementSync::not_placed(std::uint64_t key) {
     if (it != tracked_.end()) it->second.pending = false;
 }
 
-// Not while a placement of this side's is under way: the compositor's own
-// first place for a new window comes before it, and is nobody's choice.
-// Not for a frame a state gave the window either - maximised, fullscreen,
-// minimised - which is no place to move the guest window to.
 void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report) {
     const WindowId window = WindowId::of_key(key);
     const auto it = tracked_.find(key);
@@ -141,9 +127,6 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
         tracked.minimized = report.minimized;
         minimized_here(window, report.minimized);
     }
-    // The window has come to KWin and the placement waiting for it did not
-    // see it come - KWin can map a window between a script's look at its
-    // windows and its waiting for more. It is there now.
     if (tracked.pending && tracked.asked.has_value() && !tracked.placed_once) {
         tracked.placed_once = true;
         kwin_.place(key, *tracked.asked);
@@ -175,9 +158,6 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
     moved_here(window, guest);
 }
 
-// KWin's own placement of a new window - on the output its user is on - can
-// be reported after this side's: a move alone, of a window placed under a
-// second ago, that its user did not drag.
 bool PlacementSync::put_back(std::uint64_t key, Tracked& tracked, const KWinPlacement::Report& report, Point guest,
                              const std::optional<BoxF>& before) {
     const bool moved_alone = before.has_value() && before->width == report.frame.width
@@ -195,4 +175,4 @@ bool PlacementSync::put_back(std::uint64_t key, Tracked& tracked, const KWinPlac
     return true;
 }
 
-}  // namespace rwin::host
+}

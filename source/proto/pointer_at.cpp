@@ -27,4 +27,4 @@ std::optional<PointerAt> PointerAt::read(MessageReader& in) {
     return at;
 }
 
-}  // namespace rwin
+}

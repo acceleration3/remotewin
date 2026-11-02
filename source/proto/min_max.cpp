@@ -26,4 +26,4 @@ std::optional<MinMax> MinMax::read(MessageReader& in) {
     return info;
 }
 
-}  // namespace rwin
+}

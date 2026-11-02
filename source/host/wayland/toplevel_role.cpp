@@ -15,12 +15,9 @@
 namespace rwin::host {
 
 namespace {
-
-// Numbers the roles made, so a parent is told apart from one freed before
-// it at the same address.
 std::uint64_t roles_made = 0;
 
-}  // namespace
+}
 
 ToplevelRole::ToplevelRole(const Globals& globals, MirrorSurface& surface, ToplevelEvents& events,
                            bool server_decorated)
@@ -57,7 +54,7 @@ void ToplevelRole::surface_configured(void* self, xdg_surface* surface, std::uin
     if (first) role->surface_.allow_commits();
 }
 
-void ToplevelRole::toplevel_configured(void* self, xdg_toplevel* /*toplevel*/, std::int32_t width,
+void ToplevelRole::toplevel_configured(void* self, xdg_toplevel* , std::int32_t width,
                                        std::int32_t height, wl_array* states) {
     auto* role = static_cast<ToplevelRole*>(self);
     ToplevelConfigure configure;
@@ -80,11 +77,11 @@ void ToplevelRole::toplevel_configured(void* self, xdg_toplevel* /*toplevel*/, s
     role->pending_ = configure;
 }
 
-void ToplevelRole::closed(void* self, xdg_toplevel* /*toplevel*/) { static_cast<ToplevelRole*>(self)->events_.close_requested(); }
+void ToplevelRole::closed(void* self, xdg_toplevel* ) { static_cast<ToplevelRole*>(self)->events_.close_requested(); }
 
-void ToplevelRole::bounded(void* /*self*/, xdg_toplevel* /*toplevel*/, std::int32_t /*width*/, std::int32_t /*height*/) {}
+void ToplevelRole::bounded(void* , xdg_toplevel* , std::int32_t , std::int32_t ) {}
 
-void ToplevelRole::capable(void* /*self*/, xdg_toplevel* /*toplevel*/, wl_array* /*capabilities*/) {}
+void ToplevelRole::capable(void* , xdg_toplevel* , wl_array* ) {}
 
 void ToplevelRole::start() { wl_surface_commit(surface_.surface()); }
 
@@ -149,4 +146,4 @@ void ToplevelRole::set_icon(xdg_toplevel_icon_v1* icon) {
     xdg_toplevel_icon_manager_v1_set_icon(globals_.toplevel_icon(), toplevel_, icon);
 }
 
-}  // namespace rwin::host
+}

@@ -13,4 +13,4 @@ bool SentCursors::shown(std::uint64_t id) {
     return sent;
 }
 
-}  // namespace rwin::guest
+}

@@ -9,7 +9,7 @@ namespace {
 
 constexpr std::size_t kBytesPerPixel = 4;
 
-}  // namespace
+}
 
 void CursorPicture::write(MessageWriter& out) const {
     out.put_u64(id);
@@ -53,4 +53,4 @@ std::optional<CursorPicture> CursorPicture::read(MessageReader& in) {
     return picture;
 }
 
-}  // namespace rwin
+}

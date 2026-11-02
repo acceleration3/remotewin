@@ -15,14 +15,8 @@ class Globals;
 class MirrorSurface;
 class PopupEvents;
 
-// A surface as a popup of another (xdg_popup): placed by the compositor
-// from where it is meant to open, flipped and slid against the output it is
-// on rather than against the guest's screen. One that grabs takes the
-// keyboard and is dismissed by a press outside this client's surfaces.
 class PopupRole {
 public:
-    // ``grab_serial`` is the press it opened from, when it grabs; 0 when it
-    // does not.
     PopupRole(const Globals& globals, MirrorSurface& surface, xdg_surface* parent, const PopupPlacement& placement,
               wl_seat* seat, std::uint32_t grab_serial, PopupEvents& events);
     ~PopupRole();
@@ -35,7 +29,6 @@ public:
     [[nodiscard]] xdg_surface* xdg() const noexcept { return xdg_surface_; }
     [[nodiscard]] bool grabs() const noexcept { return grabs_; }
     [[nodiscard]] const PopupPlacement& placement() const noexcept { return placement_; }
-    // Whether it can move without being made again (xdg_popup.reposition).
     [[nodiscard]] bool repositions() const noexcept;
     void reposition(const PopupPlacement& placement);
 
@@ -60,4 +53,4 @@ private:
     bool grabs_ = false;
 };
 
-}  // namespace rwin::host
+}

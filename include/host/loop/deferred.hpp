@@ -8,10 +8,6 @@
 #include <vector>
 
 namespace rwin::host {
-
-// Things to do a little later, each at its own time, on one timer: asks of
-// the GPU device that found nothing yet and are made again a moment on.
-// Whatever has not been done when this goes is not done.
 class Deferred {
 public:
     explicit Deferred(EventLoop& loop);
@@ -34,4 +30,4 @@ private:
     std::unique_ptr<EventLoop::Timer> timer_;
 };
 
-}  // namespace rwin::host
+}

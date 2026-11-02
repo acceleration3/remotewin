@@ -1,25 +1,4 @@
 #!/usr/bin/env python3
-"""Every running mirror's windows, three ways, side by side.
-
-  guest   every window the guest half has told of, topmost first: owner,
-          styles, rectangle, state (what Windows says), and whether it is
-          the mirrored application's
-  mirror  each mirror's own idea of the window: the role its surface has
-          (toplevel, popup, subsurface) and what it is placed against, the
-          state the compositor gave it and the state this side asked for
-          (org.remotewin.Windows.Describe on the mirror's bus connection)
-  kwin    the compositor's: stacking order, transient parent, layer,
-          minimised and active (a KWin script, read back from the journal)
-
-Then the disagreements between them, each on one line. Toplevels are
-matched to KWin by the handle tag in their title; popups, which have no
-title, by process and size. Windows are named "hwnd:serial", as the
-logs name them.
-
-  tools/window_states.py            # every mirror
-  tools/window_states.py --json     # the three views as JSON
-  tools/window_states.py 1421463    # one mirror, by its host process id
-"""
 import json
 import os
 import subprocess
@@ -115,8 +94,6 @@ def kwin(pids):
     return [json.loads(l) for l in lines if l != "done"]
 
 
-# A window's tag is its WindowId's key: hwnd in the high 32 bits, serial
-# in the low, two bits a character.
 TAG_DIGITS = 32
 
 
@@ -225,7 +202,6 @@ def compare(report, kwin_windows):
             if g["owned"] and not k["transient_for"]:
                 issues.append(f"{entry['handle']}: owned by {g['owner']} in the guest, transient for nothing "
                               "in KWin")
-    # Stacking: the guest's order of the windows KWin has, against KWin's.
     shown = [h for h in guest_order if h in by_handle and not by_handle[h]["minimized"]]
     kwin_order = sorted(shown, key=lambda h: -by_handle[h]["z"])
     if shown != kwin_order:

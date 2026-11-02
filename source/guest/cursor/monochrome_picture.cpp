@@ -17,8 +17,6 @@ void paint(std::uint8_t* pixel, std::uint8_t shade) {
     pixel[3] = kOpaque;
 }
 
-// White on every transparent pixel beside an inverting one, so that what
-// was drawn to invert is black ringed with white: seen over anything.
 void edge(MonochromePicture& picture, const std::vector<bool>& inverted, std::size_t width, std::size_t height) {
     for (std::size_t y = 0; y < height; ++y) {
         for (std::size_t x = 0; x < width; ++x) {
@@ -32,7 +30,7 @@ void edge(MonochromePicture& picture, const std::vector<bool>& inverted, std::si
     }
 }
 
-}  // namespace
+}
 
 MonochromePicture monochrome_picture(std::span<const std::uint8_t> planes, std::uint32_t width,
                                      std::uint32_t height) {
@@ -54,4 +52,4 @@ MonochromePicture monochrome_picture(std::span<const std::uint8_t> planes, std::
     return picture;
 }
 
-}  // namespace rwin::guest
+}

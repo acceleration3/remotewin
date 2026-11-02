@@ -8,14 +8,11 @@
 namespace rwin::host {
 
 namespace {
-
-// Gaps in whole refreshes; a gap of more than this many is the screen at rest
-// rather than a frame late, and says nothing of the rhythm.
 constexpr std::int64_t kAtRest = 6;
 
 std::int64_t refreshes(std::int64_t gap, std::int64_t refresh) { return (gap + refresh / 2) / refresh; }
 
-}  // namespace
+}
 
 void CadenceMeter::take(const FrameStamps& frame) noexcept {
     const std::int64_t composed = frame.of(FrameStamps::Stage::Composed);
@@ -54,4 +51,4 @@ void CadenceMeter::restart() noexcept {
     longest_ns_ = 0;
 }
 
-}  // namespace rwin::host
+}

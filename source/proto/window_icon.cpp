@@ -9,7 +9,7 @@ namespace {
 
 constexpr std::size_t kBytesPerPixel = 4;
 
-}  // namespace
+}
 
 void WindowIcon::write(MessageWriter& out) const {
     window.write(out);
@@ -38,4 +38,4 @@ std::optional<WindowIcon> WindowIcon::read(MessageReader& in) {
     return icon;
 }
 
-}  // namespace rwin
+}

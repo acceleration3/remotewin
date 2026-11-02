@@ -1,7 +1,5 @@
 #include "guest/capture/winrt_close.hpp"
 
-// mingw's windows.foundation.h defines IReference<boolean> and
-// IReference<BYTE>, one type, twice (capture_stream.cpp says more).
 #define ____FIReference_1_boolean_INTERFACE_DEFINED__
 
 // clang-format off
@@ -22,4 +20,4 @@ void close_winrt(void* object) {
     closable->Release();
 }
 
-}  // namespace rwin::guest
+}

@@ -25,7 +25,7 @@ bool column_has_content(const std::uint8_t* pixels, std::uint32_t width,
     return false;
 }
 
-}  // namespace
+}
 
 ContentBounds::ContentBounds(const std::uint8_t* pixels, std::uint32_t width,
                              std::uint32_t height) {
@@ -33,7 +33,7 @@ ContentBounds::ContentBounds(const std::uint8_t* pixels, std::uint32_t width,
 
     std::uint32_t top = 0;
     while (top < height && !row_has_content(pixels, width, top)) ++top;
-    if (top == height) return;  // nothing drawn at all
+    if (top == height) return;
 
     std::uint32_t bottom = height - 1;
     while (bottom > top && !row_has_content(pixels, width, bottom)) --bottom;
@@ -50,4 +50,4 @@ ContentBounds::ContentBounds(const std::uint8_t* pixels, std::uint32_t width,
     height_ = bottom - top + 1;
 }
 
-}  // namespace rwin::guest
+}

@@ -1,9 +1,3 @@
-// GuestWindow's opaque region: what of a picture the compositor may draw
-// without blending. Windows' capture leaves a window region's outside clear
-// (alpha 0, measured on WPF's rounded WindowChrome) and the inside opaque, so
-// the region is opaque for a window that draws no alpha of its own; nothing
-// is for any other.
-
 #include "host/link/guest_window.hpp"
 
 #include <cstdio>
@@ -25,7 +19,6 @@ void check(bool ok, const char* label) {
     ++failures;
 }
 
-// WPF's 8 px rounded corners on a 900x600 window, in GetRegionData's rows.
 const std::vector<Rect> kRounded{Rect{5, 0, 890, 1}, Rect{2, 1, 896, 1}, Rect{1, 2, 898, 3}, Rect{0, 5, 900, 590},
                                  Rect{1, 595, 898, 3}, Rect{2, 598, 896, 1}, Rect{5, 599, 890, 1}};
 
@@ -63,7 +56,7 @@ void nothing_of_a_layered_window() {
     check(!layered.region().empty(), "though its shape is still its region");
 }
 
-}  // namespace
+}
 
 int main() {
     a_region_is_opaque();

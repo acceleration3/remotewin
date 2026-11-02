@@ -39,4 +39,4 @@ std::string FeatureSet::describe() const {
     return line.empty() ? std::string("none") : line;
 }
 
-}  // namespace rwin
+}

@@ -10,10 +10,7 @@ namespace rwin {
 class MessageReader;
 class MessageWriter;
 
-// A button going down or up over a mirror, at a point of its window's
-// picture (or the monitor's).
 struct PointerButton {
-    // Back and Forward are XBUTTON1 and XBUTTON2.
     enum class Button : std::uint8_t { Left = 0, Middle = 1, Right = 2, Back = 3, Forward = 4 };
 
     [[nodiscard]] static constexpr bool valid(std::uint8_t button) noexcept {
@@ -32,4 +29,4 @@ struct PointerButton {
     [[nodiscard]] static std::optional<PointerButton> read(MessageReader& in);
 };
 
-}  // namespace rwin
+}

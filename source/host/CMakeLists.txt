@@ -1,10 +1,7 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
-# DRM syncobj timelines for explicit sync (drmSyncobjEventfd, libdrm 2.4.116),
-# and the compositor's main device named as a PCI address.
 pkg_check_modules(LIBDRM REQUIRED IMPORTED_TARGET libdrm>=2.4.116)
-# sd-bus: KWin's scripting, for placement, and the window report.
 pkg_check_modules(LIBSYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
 pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.38)
 pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
@@ -14,9 +11,6 @@ if(NOT WAYLAND_PROTOCOLS_DIR OR NOT WAYLAND_SCANNER)
     message(FATAL_ERROR "wayland-protocols and wayland-scanner are needed for the protocols remotewin speaks")
 endif()
 
-# Every protocol a mirror speaks, client code generated from the system's
-# protocol files; it is C. cursor-shape names the tablet tool, so the
-# tablet protocol comes too.
 enable_language(C)
 set(RWIN_PROTOCOL_DIR "${CMAKE_CURRENT_BINARY_DIR}/wayland")
 file(MAKE_DIRECTORY "${RWIN_PROTOCOL_DIR}")
@@ -50,9 +44,6 @@ foreach(protocol
          "${RWIN_PROTOCOL_DIR}/${name}-client-protocol.h" "${RWIN_PROTOCOL_DIR}/${name}-protocol.c")
 endforeach()
 
-# The guest link, its frames and its cursor, apart from any window system:
-# what a program with a loop of its own embeds to show the guest - LSW's
-# manager, for its desktop preview - with that loop under it (EventLoop).
 add_library(rwin_link STATIC
     cursor/cursor_animation.cpp
     cursor/cursor_player.cpp
@@ -88,8 +79,6 @@ add_library(rwin::link ALIAS rwin_link)
 target_link_libraries(rwin_link PUBLIC rwin::proto rwin::logging)
 target_include_directories(rwin_link PUBLIC "${RWIN_INCLUDE_DIR}")
 
-# The mirrors: a Wayland client of its own, every mirror a surface in the
-# role its window has, the guest's buffers shown as they are.
 add_library(rwin_host STATIC
     chrome/resize_border.cpp
     chrome/win32_style.cpp

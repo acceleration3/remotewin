@@ -28,9 +28,6 @@
 namespace rwin::host {
 
 namespace {
-
-// The newest version of each this client speaks; a compositor's newer ones
-// are not asked for.
 constexpr std::uint32_t kCompositorVersion = 6;
 constexpr std::uint32_t kLeastCompositorVersion = 4;
 constexpr std::uint32_t kWmBaseVersion = 6;
@@ -40,7 +37,7 @@ constexpr std::uint32_t kDmabufVersion = 5;
 constexpr std::uint32_t kOutputVersion = 2;
 constexpr std::uint32_t kCursorShapeVersion = 1;
 
-void pong(void* /*self*/, xdg_wm_base* base, std::uint32_t serial) { xdg_wm_base_pong(base, serial); }
+void pong(void* , xdg_wm_base* base, std::uint32_t serial) { xdg_wm_base_pong(base, serial); }
 
 template <typename Proxy>
 void destroy(Proxy* proxy) {
@@ -58,13 +55,12 @@ void output_geometry(void*, wl_output*, std::int32_t, std::int32_t, std::int32_t
 void output_mode(void*, wl_output*, std::uint32_t, std::int32_t, std::int32_t, std::int32_t) {}
 void output_done(void*, wl_output*) {}
 
-}  // namespace
+}
 
 Globals::Globals(wl_display* display) : display_(display) {
     registry_ = wl_display_get_registry(display_);
     static constexpr wl_registry_listener kListener{&Globals::announced, &Globals::withdrawn};
     wl_registry_add_listener(registry_, &kListener, this);
-    // The globals, then what the outputs say of themselves.
     if (wl_display_roundtrip(display_) < 0 || wl_display_roundtrip(display_) < 0) {
         throw std::runtime_error("the compositor's globals could not be listed");
     }
@@ -102,7 +98,7 @@ Globals::~Globals() {
     destroy(registry_);
 }
 
-void Globals::announced(void* self, wl_registry* /*registry*/, std::uint32_t name, const char* interface,
+void Globals::announced(void* self, wl_registry* , std::uint32_t name, const char* interface,
                         std::uint32_t version) {
     static_cast<Globals*>(self)->bind(name, interface, version);
 }
@@ -176,7 +172,7 @@ wl_seat* Globals::bind_seat() const {
     return static_cast<wl_seat*>(wl_registry_bind(registry_, seat_name_, &wl_seat_interface, seat_version_));
 }
 
-void Globals::withdrawn(void* self, wl_registry* /*registry*/, std::uint32_t name) {
+void Globals::withdrawn(void* self, wl_registry* , std::uint32_t name) {
     auto* globals = static_cast<Globals*>(self);
     std::erase_if(globals->outputs_, [name](const Output& output) {
         if (output.name != name) return false;
@@ -192,7 +188,7 @@ void Globals::output_scaled(void* self, wl_output* output, std::int32_t factor) 
     }
 }
 
-void Globals::presentation_clock(void* self, wp_presentation* /*presentation*/, std::uint32_t clock) {
+void Globals::presentation_clock(void* self, wp_presentation* , std::uint32_t clock) {
     static_cast<Globals*>(self)->presentation_monotonic_ = clock == CLOCK_MONOTONIC;
 }
 
@@ -225,4 +221,4 @@ std::string Globals::describe() const {
     return line;
 }
 
-}  // namespace rwin::host
+}

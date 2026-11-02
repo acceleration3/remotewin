@@ -22,4 +22,4 @@ std::optional<Rect> Rect::read(MessageReader& in) {
     return rect;
 }
 
-}  // namespace rwin
+}

@@ -8,7 +8,7 @@ Box box_of(const Rect& rect) noexcept {
     return Box{rect.x, rect.y, static_cast<int>(rect.width), static_cast<int>(rect.height)};
 }
 
-}  // namespace
+}
 
 WindowId GuestWindow::owner() const noexcept { return fields_.owner.is_hidden_owner() ? WindowId{} : fields_.owner; }
 
@@ -51,4 +51,4 @@ std::vector<Box> GuestWindow::opaque_region() const {
     return region();
 }
 
-}  // namespace rwin::host
+}

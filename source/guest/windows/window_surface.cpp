@@ -8,10 +8,6 @@
 namespace rwin::guest {
 
 namespace {
-
-// The extended frame bounds, kept inside the window rectangle: DWM answers
-// for a window it draws no frame for with the rectangle itself, and fails
-// for one it does not compose at all, which is then its rectangle too.
 RECT picture_of(HWND window, const RECT& rect) {
     RECT bounds{};
     if (FAILED(::DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS, &bounds,
@@ -40,7 +36,7 @@ bool dwm_framed(HWND window) {
     return enabled != FALSE && (::GetWindowLongPtrW(window, GWL_STYLE) & kFrame) != 0;
 }
 
-}  // namespace
+}
 
 WindowSurface::WindowSurface(std::uint64_t window_handle)
     : handle_(reinterpret_cast<void*>(static_cast<std::uintptr_t>(window_handle))) {
@@ -67,4 +63,4 @@ WindowSurface::WindowSurface(std::uint64_t window_handle)
     valid_ = true;
 }
 
-}  // namespace rwin::guest
+}

@@ -31,10 +31,6 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-// rdpshell's table of WinEvent ranges (CHook::CommandStart): foreground;
-// destroy, show and hide; focus; state, location and name; move/size end;
-// the undocumented move/size start that names its kind; parent change;
-// cloak and uncloak.
 constexpr DWORD kMoveSizeKind = 0x0019;
 constexpr std::array<std::pair<DWORD, DWORD>, 8> kHookedEvents{{
     {EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND},
@@ -47,27 +43,15 @@ constexpr std::array<std::pair<DWORD, DWORD>, 8> kHookedEvents{{
     {EVENT_OBJECT_CLOAKED, EVENT_OBJECT_UNCLOAKED},
 }};
 
-// Windows destroyed without their event reaching here are looked for this
-// often; a hook's events are posted messages, and a full queue drops them.
 constexpr std::chrono::milliseconds kSweepEvery{1000};
-// DWM updates a window's extended frame bounds after the move that raised
-// the location event - at its next composition, as a rule - so a frame read
-// at the event can be the old one; a moved window is read again a
-// composition later, and once more after that for a DWM running late. A
-// resize is answered no sooner than its frame is read: the host asks for
-// the next size only then.
 constexpr std::chrono::milliseconds kFrameSettles{20};
 constexpr std::chrono::milliseconds kFrameSettlesLate{40};
 
-// The hook is a plain function with no argument of its own, and runs on
-// the thread that set it.
 thread_local WindowWatch* listening = nullptr;
 
-void CALLBACK on_event(HWINEVENTHOOK /*hook*/, DWORD event, HWND window, LONG object, LONG child,
-                       DWORD /*thread*/, DWORD /*time*/) {
+void CALLBACK on_event(HWINEVENTHOOK , DWORD event, HWND window, LONG object, LONG child,
+                       DWORD , DWORD ) {
     if (object != OBJID_WINDOW || window == nullptr || listening == nullptr) return;
-    // A destroyed window answers no question about itself, and one made a
-    // child is no longer top-level: the tracker forgets it if it had it.
     if (event != EVENT_OBJECT_DESTROY && event != EVENT_OBJECT_PARENTCHANGE && !WindowReader::top_level(window)) {
         return;
     }
@@ -105,7 +89,7 @@ HWND root_owner_of(HWND window) {
     return root != nullptr ? root : window;
 }
 
-}  // namespace
+}
 
 struct WindowWatch::Parts {
     explicit Parts(WindowWatch& watch)
@@ -122,8 +106,6 @@ struct WindowWatch::Parts {
     ZOrderReport zorder;
     MoveSizeReport movesize;
     std::vector<Event> serving;
-    // Moved windows to read again, and when; ``again`` for the first look,
-    // which is followed by a late one.
     struct Settling {
         void* window = nullptr;
         Clock::time_point due;
@@ -170,7 +152,6 @@ void WindowWatch::run() {
     ::PeekMessageW(&message, nullptr, WM_USER, WM_USER, PM_NOREMOVE);
     listening = this;
     {
-        // Hooked before the first look, so nothing shown in between is missed.
         const Hooks hooks;
         Parts parts{*this};
         say_work_area();
@@ -221,8 +202,6 @@ void WindowWatch::serve(Parts& parts) {
     }
 }
 
-// The hook's events arrive as this thread's messages and are queued by the
-// hook as they are dispatched.
 void WindowWatch::pump() {
     MSG message;
     while (::PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE) != FALSE) {
@@ -326,9 +305,6 @@ void WindowWatch::carry_out(Parts& parts, const Request& request) {
     }
 }
 
-// Not enabled names the window the host's focus left: the marker takes the
-// foreground only while that window still has it, so a deactivation that
-// trails a press in another mirror does not undo the press.
 void WindowWatch::activate(Parts& parts, const Activate& request) {
     const auto window = static_cast<HWND>(directory_.handle_of(request.window));
     if (window == nullptr) {
@@ -361,4 +337,4 @@ void WindowWatch::say_work_area() {
     outbox_.send(monitor.take());
 }
 
-}  // namespace rwin::guest
+}

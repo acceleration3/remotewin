@@ -5,10 +5,7 @@
 namespace rwin::integration {
 
 namespace {
-
-// Where Windows parks a minimised window, and the size it gives it there.
 constexpr Rect kMinimizedFrame{-32000, -32000, 160, 28};
-// WS_OVERLAPPEDWINDOW: caption, system menu, sizing border, both boxes.
 constexpr std::uint32_t kOverlappedWindow = 0x00CF0000;
 constexpr std::uint32_t kAppWindow = 0x00040000;
 
@@ -16,7 +13,7 @@ std::int32_t kept_in(std::int32_t at, std::int32_t room_from, std::uint32_t room
     return std::clamp(at, room_from, room_from + static_cast<std::int32_t>(room_size - std::min(size, room_size)));
 }
 
-}  // namespace
+}
 
 ModelWindow::ModelWindow(Shape shape) : shape_(std::move(shape)), frame_(shape_.frame), normal_(shape_.frame) {}
 
@@ -101,4 +98,4 @@ WindowFields ModelWindow::fields() const {
     return fields;
 }
 
-}  // namespace rwin::integration
+}

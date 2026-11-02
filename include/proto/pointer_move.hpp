@@ -10,8 +10,6 @@ namespace rwin {
 class MessageReader;
 class MessageWriter;
 
-// The pointer over a mirror, at a point of its window's picture (or the
-// monitor's).
 struct PointerMove {
     WindowId window;
     std::int32_t x = 0;
@@ -23,4 +21,4 @@ struct PointerMove {
     [[nodiscard]] static std::optional<PointerMove> read(MessageReader& in);
 };
 
-}  // namespace rwin
+}

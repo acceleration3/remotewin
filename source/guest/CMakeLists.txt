@@ -50,12 +50,8 @@ add_executable(remotewin-guest
 target_link_libraries(remotewin-guest PRIVATE
     rwin::proto rwin::logging ws2_32 gdi32 user32 dwmapi d3d11 dxgi runtimeobject ole32 avrt advapi32 shlwapi)
 
-# Statically linked: this drops onto a stock Windows install with no
-# runtime to ship beside it.
 target_link_options(remotewin-guest PRIVATE -static -static-libgcc -static-libstdc++)
 
-# How steadily WGC hands over the monitor (bench/wgc_bench.cpp), through the
-# same capture the mirror runs. Built on request, not with the guest half.
 add_executable(remotewin-wgcbench EXCLUDE_FROM_ALL
     bench/wgc_bench.cpp
     capture/capture_clock.cpp

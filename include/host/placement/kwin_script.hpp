@@ -11,11 +11,6 @@ namespace rwin::host {
 
 class BusConnection;
 
-// A script run inside KWin, through its scripting interface on the session
-// bus (org.kde.KWin /Scripting): loaded from a file under a name of its
-// own, run, and unloaded when this goes - along with every signal it
-// connected to inside KWin. Asked without waiting: ``done`` says whether
-// KWin ran it.
 class KWinScript {
 public:
     using Done = std::function<void(bool ran, const std::string& error)>;
@@ -30,8 +25,6 @@ public:
 
     [[nodiscard]] bool running() const noexcept { return running_; }
 
-    // KWin's scripting is on the session bus: this desktop is KWin's. Asks
-    // the bus, and waits for its answer.
     [[nodiscard]] static bool reachable(BusConnection& bus);
 
 private:
@@ -41,7 +34,6 @@ private:
 
     BusConnection& bus_;
     std::string name_;
-    // KWin reads the file when the script runs, not when it is loaded.
     std::string file_;
     Done done_;
     sd_bus_slot* call_ = nullptr;
@@ -49,4 +41,4 @@ private:
     bool running_ = false;
 };
 
-}  // namespace rwin::host
+}

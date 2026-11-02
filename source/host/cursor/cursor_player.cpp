@@ -40,4 +40,4 @@ void CursorPlayer::step_to(std::size_t step) {
     if (shown != nullptr) worn(shown, step);
 }
 
-}  // namespace rwin::host
+}

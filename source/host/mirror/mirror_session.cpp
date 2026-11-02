@@ -25,19 +25,12 @@
 namespace rwin::host {
 
 namespace {
-
-// How long an application with no windows is waited on before it is done:
-// a launcher stub giving way to the program it started, an application
-// between closing one window and opening the next - Steam's updater giving
-// way to its sign-in - has none for a moment, and is not done.
 constexpr std::chrono::milliseconds kEmptyGrace{5000};
 
-// What a change to these fields can change: whose a window is, whether it
-// is shown, and what it is to this desktop.
 constexpr std::uint32_t kBelongingFields = WindowFields::kOwner | WindowFields::kAppId | WindowFields::kPopup
                                            | WindowFields::kShow | WindowFields::kStyle | WindowFields::kZGlue;
 
-}  // namespace
+}
 
 MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string app_id, std::string token)
     : loop_(parts.loop), link_(parts.link), frames_(parts.frames), scope_(std::move(scope)),
@@ -52,8 +45,6 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
       })),
       rearrange_(parts.loop.timer([this] { arrange(); })) {
     placement_.prefer_output(parts.output);
-    // Windows moves a window it drags only at the end of the drag without
-    // this, drawing an outline on a desktop nobody sees.
     link_.connected.connect([this] { link_.send_sys_param(SysParam{SysParam::Param::DragFullWindows, {}, true}); });
     link_.sync_began.connect([this] { syncing_ = true; });
     link_.sync_ended.connect([this] {
@@ -117,8 +108,6 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
 }
 
 MirrorSession::~MirrorSession() {
-    // Parts before what they are parts of, popups before what they open
-    // from: a parent never goes while something is placed against it.
     while (!mirrors_.empty()) {
         const auto leaf = std::find_if(mirrors_.begin(), mirrors_.end(), [this](const auto& entry) {
             return std::none_of(mirrors_.begin(), mirrors_.end(),
@@ -153,7 +142,6 @@ void MirrorSession::window_changed(WindowId window, std::uint32_t mask) {
     } else if ((mask & WindowFields::kGeometry) != 0) {
         arrange();
     }
-    // The window may have moved, which moves the clip within it.
     if (grab_.window == window) follow_grab(grab_);
 }
 
@@ -203,7 +191,6 @@ void MirrorSession::claim_applications() {
     }
 }
 
-// Done once it has had a window and has had none for a while.
 void MirrorSession::count_windows(std::size_t belonging) {
     if (belonging != 0) {
         had_windows_ = true;
@@ -245,8 +232,6 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
             mirror.activate(std::exchange(token_, std::string()));
             return;
         }
-        // The guest made it active before it had a surface here: a dialog
-        // Windows activates as it opens is followed once it is on screen.
         if (windows().order().active == mirror.window()) focus_.follow(windows().order(), &mirror);
     });
     if (const auto icon = icons_.find(window.id()); icon != icons_.end()) mirror.set_icon(icon->second);
@@ -258,8 +243,6 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
     return mirror;
 }
 
-// What is placed against a window going stands on its own until the
-// arranging that follows says otherwise.
 void MirrorSession::close(WindowId window) {
     const auto found = mirrors_.find(window);
     if (found == mirrors_.end()) return;
@@ -272,9 +255,6 @@ void MirrorSession::close(WindowId window) {
     for (const auto& other : releasing_) {
         if (other->parent() == mirror.get()) other->orphan();
     }
-    // Photoshop hides a panel the moment it is picked up. The surface the
-    // press landed on has to outlive the panel, or the compositor delivers
-    // the rest of the drag to nobody.
     if (mirror->holds_press()) {
         RWIN_DEBUG("input", "{} gone in the guest but holding a press; staying until release", window);
         releasing_.push_back(std::move(mirror));
@@ -285,10 +265,6 @@ void MirrorSession::release_closed() {
     std::erase_if(releasing_, [](const std::unique_ptr<WindowMirror>& mirror) { return !mirror->holds_press(); });
 }
 
-// What the guest hid, or has not given a size yet, goes before anything is
-// shown: a menu bar's next menu
-// opens while the last one closes, and a grabbing popup made while another
-// chain still grabs is one the compositor refuses (not_the_topmost_popup).
 void MirrorSession::arrange() {
     for (const GuestWindow* window : windows().stacked()) {
         if (window->showable()) continue;
@@ -302,9 +278,6 @@ void MirrorSession::arrange() {
     }
 }
 
-// What a window is placed against is arranged first, so a popup always has
-// the surface it opens from; a chain that loops back on itself, which
-// Windows does not make but a wire can, ends as a toplevel.
 void MirrorSession::arrange_one(const GuestWindow& window, std::vector<WindowId>& arranging) {
     WindowMirror* mirror = find(window.id());
     if (mirror == nullptr) return;
@@ -353,10 +326,6 @@ void MirrorSession::raise(const std::string& token) {
     }
 }
 
-// Windows activates "the enabled popup window owned by" the window clicked
-// (GW_ENABLEDPOPUP): an enabled window it owns, or owns through windows it
-// owns, the topmost of them - a modal dialog's own modal dialog when there
-// is one. Asked as the press on the disabled window, which is the latest.
 void MirrorSession::bring_forward_for(WindowId window) {
     for (const GuestWindow* candidate : windows().stacked()) {
         if (Win32Style{*candidate}.disabled() || !owned_by(*candidate, window)) continue;
@@ -371,7 +340,6 @@ void MirrorSession::bring_forward_for(WindowId window) {
 
 bool MirrorSession::owned_by(const GuestWindow& window, WindowId owner) const {
     WindowId up = window.owner();
-    // A chain no longer than there are windows: one that loops is no chain.
     for (std::size_t steps = 0; !up.none() && steps < windows().size(); ++steps) {
         if (up == owner) return true;
         const GuestWindow* next = windows().find(up);
@@ -411,4 +379,4 @@ void MirrorSession::note_ready() {
     ready();
 }
 
-}  // namespace rwin::host
+}

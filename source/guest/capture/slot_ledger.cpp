@@ -24,4 +24,4 @@ bool SlotLedger::freed(std::uint32_t ring, std::uint32_t slot) noexcept {
     return true;
 }
 
-}  // namespace rwin::guest
+}

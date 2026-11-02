@@ -26,4 +26,4 @@ void HeldKeys::release_all(GuestLink& link, WindowId window) {
     held_.reset();
 }
 
-}  // namespace rwin::host
+}

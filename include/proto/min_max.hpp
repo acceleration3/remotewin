@@ -10,8 +10,6 @@ namespace rwin {
 class MessageReader;
 class MessageWriter;
 
-// What WM_GETMINMAXINFO answers for a window (RAIL's Server Min Max Info),
-// in guest pixels: at admission and at each move or resize start.
 struct MinMax {
     WindowId window;
     std::int32_t max_width = 0;
@@ -29,4 +27,4 @@ struct MinMax {
     [[nodiscard]] static std::optional<MinMax> read(MessageReader& in);
 };
 
-}  // namespace rwin
+}

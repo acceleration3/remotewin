@@ -8,9 +8,6 @@ namespace {
 constexpr std::int64_t kNanosecondsPerSecond = 1'000'000'000;
 }
 
-// Not std::chrono::steady_clock, which says nothing of which clock it is:
-// the moments here are compared with the compositor's and the GPU device's,
-// which are CLOCK_MONOTONIC by name.
 std::int64_t now_ns() noexcept {
     timespec now{};
     ::clock_gettime(CLOCK_MONOTONIC, &now);
@@ -43,4 +40,4 @@ const char* to_string(FrameStamps::Stage stage) noexcept {
     return "?";
 }
 
-}  // namespace rwin::host
+}

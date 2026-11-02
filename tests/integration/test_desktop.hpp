@@ -19,22 +19,13 @@
 #include <string>
 
 namespace rwin::integration {
-
-// Everything one case runs against: a headless KWin of its own (virtual
-// backend, its D-Bus scripting on this process's private session bus), its
-// pointer, the remotewin host under test as a client of it, and a played
-// guest with one window dialled in to that host.
 class TestDesktop {
 public:
     struct Layout {
-        // The output, in logical units, and its scale: the guest's screen is
-        // as many device pixels.
         int width = 1600;
         int height = 1000;
         double scale = 1.2;
         FakeGuest::Timing timing;
-        // A GPU device's export socket is played, and the host takes the
-        // guest's pictures on the GPU where it can.
         bool gpu_frames = false;
     };
 
@@ -46,7 +37,6 @@ public:
     TestDesktop(TestDesktop&&) = delete;
     TestDesktop& operator=(TestDesktop&&) = delete;
 
-    // Started, and the guest's window mapped where the guest has it.
     [[nodiscard]] bool ready() const noexcept { return ready_; }
 
     [[nodiscard]] host::PollLoop& loop() noexcept { return loop_; }
@@ -56,22 +46,15 @@ public:
     [[nodiscard]] KWinView& kwin() noexcept { return *kwin_; }
     [[nodiscard]] HostReport& host_report() noexcept { return *report_; }
     [[nodiscard]] ScreenCapture& screen() noexcept { return *screen_; }
-    // The played GPU device's surfaces are dma-bufs the compositor shows.
     [[nodiscard]] bool gpu_frames_shown() const noexcept { return device_ != nullptr && device_->showable(); }
     [[nodiscard]] double scale() const noexcept { return layout_.scale; }
     [[nodiscard]] const std::string& host_log() const noexcept { return host_log_; }
 
-    // Guest pixels as this desktop's logical units: the host shows a guest
-    // pixel as a device pixel.
     [[nodiscard]] double logical(std::int32_t pixels) const noexcept { return pixels / layout_.scale; }
 
-    // Runs the loop until ``condition`` has held for ``hold`` without a
-    // break, or ``timeout`` passed. How long it took to first hold, or
-    // nothing on the timeout.
     [[nodiscard]] std::optional<std::chrono::milliseconds> settle(const std::function<bool()>& condition,
                                                                   std::chrono::milliseconds timeout,
                                                                   std::chrono::milliseconds hold);
-    // Runs the loop for this long.
     void pass(std::chrono::milliseconds time);
 
 private:
@@ -100,4 +83,4 @@ private:
     bool ready_ = false;
 };
 
-}  // namespace rwin::integration
+}

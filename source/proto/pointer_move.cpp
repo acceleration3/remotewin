@@ -21,4 +21,4 @@ std::optional<PointerMove> PointerMove::read(MessageReader& in) {
     return move;
 }
 
-}  // namespace rwin
+}

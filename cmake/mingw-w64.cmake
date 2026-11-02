@@ -1,6 +1,3 @@
-# Cross-build the guest half from Linux.
-#
-#   cmake -S . -B build-guest -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR x86_64)
 

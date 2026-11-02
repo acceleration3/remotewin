@@ -25,4 +25,4 @@ void CursorAnimation::advance() {
     stepped(step_);
 }
 
-}  // namespace rwin::host
+}

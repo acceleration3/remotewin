@@ -1,11 +1,6 @@
 #pragma once
 
 namespace rwin::guest {
-
-// The calling thread, for as long as this lives, scheduled by the
-// Multimedia Class Scheduler Service as one that has to keep time: it runs
-// ahead of ordinary threads when it wakes, so a frame or a key waits on
-// nothing else in the guest.
 class MultimediaThread {
 public:
     MultimediaThread();
@@ -20,4 +15,4 @@ private:
     void* registration_ = nullptr;
 };
 
-}  // namespace rwin::guest
+}

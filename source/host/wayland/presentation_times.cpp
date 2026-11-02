@@ -10,11 +10,9 @@ namespace rwin::host {
 namespace {
 
 constexpr std::int64_t kNanosecondsPerSecond = 1'000'000'000;
-// An answer never comes for a surface that is never committed again; past
-// this many waiting, the oldest is given up on rather than kept for good.
 constexpr std::size_t kMostAsked = 16;
 
-}  // namespace
+}
 
 PresentationTimes::PresentationTimes(wp_presentation* presentation,
                                      std::function<void(const FrameStamps&)> presented)
@@ -38,13 +36,13 @@ void PresentationTimes::ask(wl_surface* surface, const FrameStamps& stamps) {
     asked_.push_back(Asked{feedback, stamps});
 }
 
-void PresentationTimes::on_sync_output(void* /*self*/, struct wp_presentation_feedback* /*feedback*/,
-                                       wl_output* /*output*/) {}
+void PresentationTimes::on_sync_output(void* , struct wp_presentation_feedback* ,
+                                       wl_output* ) {}
 
 void PresentationTimes::on_presented(void* self, struct wp_presentation_feedback* feedback, std::uint32_t seconds_high,
                                      std::uint32_t seconds_low, std::uint32_t nanoseconds, std::uint32_t refresh,
-                                     std::uint32_t /*sequence_high*/, std::uint32_t /*sequence_low*/,
-                                     std::uint32_t /*flags*/) {
+                                     std::uint32_t , std::uint32_t ,
+                                     std::uint32_t ) {
     auto* times = static_cast<PresentationTimes*>(self);
     FrameStamps stamps = times->answered(feedback);
     const auto seconds = static_cast<std::int64_t>((static_cast<std::uint64_t>(seconds_high) << 32) | seconds_low);
@@ -69,4 +67,4 @@ FrameStamps PresentationTimes::answered(struct wp_presentation_feedback* feedbac
     return stamps;
 }
 
-}  // namespace rwin::host
+}

@@ -10,9 +10,6 @@
 namespace rwin::guest {
 
 namespace {
-
-// Absolute mouse input is expressed over a 0..65535 grid spanning the
-// screen, not in pixels.
 constexpr long long kAbsoluteRange = 65535;
 
 void move_cursor(std::int32_t screen_x, std::int32_t screen_y) {
@@ -30,8 +27,6 @@ void move_cursor(std::int32_t screen_x, std::int32_t screen_y) {
     ::SendInput(1, &input, sizeof(input));
 }
 
-// No MOVE flag: the button acts wherever the cursor already is, which the
-// move before it just settled.
 void send_button(PointerButton::Button button, bool pressed) {
     INPUT input{};
     input.type = INPUT_MOUSE;
@@ -54,7 +49,7 @@ void send_button(PointerButton::Button button, bool pressed) {
     ::SendInput(1, &input, sizeof(input));
 }
 
-}  // namespace
+}
 
 std::optional<std::pair<std::int32_t, std::int32_t>> move_pointer_to(const WindowSurface& surface, std::int32_t x,
                                                                      std::int32_t y) {
@@ -119,12 +114,6 @@ void turn_wheel_in_place(std::int32_t dx, std::int32_t dy) {
     RWIN_TRACE("input", "wheel {},{}", dx, dy);
 }
 
-// Without MOUSEEVENTF_MOVE_NOCOALESCE, deliberately: raw input gets every
-// move apart either way, and coalescing only merges WM_MOUSEMOVEs still
-// queued. A game that puts its cursor back on each WM_MOUSEMOVE reads each
-// one against the point it put it at; a second message queued before that
-// carries a position taken before the put, and would count the first move
-// twice. Merged, the moves are counted once, as with a real mouse.
 void nudge_pointer(std::int32_t dx, std::int32_t dy) {
     INPUT input{};
     input.type = INPUT_MOUSE;
@@ -136,4 +125,4 @@ void nudge_pointer(std::int32_t dx, std::int32_t dy) {
     }
 }
 
-}  // namespace rwin::guest
+}

@@ -16,8 +16,6 @@
 namespace rwin::probe {
 
 namespace {
-
-// SendInput's absolute coordinates span the primary screen as 0..65535.
 constexpr long long kAbsoluteRange = 65535;
 constexpr USHORT kGenericDesktop = 1;
 constexpr USHORT kMouseUsage = 2;
@@ -45,11 +43,10 @@ INPUT absolute_move(POINT at) {
     return input;
 }
 
-}  // namespace
+}
 
 PointerActions::PointerActions(ProbeWindows& windows, const ProbeCursors& cursors)
     : windows_(windows), cursors_(cursors) {
-    // Up and straight back down: the cursor is shown, so this never hides it.
     static_cast<void>(::ShowCursor(TRUE));
     display_count_ = ::ShowCursor(FALSE);
     resting_count_ = display_count_;
@@ -94,7 +91,6 @@ bool PointerActions::perform(const ProbeAction& action, std::string& failure) {
         case Kind::PointerPrecision:
             return set_precision(action.on, failure);
         case Kind::ActivateShell:
-            // Whether Windows let it is what the truth shows next.
             RWIN_INFO("action", "SetForegroundWindow(taskbar): {}",
                       ::SetForegroundWindow(::FindWindowW(L"Shell_TrayWnd", nullptr)) != FALSE);
             return true;
@@ -126,9 +122,6 @@ bool PointerActions::answer_cursor(const ProbeAction& action, std::string& failu
         return false;
     }
     window->answer_cursor_with(*cursor);
-    // And now, as an application changing its cursor does: Windows shows it
-    // at once while the pointer is over one of the thread's windows, rather
-    // than at the next move.
     POINT at{};
     ::GetCursorPos(&at);
     if (::GetAncestor(::WindowFromPoint(at), GA_ROOT) == as_window(action.window)) ::SetCursor(*cursor);
@@ -140,8 +133,6 @@ void PointerActions::show_cursor(bool show) {
     RWIN_INFO("action", "ShowCursor({}): the count is {}", show, display_count_);
 }
 
-// Without SPIF_UPDATEINIFILE: for this session, never written to the
-// user's profile, and put back by reset.
 bool PointerActions::set_precision(bool on, std::string& failure) {
     std::array<int, 3> now{};
     if (::SystemParametersInfoW(SPI_GETMOUSE, 0, now.data(), 0) == FALSE) {
@@ -149,7 +140,6 @@ bool PointerActions::set_precision(bool on, std::string& failure) {
         return false;
     }
     if (!ballistics_.has_value()) ballistics_ = now;
-    // Windows' own defaults for the two thresholds when acceleration is on.
     std::array<int, 3> wanted{on ? 6 : 0, on ? 10 : 0, on ? 1 : 0};
     if (::SystemParametersInfoW(SPI_SETMOUSE, 0, wanted.data(), SPIF_SENDCHANGE) != FALSE) return true;
     failure = std::format("SPI_SETMOUSE failed: error {}", ::GetLastError());
@@ -193,8 +183,6 @@ std::uint32_t PointerActions::put_back() const {
     return window == nullptr ? 0 : window->put_back();
 }
 
-// Through the input queue, as a mouse moves it: Windows hit-tests it, asks
-// for the cursor, and clips it.
 void PointerActions::move_pointer(const ProbeAction& action) {
     INPUT move = absolute_move(on_screen(action));
     const UINT sent = ::SendInput(1, &move, sizeof(INPUT));
@@ -202,8 +190,6 @@ void PointerActions::move_pointer(const ProbeAction& action) {
               action.window, sent);
 }
 
-// Through the input queue, so Windows hit-tests it and decides who gets
-// it - a disabled window, a modal dialog's owner - as for a real mouse.
 void PointerActions::click(const ProbeAction& action) {
     const POINT at = on_screen(action);
     std::array<INPUT, 3> inputs{};
@@ -241,4 +227,4 @@ void PointerActions::reset() {
     }
 }
 
-}  // namespace rwin::probe
+}

@@ -15,7 +15,7 @@ double milliseconds(std::int64_t nanoseconds) {
     return static_cast<double>(nanoseconds) * kMillisecondsPerNanosecond;
 }
 
-}  // namespace
+}
 
 std::optional<LatencyMeter::Spread> LatencyMeter::Durations::spread(
     std::array<std::int64_t, kFrames>& scratch) const {
@@ -36,8 +36,6 @@ std::optional<LatencyMeter::Spread> LatencyMeter::Durations::spread(
     return spread;
 }
 
-// A stage a frame was not seen at is skipped over: the time to the next is
-// from the one before it that was seen.
 void LatencyMeter::take(const FrameStamps& frame) noexcept {
     std::int64_t first = 0;
     std::int64_t last = 0;
@@ -83,4 +81,4 @@ void LatencyMeter::restart() noexcept {
     frames_ = 0;
 }
 
-}  // namespace rwin::host
+}

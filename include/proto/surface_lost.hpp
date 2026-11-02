@@ -10,10 +10,6 @@ namespace rwin {
 class MessageReader;
 class MessageWriter;
 
-// A window's frames stopped: its capture failed or could not open. The
-// window is still there - that is WindowGone's to say - and its frames
-// come again once it can be captured, without being asked. For the
-// monitor (kMonitorWindow) there is nothing to come back to.
 struct SurfaceLost {
     enum class Reason : std::uint8_t { CaptureFailed = 0 };
 
@@ -26,4 +22,4 @@ struct SurfaceLost {
     [[nodiscard]] static std::optional<SurfaceLost> read(MessageReader& in);
 };
 
-}  // namespace rwin
+}

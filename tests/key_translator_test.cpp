@@ -25,8 +25,6 @@ using rwin::host::windows_scan_code;
 
 constexpr rwin::WindowId kWindow{0x500c4, 1};
 
-// Every key a PC keyboard has where Windows' set 1 puts it; spot checks
-// of each part of the table, by the key's name on both sides.
 void the_scan_code_table() {
     check(windows_scan_code(KEY_ESC) == 0x01, "Escape is 01");
     check(windows_scan_code(KEY_A) == 0x1E && windows_scan_code(KEY_Z) == 0x2C, "letters");
@@ -93,7 +91,7 @@ void a_key_without_a_scan_code_is_its_name_or_its_text() {
     check(!stroke_for(pressed(KEY_RESERVED, 0, 0), kWindow).has_value(), "a key with neither is nothing to send");
 }
 
-}  // namespace
+}
 
 int main() {
     the_scan_code_table();

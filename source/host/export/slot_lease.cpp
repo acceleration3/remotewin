@@ -8,4 +8,4 @@ SlotLease::~SlotLease() {
     link_.send_slot_free(slot_);
 }
 
-}  // namespace rwin::host
+}

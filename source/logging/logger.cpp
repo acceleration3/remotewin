@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <functional>
 #include <cstdlib>
 #include <mutex>
@@ -35,14 +36,28 @@ LogLevel level_from_environment() {
     return LogLevel::Info;
 }
 
-// One writer at a time, or two threads interleave halfway through a line
-// and the log stops being readable exactly when it is most needed.
+std::string wall_clock() {
+    const auto now = std::chrono::system_clock::now();
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now.time_since_epoch()).count();
+    const std::time_t seconds = static_cast<std::time_t>(ms / 1000);
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &seconds);
+#else
+    localtime_r(&seconds, &local);
+#endif
+    char text[24];
+    std::strftime(text, sizeof text, "%Y-%m-%d %H:%M:%S", &local);
+    return std::format("{}.{:03d}", text, static_cast<int>(ms % 1000));
+}
+
 std::mutex& writing() {
     static std::mutex mutex;
     return mutex;
 }
 
-}  // namespace
+}
 
 Logger::Logger() : ceiling_(level_from_environment()) {}
 
@@ -57,8 +72,8 @@ void Logger::write(LogLevel level, std::string_view tag, std::string_view messag
                              .count();
     const std::size_t thread =
         std::hash<std::thread::id>{}(std::this_thread::get_id()) & 0xFFFF;
-    const std::string line = std::format("[{:12.6f}] {} {:<8.8} {:04x} | {}\n", elapsed,
-                                         name_of(level), tag, thread, message);
+    const std::string line = std::format("{} [{:12.6f}] {} {:<8.8} {:04x} | {}\n", wall_clock(),
+                                         elapsed, name_of(level), tag, thread, message);
 
     const std::lock_guard lock{writing()};
     std::fwrite(line.data(), 1, line.size(), stderr);
@@ -71,4 +86,4 @@ void Logger::opened(std::string_view program) {
                       program, name_of(ceiling_)));
 }
 
-}  // namespace rwin
+}

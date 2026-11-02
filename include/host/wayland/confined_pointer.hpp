@@ -11,13 +11,8 @@ struct zwp_confined_pointer_v1;
 struct zwp_pointer_constraints_v1;
 
 namespace rwin::host {
-
-// The pointer kept within a region of one surface
-// (zwp_pointer_constraints_v1 confine_pointer), for as long as this lives:
-// ClipCursor, on this side. Asked once (oneshot), like LockedPointer.
 class ConfinedPointer {
 public:
-    // ``area`` in the surface's logical units.
     ConfinedPointer(wl_compositor* compositor, zwp_pointer_constraints_v1* constraints, wl_surface* surface,
                     wl_pointer* pointer, const Box& area);
 
@@ -43,4 +38,4 @@ private:
     bool over_ = false;
 };
 
-}  // namespace rwin::host
+}

@@ -68,8 +68,8 @@ in this mode.
 
 Under accel-virt's GPU (virtio-gpu-av), a window's frames need not cross
 as pixels at all. `remotewin --export-socket <path>` (or
-`$RWIN_EXPORT_SOCKET`) connects to the device's export socket
-(accel-virt's `docs/external-export.md`); when it answers and its GPU is
+`$RWIN_EXPORT_SOCKET`) connects to the device's export socket;
+when it answers and its GPU is
 the one the compositor composes on (the main device of its
 `zwp_linux_dmabuf_v1` feedback, by PCI address), the guest is told so at
 its hello (`FrameRoute`). Then, per window and
@@ -118,13 +118,8 @@ alone (`WindowPixels`), and a reset GPU device has every ring made afresh.
 
 Each end's first message is a `Hello` (`proto/hello.hpp`) naming its build
 and the features it speaks; a feature is active at the lower version when
-both list it, and every message belongs to one (docs/rail-model.md §4,
-§7). A peer that does not speak `windows` is refused: the host logs what
-it lacks and exits with status 3, a guest half logs it and ends.
-
-How closely the two halves keep RAIL's rules - MS-RDPERP's and those of
-Windows' own RAIL server - is reviewed rule by rule in
-docs/rail-conformance.md.
+both list it, and every message belongs to one. A peer that does not speak `windows` is refused: the host
+logs what it lacks and exits with status 3, a guest half logs it and ends.
 
 ## Building
 
