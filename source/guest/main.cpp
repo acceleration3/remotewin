@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
                      nullptr, 10));
 
     if (const char* log = std::getenv("RWIN_LOG_FILE"); log != nullptr && *log != '\0') {
-        if (std::freopen(log, "w", stderr) == nullptr) return EXIT_FAILURE;
+        if (std::freopen(log, "a", stderr) == nullptr) return EXIT_FAILURE;
     }
     rwin::Logger::instance().opened("remotewin-guest");
     RWIN_INFO("boot", "host={} port={} fps={}", host, port, fps);
