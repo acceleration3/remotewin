@@ -20,6 +20,13 @@ add_executable(remotewin-guest
     cursor/cursor_watcher.cpp
     cursor/monochrome_picture.cpp
     cursor/sent_cursors.cpp
+    input/input_batch.cpp
+    input/input_desktop.cpp
+    input/input_injector.cpp
+    input/input_pipe_name.cpp
+    input/input_port.cpp
+    input/input_relay.cpp
+    input/input_relay_client.cpp
     input/key_input.cpp
     input/pointer_grab_watcher.cpp
     input/input_target.cpp
@@ -30,6 +37,7 @@ add_executable(remotewin-guest
     session/tcp_client.cpp
     windows/app_id_resolver.cpp
     windows/desktop_settings.cpp
+    windows/kernel_handle.cpp
     windows/marker_window.cpp
     windows/min_max_reader.cpp
     windows/move_size_report.cpp

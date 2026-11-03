@@ -1,5 +1,7 @@
 #include "guest/input/pointer_input.hpp"
 
+#include "guest/input/input_batch.hpp"
+#include "guest/input/input_port.hpp"
 #include "guest/windows/window_surface.hpp"
 #include "logging/logger.hpp"
 
@@ -12,41 +14,55 @@ namespace rwin::guest {
 namespace {
 constexpr long long kAbsoluteRange = 65535;
 
-void move_cursor(std::int32_t screen_x, std::int32_t screen_y) {
+void add_move(InputBatch& batch, std::int32_t screen_x, std::int32_t screen_y) {
     const int width = ::GetSystemMetrics(SM_CXSCREEN);
     const int height = ::GetSystemMetrics(SM_CYSCREEN);
     if (width <= 1 || height <= 1) {
         ::SetCursorPos(screen_x, screen_y);
         return;
     }
-    INPUT input{};
-    input.type = INPUT_MOUSE;
-    input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
-    input.mi.dx = static_cast<LONG>(screen_x * kAbsoluteRange / (width - 1));
-    input.mi.dy = static_cast<LONG>(screen_y * kAbsoluteRange / (height - 1));
-    ::SendInput(1, &input, sizeof(input));
+    batch.add_mouse(static_cast<LONG>(screen_x * kAbsoluteRange / (width - 1)),
+                    static_cast<LONG>(screen_y * kAbsoluteRange / (height - 1)), 0,
+                    MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE);
 }
 
-void send_button(PointerButton::Button button, bool pressed) {
-    INPUT input{};
-    input.type = INPUT_MOUSE;
+void move_cursor(std::int32_t screen_x, std::int32_t screen_y) {
+    InputBatch batch;
+    add_move(batch, screen_x, screen_y);
+    if (!batch.empty()) InputPort::shared().send(batch);
+}
+
+void add_button(InputBatch& batch, PointerButton::Button button, bool pressed) {
+    DWORD flags = 0;
+    DWORD data = 0;
     switch (button) {
         case PointerButton::Button::Left:
-            input.mi.dwFlags = pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+            flags = pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
             break;
         case PointerButton::Button::Middle:
-            input.mi.dwFlags = pressed ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP;
+            flags = pressed ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP;
             break;
         case PointerButton::Button::Right:
-            input.mi.dwFlags = pressed ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
+            flags = pressed ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
             break;
         case PointerButton::Button::Back:
         case PointerButton::Button::Forward:
-            input.mi.dwFlags = pressed ? MOUSEEVENTF_XDOWN : MOUSEEVENTF_XUP;
-            input.mi.mouseData = button == PointerButton::Button::Back ? XBUTTON1 : XBUTTON2;
+            flags = pressed ? MOUSEEVENTF_XDOWN : MOUSEEVENTF_XUP;
+            data = button == PointerButton::Button::Back ? XBUTTON1 : XBUTTON2;
             break;
     }
-    ::SendInput(1, &input, sizeof(input));
+    batch.add_mouse(0, 0, data, flags);
+}
+
+void send_button(PointerButton::Button button, bool pressed) {
+    InputBatch batch;
+    add_button(batch, button, pressed);
+    InputPort::shared().send(batch);
+}
+
+void add_wheel(InputBatch& batch, std::int32_t dx, std::int32_t dy) {
+    if (dy != 0) batch.add_mouse(0, 0, static_cast<DWORD>(dy), MOUSEEVENTF_WHEEL);
+    if (dx != 0) batch.add_mouse(0, 0, static_cast<DWORD>(dx), MOUSEEVENTF_HWHEEL);
 }
 
 }
@@ -75,8 +91,10 @@ void move_pointer_on_screen(std::int32_t screen_x, std::int32_t screen_y) { move
 
 void press_pointer_on_screen(std::int32_t screen_x, std::int32_t screen_y, PointerButton::Button button,
                              bool pressed) {
-    move_cursor(screen_x, screen_y);
-    send_button(button, pressed);
+    InputBatch batch;
+    add_move(batch, screen_x, screen_y);
+    add_button(batch, button, pressed);
+    InputPort::shared().send(batch);
     RWIN_DEBUG("input", "button {} {} at screen {},{}", static_cast<int>(button), pressed ? "down" : "up", screen_x,
                screen_y);
 }
@@ -87,27 +105,19 @@ void turn_wheel(const WindowSurface& surface, std::int32_t x, std::int32_t y, st
 }
 
 void turn_wheel_on_screen(std::int32_t screen_x, std::int32_t screen_y, std::int32_t dx, std::int32_t dy) {
-    move_cursor(screen_x, screen_y);
-    turn_wheel_in_place(dx, dy);
+    InputBatch batch;
+    add_move(batch, screen_x, screen_y);
+    add_wheel(batch, dx, dy);
+    if (!batch.empty()) InputPort::shared().send(batch);
+    RWIN_TRACE("input", "wheel {},{} at screen {},{}", dx, dy, screen_x, screen_y);
 }
 
 void turn_wheel_in_place(std::int32_t dx, std::int32_t dy) {
-    INPUT inputs[2] = {};
-    UINT count = 0;
-    if (dy != 0) {
-        inputs[count].type = INPUT_MOUSE;
-        inputs[count].mi.dwFlags = MOUSEEVENTF_WHEEL;
-        inputs[count].mi.mouseData = static_cast<DWORD>(dy);
-        ++count;
-    }
-    if (dx != 0) {
-        inputs[count].type = INPUT_MOUSE;
-        inputs[count].mi.dwFlags = MOUSEEVENTF_HWHEEL;
-        inputs[count].mi.mouseData = static_cast<DWORD>(dx);
-        ++count;
-    }
-    if (count == 0) return;
-    if (::SendInput(count, inputs, sizeof(INPUT)) != count) {
+    InputBatch batch;
+    add_wheel(batch, dx, dy);
+    if (batch.empty()) return;
+    const std::size_t wanted = batch.records().size();
+    if (InputPort::shared().send(batch) != wanted) {
         RWIN_WARN("input", "wheel {},{} was not injected (error {})", dx, dy, ::GetLastError());
         return;
     }
@@ -115,12 +125,9 @@ void turn_wheel_in_place(std::int32_t dx, std::int32_t dy) {
 }
 
 void nudge_pointer(std::int32_t dx, std::int32_t dy) {
-    INPUT input{};
-    input.type = INPUT_MOUSE;
-    input.mi.dwFlags = MOUSEEVENTF_MOVE;
-    input.mi.dx = dx;
-    input.mi.dy = dy;
-    if (::SendInput(1, &input, sizeof(input)) != 1) {
+    InputBatch batch;
+    batch.add_mouse(dx, dy, 0, MOUSEEVENTF_MOVE);
+    if (InputPort::shared().send(batch) != 1) {
         RWIN_WARN("input", "relative move {},{} refused: error {}", dx, dy, ::GetLastError());
     }
 }

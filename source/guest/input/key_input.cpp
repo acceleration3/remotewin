@@ -1,5 +1,7 @@
 #include "guest/input/key_input.hpp"
 
+#include "guest/input/input_batch.hpp"
+#include "guest/input/input_port.hpp"
 #include "logging/logger.hpp"
 #include "proto/key_stroke.hpp"
 
@@ -23,29 +25,24 @@ ScanCode scan_code_of(std::uint32_t virtual_key) {
     return {static_cast<WORD>(mapped & 0xFF), prefix == 0xE0 || prefix == 0xE1};
 }
 
-UINT send(WORD virtual_key, WORD scan, DWORD flags) {
-    INPUT input{};
-    input.type = INPUT_KEYBOARD;
-    input.ki.wVk = virtual_key;
-    input.ki.wScan = scan;
-    input.ki.dwFlags = flags;
-    return ::SendInput(1, &input, sizeof(input));
-}
+UINT send(const InputBatch& batch) { return InputPort::shared().send(batch); }
 
 void type(std::uint32_t character) {
+    InputBatch batch;
     if (character > 0xFFFF) {
         const std::uint32_t offset = character - 0x10000;
         for (const WORD half : {static_cast<WORD>(0xD800 + (offset >> 10)),
                                 static_cast<WORD>(0xDC00 + (offset & 0x3FF))}) {
-            send(0, half, KEYEVENTF_UNICODE);
-            send(0, half, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP);
+            batch.add_key(0, half, KEYEVENTF_UNICODE);
+            batch.add_key(0, half, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP);
         }
+        send(batch);
         return;
     }
     const auto unit = static_cast<WORD>(character);
-    const UINT accepted = send(0, unit, KEYEVENTF_UNICODE)
-                          + send(0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP);
-    RWIN_DEBUG("input", "typed {:#x}: {} of 2 events accepted", character, accepted);
+    batch.add_key(0, unit, KEYEVENTF_UNICODE);
+    batch.add_key(0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP);
+    RWIN_DEBUG("input", "typed {:#x}: {} of 2 events accepted", character, send(batch));
 }
 
 void press_scan_code(std::uint16_t scan_code, bool pressed) {
@@ -53,7 +50,9 @@ void press_scan_code(std::uint16_t scan_code, bool pressed) {
     if ((scan_code & KeyStroke::kExtended) == KeyStroke::kExtended) {
         flags |= KEYEVENTF_EXTENDEDKEY;
     }
-    const UINT accepted = send(0, static_cast<WORD>(scan_code & 0xFF), flags);
+    InputBatch batch;
+    batch.add_key(0, static_cast<WORD>(scan_code & 0xFF), flags);
+    const UINT accepted = send(batch);
     RWIN_DEBUG("input", "scan code {:#06x} {}: {} accepted", scan_code,
                pressed ? "down" : "up", accepted);
 }
@@ -62,7 +61,9 @@ void press_virtual_key(std::uint32_t virtual_key, bool pressed) {
     const ScanCode scan = scan_code_of(virtual_key);
     DWORD flags = pressed ? 0 : KEYEVENTF_KEYUP;
     if (scan.extended) flags |= KEYEVENTF_EXTENDEDKEY;
-    const UINT accepted = send(static_cast<WORD>(virtual_key), scan.value, flags);
+    InputBatch batch;
+    batch.add_key(static_cast<WORD>(virtual_key), scan.value, flags);
+    const UINT accepted = send(batch);
     RWIN_DEBUG("input", "virtual key {:#x} {}: {} accepted", virtual_key,
                pressed ? "down" : "up", accepted);
 }

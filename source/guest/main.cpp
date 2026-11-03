@@ -1,3 +1,4 @@
+#include "guest/input/input_relay.hpp"
 #include "guest/session/guest_session.hpp"
 #include "guest/session/tcp_client.hpp"
 #include "logging/logger.hpp"
@@ -23,6 +24,19 @@ std::string option(int argc, char** argv, const char* name, std::string fallback
     return fallback;
 }
 
+bool flag(int argc, char** argv, const char* name) {
+    for (int i = 1; i < argc; ++i) {
+        if (std::string{argv[i]} == name) return true;
+    }
+    return false;
+}
+
+std::uint32_t own_session() {
+    DWORD session = 0;
+    ::ProcessIdToSessionId(::GetCurrentProcessId(), &session);
+    return session;
+}
+
 }
 
 int main(int argc, char** argv) {
@@ -43,6 +57,12 @@ int main(int argc, char** argv) {
         if (std::freopen(log, "a", stderr) == nullptr) return EXIT_FAILURE;
     }
     rwin::Logger::instance().opened("remotewin-guest");
+    if (flag(argc, argv, "--input-relay")) {
+        const auto session = static_cast<std::uint32_t>(
+            std::strtoul(option(argc, argv, "--session", std::to_string(own_session())).c_str(), nullptr, 10));
+        RWIN_INFO("boot", "input relay for session {}", session);
+        return rwin::guest::InputRelay{session}.run();
+    }
     RWIN_INFO("boot", "host={} port={} fps={}", host, port, fps);
     if (unaware != ERROR_SUCCESS) {
         RWIN_WARN("boot", "cannot declare per-monitor DPI awareness (error {}); window "
