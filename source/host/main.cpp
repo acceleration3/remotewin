@@ -1,5 +1,6 @@
 #include "host/dbus/bus_connection.hpp"
 #include "host/export/shared_frame_feed.hpp"
+#include "host/input/qmp_input.hpp"
 #include "host/link/guest_link.hpp"
 #include "host/link/parent_control.hpp"
 #include "host/loop/poll_loop.hpp"
@@ -63,6 +64,10 @@ Exits with status 3 when the guest half is from another build.
   --output <name>          The host output (Wayland output name, e.g. DP-2)
                            that stands for the guest's monitor; the first
                            output where there is none of that name.
+  --qmp-input <path>       With --desktop: QEMU's input monitor (a QMP unix
+                           socket); the monitor's pointer and keys go through
+                           QEMU's virtual input devices, which the guest takes
+                           for hardware, rather than over the wire.
   --desktop                Mirror the guest's whole primary monitor as one
                            window, rather than an application's windows.
   --title <title>          The title of the --desktop window.
@@ -81,12 +86,13 @@ struct Options {
     rwin::host::MirrorScope::Launch launch;
     std::string app_id;
     std::string output;
+    std::string qmp_input;
     bool desktop = false;
     std::string title = "Guest desktop";
     bool managed = false;
 };
 
-enum Option : int { kPort = 1, kExport, kPid, kPidCreated, kImage, kAumid, kAppId, kOutput, kDesktop, kTitle, kManaged, kHelp, kVersion };
+enum Option : int { kPort = 1, kExport, kPid, kPidCreated, kImage, kAumid, kAppId, kOutput, kQmpInput, kDesktop, kTitle, kManaged, kHelp, kVersion };
 
 template <typename Number>
 bool parse_number(std::string_view text, Number& into) {
@@ -101,6 +107,7 @@ std::optional<Options> parse(int argc, char** argv, int& status) {
         {"image", required_argument, nullptr, kImage},
         {"aumid", required_argument, nullptr, kAumid},   {"app-id", required_argument, nullptr, kAppId},
         {"output", required_argument, nullptr, kOutput},
+        {"qmp-input", required_argument, nullptr, kQmpInput},
         {"desktop", no_argument, nullptr, kDesktop},     {"title", required_argument, nullptr, kTitle},
         {"managed", no_argument, nullptr, kManaged},     {"help", no_argument, nullptr, kHelp},
         {"version", no_argument, nullptr, kVersion},     {nullptr, 0, nullptr, 0},
@@ -141,6 +148,7 @@ std::optional<Options> parse(int argc, char** argv, int& status) {
             case kAumid: options.launch.aumids.emplace_back(value); break;
             case kAppId: options.app_id = value; break;
             case kOutput: options.output = value; break;
+            case kQmpInput: options.qmp_input = value; break;
             case kDesktop: options.desktop = true; break;
             case kTitle: options.title = value; break;
             case kManaged: options.managed = true; break;
@@ -234,8 +242,10 @@ int run(const Options& options) {
     if (options.desktop) {
         RWIN_INFO("boot", "mirroring the guest's monitor as '{}'", options.title);
         Activation activation{globals, seat};
+        std::unique_ptr<QmpInput> qmp_input;
+        if (!options.qmp_input.empty()) qmp_input = std::make_unique<QmpInput>(loop, options.qmp_input);
         MonitorSession session{surfaces, link, frames, activation, options.title, options.app_id,
-                               take_activation_token()};
+                               take_activation_token(), qmp_input.get()};
         if (control) {
             session.ready.connect([&control] { control->report_ready(); });
             control->raise_requested.connect([&session](const std::string& token) { session.raise(token); });

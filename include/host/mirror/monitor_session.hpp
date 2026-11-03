@@ -23,13 +23,14 @@ namespace rwin::host {
 
 class Activation;
 class GuestLink;
+class QmpInput;
 class SharedFrameFeed;
 struct CursorLook;
 
 class MonitorSession final : public SurfaceInput, public ToplevelEvents {
 public:
     MonitorSession(const SurfaceKit& kit, GuestLink& link, SharedFrameFeed& frames, Activation& activation,
-                   const std::string& title, const std::string& app_id, std::string token);
+                   const std::string& title, const std::string& app_id, std::string token, QmpInput* qmp_input);
     ~MonitorSession();
 
     MonitorSession(const MonitorSession&) = delete;
@@ -60,11 +61,13 @@ private:
     void wear_cursor();
     void note_ready();
     [[nodiscard]] std::optional<Point> picture_point(PointF at) const;
+    [[nodiscard]] bool through_qmp() const noexcept;
 
     SurfaceKit kit_;
     GuestLink& link_;
     SharedFrameFeed& frames_;
     Activation& activation_;
+    QmpInput* qmp_input_;
     CursorPlayer cursor_;
     MirrorSurface surface_;
     ToplevelRole toplevel_;

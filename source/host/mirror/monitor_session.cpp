@@ -5,6 +5,7 @@
 #include "host/geometry/view_mapping.hpp"
 #include "host/input/guest_button.hpp"
 #include "host/input/key_translator.hpp"
+#include "host/input/qmp_input.hpp"
 #include "host/link/guest_link.hpp"
 #include "host/wayland/activation.hpp"
 #include "host/wayland/globals.hpp"
@@ -26,8 +27,8 @@ namespace rwin::host {
 
 MonitorSession::MonitorSession(const SurfaceKit& kit, GuestLink& link, SharedFrameFeed& frames,
                                Activation& activation, const std::string& title, const std::string& app_id,
-                               std::string token)
-    : kit_(kit), link_(link), frames_(frames), activation_(activation), cursor_(kit.loop), surface_(kit, *this),
+                               std::string token, QmpInput* qmp_input)
+    : kit_(kit), link_(link), frames_(frames), activation_(activation), qmp_input_(qmp_input), cursor_(kit.loop), surface_(kit, *this),
       toplevel_(kit.globals, surface_, *this, true), token_(std::move(token)) {
     toplevel_.set_title(title);
     if (!app_id.empty()) toplevel_.set_app_id(app_id);
@@ -150,6 +151,8 @@ std::optional<Point> MonitorSession::picture_point(PointF at) const {
     return point;
 }
 
+bool MonitorSession::through_qmp() const noexcept { return qmp_input_ != nullptr && qmp_input_->ready(); }
+
 void MonitorSession::wear_cursor() {
     if (kit_.seat.pointer_focus() != surface_.surface()) return;
     PointerCursor& cursor = kit_.seat.cursor();
@@ -177,12 +180,20 @@ void MonitorSession::pointer_entered(PointF at) {
 
 void MonitorSession::pointer_moved(PointF at) {
     pointer_ = at;
-    if (const std::optional<Point> point = picture_point(at)) link_.send_pointer_move(kMonitorWindow, *point);
+    const std::optional<Point> point = picture_point(at);
+    if (!point.has_value()) return;
+    if (through_qmp()) {
+        const Size picture = surface_.picture_size();
+        qmp_input_->move_to(point->x, point->y, picture.width, picture.height);
+        return;
+    }
+    link_.send_pointer_move(kMonitorWindow, *point);
 }
 
 void MonitorSession::pointer_left() { pointer_.reset(); }
 
 void MonitorSession::button(std::uint32_t code, bool pressed) {
+    if (through_qmp() && qmp_input_->button(code, pressed)) return;
     const std::optional<std::uint8_t> guest = guest_button(code);
     if (!guest.has_value() || !pointer_.has_value()) return;
     if (const std::optional<Point> point = picture_point(*pointer_)) {
@@ -192,6 +203,10 @@ void MonitorSession::button(std::uint32_t code, bool pressed) {
 
 void MonitorSession::wheel(Wheel turned) {
     if (!pointer_.has_value()) return;
+    if (through_qmp()) {
+        qmp_input_->wheel(turned.dx120, turned.dy120);
+        return;
+    }
     if (const std::optional<Point> point = picture_point(*pointer_)) {
         link_.send_pointer_wheel(PointerWheel{kMonitorWindow, point->x, point->y, turned.dx120, -turned.dy120});
     }
@@ -199,9 +214,13 @@ void MonitorSession::wheel(Wheel turned) {
 
 void MonitorSession::keyboard_entered() {}
 
-void MonitorSession::keyboard_left() { held_keys_.release_all(link_, kMonitorWindow); }
+void MonitorSession::keyboard_left() {
+    if (qmp_input_ != nullptr) qmp_input_->release_keys();
+    held_keys_.release_all(link_, kMonitorWindow);
+}
 
 void MonitorSession::key(const KeyPress& press) {
+    if (through_qmp() && qmp_input_->key(press.code, press.pressed)) return;
     const std::optional<KeyStroke> stroke = stroke_for(press, kMonitorWindow);
     if (!stroke.has_value()) return;
     held_keys_.note(*stroke);

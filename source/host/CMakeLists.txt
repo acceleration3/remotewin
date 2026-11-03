@@ -87,6 +87,8 @@ add_library(rwin_host STATIC
     input/held_keys.cpp
     input/key_translator.cpp
     input/pointer_grabber.cpp
+    input/qmp_input.cpp
+    input/qnum_code.cpp
     input/scan_code.cpp
     link/parent_control.cpp
     loop/poll_loop.cpp
