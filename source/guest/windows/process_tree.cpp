@@ -60,7 +60,8 @@ std::optional<ProcessTree::Record> ProcessTree::remembered(std::uint32_t pid, st
     if (known == records_.end()) return std::nullopt;
     std::optional<Record> found;
     for (const Record& record : known->second) {
-        if (record.created <= child_created && record.last_seen >= child_created) found = record;
+        if (record.created <= child_created && (!found.has_value() || record.created > found->created))
+            found = record;
     }
     return found;
 }
@@ -133,8 +134,10 @@ std::optional<ProcessTree::Record> ProcessTree::learn(std::uint32_t pid) {
     }
     std::array<wchar_t, MAX_PATH * 2> path{};
     DWORD length = static_cast<DWORD>(path.size());
-    record.boundary = ::QueryFullProcessImageNameW(process, 0, path.data(), &length) == FALSE
-                      || boundary_.contains(file_name_of(std::wstring_view(path.data(), length)));
+    const bool named = ::QueryFullProcessImageNameW(process, 0, path.data(), &length) != FALSE;
+    DWORD exit_code = 0;
+    const bool ended = !named && ::GetExitCodeProcess(process, &exit_code) != FALSE && exit_code != STILL_ACTIVE;
+    record.boundary = named ? boundary_.contains(file_name_of(std::wstring_view(path.data(), length))) : !ended;
     ::CloseHandle(process);
     if (created == 0) return std::nullopt;
     keep(pid, record);
@@ -165,7 +168,11 @@ std::vector<WindowFields::ProcessRef> ProcessTree::tree_of(std::uint32_t pid) {
     while (tree.size() <= kMostDepth && at->parent != 0) {
         std::optional<Record> parent = remembered(at->parent, at->created);
         if (!parent.has_value() && learn(at->parent).has_value()) parent = remembered(at->parent, at->created);
-        if (!parent.has_value() || parent->boundary) break;
+        if (!parent.has_value()) {
+            tree.push_back({at->parent, 0});
+            break;
+        }
+        if (parent->boundary) break;
         tree.push_back({at->parent, parent->created});
         at = parent;
     }

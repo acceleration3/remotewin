@@ -33,11 +33,20 @@ bool MirrorScope::is_launched(const WindowFields::ProcessRef& process) const {
     return !launch_.process_created.has_value() || process.created == *launch_.process_created;
 }
 
+bool MirrorScope::holds_launched(const std::vector<WindowFields::ProcessRef>& tree) const {
+    if (!launch_.process_id.has_value()) return false;
+    for (std::size_t at = 0; at < tree.size(); ++at) {
+        if (is_launched(tree[at])) return true;
+        const bool unknown = tree[at].created == 0 && at > 0 && tree[at].pid == *launch_.process_id;
+        if (unknown && (!launch_.process_created.has_value() || tree[at - 1].created >= *launch_.process_created))
+            return true;
+    }
+    return false;
+}
+
 bool MirrorScope::in_launched_tree(const WindowFields::AppId& app) const {
     if (!launch_.same_app_id || !launch_.process_id.has_value()) return false;
-    if (std::any_of(app.tree.begin(), app.tree.end(),
-                    [this](const WindowFields::ProcessRef& process) { return is_launched(process); }))
-        return true;
+    if (holds_launched(app.tree)) return true;
     return tree_root_.has_value() && !app.tree.empty() && app.tree.back() == *tree_root_;
 }
 
@@ -47,9 +56,7 @@ std::vector<std::string> MirrorScope::claim(const GuestWindows& windows) {
     for (const GuestWindow* window : windows.stacked()) {
         const WindowFields::AppId& app = window->fields().app_id;
         if (tree_root_.has_value() || !launch_.process_id.has_value()) break;
-        const bool inside = std::any_of(app.tree.begin(), app.tree.end(),
-                                        [this](const WindowFields::ProcessRef& process) { return is_launched(process); });
-        if (inside) tree_root_ = app.tree.back();
+        if (holds_launched(app.tree)) tree_root_ = app.tree.back();
     }
     if (tree_root_.has_value() && !tree_claimed_) {
         tree_claimed_ = true;

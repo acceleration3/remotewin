@@ -36,6 +36,7 @@ private:
     [[nodiscard]] bool belongs_itself(const GuestWindow& window) const;
     [[nodiscard]] bool is_launched(const WindowFields::ProcessRef& process) const;
     [[nodiscard]] bool in_launched_tree(const WindowFields::AppId& app) const;
+    [[nodiscard]] bool holds_launched(const std::vector<WindowFields::ProcessRef>& tree) const;
 
     Launch launch_;
     std::string image_;
