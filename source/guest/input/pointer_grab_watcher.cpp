@@ -2,6 +2,8 @@
 
 #include "logging/logger.hpp"
 
+#include <algorithm>
+
 // clang-format off
 #include <windows.h>
 // clang-format on
@@ -37,6 +39,13 @@ std::optional<PointerGrab::Area> clip_now() {
     return PointerGrab::Area{clip.left, clip.top, clip.right, clip.bottom};
 }
 
+bool button_held() {
+    for (const int key : {VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2}) {
+        if ((::GetAsyncKeyState(key) & 0x8000) != 0) return true;
+    }
+    return false;
+}
+
 bool cursor_shown() {
     CURSORINFO info{};
     info.cbSize = sizeof(info);
@@ -59,7 +68,8 @@ const char* kind_name(PointerGrab::Kind kind) {
 }
 
 std::optional<PointerGrab> PointerGrabWatcher::changed(WindowId foreground) {
-    const PointerGrabRule::Look look{foreground, cursor_shown(), clip_now(), cursor_now(), ::GetTickCount64()};
+    const PointerGrabRule::Look look{foreground, cursor_shown(), clip_now(), cursor_now(), ::GetTickCount64(),
+                                     button_held()};
     const PointerGrab grab = rule_.grab_for(look);
     if (grab == last_) return std::nullopt;
     last_ = grab;
@@ -70,6 +80,11 @@ std::optional<PointerGrab> PointerGrabWatcher::changed(WindowId foreground) {
 }
 
 void PointerGrabWatcher::put_at(std::int32_t screen_x, std::int32_t screen_y) {
+    RECT reach{};
+    if (::GetClipCursor(&reach) != FALSE && reach.right > reach.left && reach.bottom > reach.top) {
+        screen_x = std::clamp<std::int32_t>(screen_x, reach.left, reach.right - 1);
+        screen_y = std::clamp<std::int32_t>(screen_y, reach.top, reach.bottom - 1);
+    }
     rule_.put_at({screen_x, screen_y}, ::GetTickCount64());
 }
 

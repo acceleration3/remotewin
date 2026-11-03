@@ -21,6 +21,7 @@ public:
         std::optional<PointerGrab::Area> clip;
         Point cursor;
         std::uint64_t now_ms = 0;
+        bool button_held = false;
     };
 
     static constexpr std::int32_t kSmallClip = 16;
@@ -28,6 +29,7 @@ public:
     static constexpr std::uint64_t kReturnGapMs = 1000;
     static constexpr std::uint64_t kSettleMs = 25;
     static constexpr int kFreeMovesToStop = 2;
+    static constexpr std::int32_t kWarpDistance = 32;
 
     void put_at(Point at, std::uint64_t now_ms) noexcept;
     void nudged(Point from, std::uint64_t now_ms) noexcept;
@@ -55,6 +57,8 @@ private:
     std::uint64_t last_return_ms_ = 0;
     int free_moves_ = 0;
     bool warping_ = false;
+    std::optional<Point> held_at_;
+    bool dragged_away_ = false;
 };
 
 }
