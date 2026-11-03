@@ -25,6 +25,7 @@ public:
 
 private:
     static constexpr int kThickness = 6;
+    static constexpr int kCornerReach = 16;
 
     int left_ = kThickness;
     int top_ = kThickness;

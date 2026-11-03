@@ -16,6 +16,17 @@ std::uint32_t ResizeBorder::at(PointF position, Size size) const noexcept {
     if (position.x >= size.width - right_) edges |= kRight;
     if (position.y < top_) edges |= kTop;
     if (position.y >= size.height - bottom_) edges |= kBottom;
+    if (edges == 0) return edges;
+    const bool upper = position.y < size.height / 2.0;
+    const bool leftward = position.x < size.width / 2.0;
+    if ((edges & (kLeft | kRight)) != 0 && (edges & (kTop | kBottom)) == 0) {
+        if (upper && position.y < kCornerReach) edges |= kTop;
+        if (!upper && position.y >= size.height - kCornerReach) edges |= kBottom;
+    }
+    if ((edges & (kTop | kBottom)) != 0 && (edges & (kLeft | kRight)) == 0) {
+        if (leftward && position.x < kCornerReach) edges |= kLeft;
+        if (!leftward && position.x >= size.width - kCornerReach) edges |= kRight;
+    }
     return edges;
 }
 
