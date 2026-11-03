@@ -19,8 +19,8 @@ Hello Hello::ours() {
     hello.build = std::string(kBuild);
     for (const std::string_view name :
          {Feature::kWindows, Feature::kInput, Feature::kFramesPixels, Feature::kFramesShared, Feature::kCursor,
-          Feature::kPointerGrab, Feature::kLatency, Feature::kMoveSize, Feature::kAppId, Feature::kMonitor,
-          Feature::kIcons}) {
+          Feature::kPointerGrab, Feature::kCursorAt, Feature::kLatency, Feature::kMoveSize, Feature::kAppId,
+          Feature::kMonitor, Feature::kIcons}) {
         hello.features.push_back(Feature{std::string(name), name == Feature::kAppId ? Feature::kAppIdVersion : std::uint16_t{1}});
     }
     hello.features.push_back(Feature{std::string(Feature::kPopupIntent), 2});

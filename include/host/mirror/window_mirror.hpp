@@ -21,6 +21,7 @@
 #include "host/mirror/move_requests.hpp"
 #include "host/mirror/state_sync.hpp"
 #include "host/wayland/backdrop.hpp"
+#include "host/wayland/cursor_overlay.hpp"
 #include "host/wayland/mirror_surface.hpp"
 #include "host/wayland/popup_events.hpp"
 #include "host/wayland/popup_role.hpp"
@@ -94,6 +95,7 @@ public:
     void follow_relative_motion(bool follows) noexcept { relative_motion_ = follows; }
     void held_motion(PointF logical);
     void hold_shortcuts_for_lock(bool held);
+    void guest_cursor_at(Point screen);
 
     [[nodiscard]] MirrorState state() const;
 
@@ -145,6 +147,7 @@ private:
     [[nodiscard]] Size shown_picture() const noexcept;
     [[nodiscard]] Size window_size() const noexcept;
     void apply_cursor();
+    void update_overlay();
     [[nodiscard]] bool covers_monitor() const noexcept;
     void inhibit_shortcuts();
     [[nodiscard]] std::optional<Point> picture_point(PointF at) const noexcept;
@@ -172,6 +175,8 @@ private:
     std::unique_ptr<ToplevelIcon> icon_;
     std::unique_ptr<ShortcutsInhibitor> inhibitor_;
     bool lock_holds_shortcuts_ = false;
+    std::unique_ptr<CursorOverlay> overlay_;
+    std::optional<Point> guest_cursor_;
     MoveRequests moves_;
     StateSync maximize_;
     StateSync minimize_;

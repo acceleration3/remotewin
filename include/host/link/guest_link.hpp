@@ -9,6 +9,7 @@
 #include "host/loop/event_loop.hpp"
 #include "host/loop/signal.hpp"
 #include "proto/clock_echo.hpp"
+#include "proto/cursor_at.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/feature_set.hpp"
 #include "proto/frame_decoder.hpp"
@@ -103,6 +104,7 @@ public:
     Signal<WindowId> surface_lost;
     Signal<const CursorPicture&> cursor_pictured;
     Signal<const GuestCursor&> cursor_changed;
+    Signal<const CursorAt&> cursor_moved;
     Signal<const PointerGrab&> pointer_grabbed;
     Signal<const ClockEcho&, std::int64_t> clock_echoed;
 

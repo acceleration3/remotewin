@@ -109,6 +109,8 @@ add_library(rwin_host STATIC
     wayland/backdrop.cpp
     wayland/compositor_gpu.cpp
     wayland/confined_pointer.cpp
+    wayland/cursor_overlay.cpp
+    wayland/cursor_surface.cpp
     wayland/dmabuf_buffers.cpp
     wayland/drm_sync_device.cpp
     wayland/globals.cpp

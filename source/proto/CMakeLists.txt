@@ -1,6 +1,7 @@
 add_library(rwin_proto STATIC
     activate.cpp
     clock_echo.cpp
+    cursor_at.cpp
     cursor_picture.cpp
     feature_set.cpp
     frame_decoder.cpp

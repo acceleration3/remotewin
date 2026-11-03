@@ -31,6 +31,7 @@
 #include <mutex>
 #include <optional>
 #include <set>
+#include <utility>
 #include <vector>
 
 namespace rwin {
@@ -100,6 +101,7 @@ private:
     [[nodiscard]] PictureEdges& edges_for(WindowId window);
     void report_cursor();
     void report_grab();
+    void report_cursor_at();
     [[nodiscard]] WindowId mirrored_foreground() const;
     [[nodiscard]] std::optional<WindowSurface> surface_of(WindowId window, std::int32_t& into_x,
                                                           std::int32_t& into_y) const;
@@ -114,6 +116,7 @@ private:
     CursorDecoder cursor_pictures_;
     SentCursors sent_cursors_;
     PointerGrabWatcher grabs_;
+    std::optional<std::pair<std::int32_t, std::int32_t>> cursor_sent_at_;
     InputTarget target_;
     FrameDecoder decoder_;
     WindowDirectory directory_;

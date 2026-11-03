@@ -2,16 +2,14 @@
 
 #include "host/cursor/cursor_look.hpp"
 #include "host/cursor/cursor_shape.hpp"
-#include "host/wayland/shm_buffers.hpp"
+#include "host/wayland/cursor_surface.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 
 struct wl_pointer;
-struct wl_surface;
 struct wp_cursor_shape_device_v1;
-struct wp_viewport;
 
 namespace rwin::host {
 
@@ -53,9 +51,7 @@ private:
     const Globals& globals_;
     wl_pointer* pointer_ = nullptr;
     wp_cursor_shape_device_v1* shapes_ = nullptr;
-    wl_surface* surface_ = nullptr;
-    wp_viewport* viewport_ = nullptr;
-    ShmBuffers buffers_;
+    CursorSurface surface_;
     std::uint32_t serial_ = 0;
     std::optional<Worn> worn_;
     std::uint32_t worn_serial_ = 0;

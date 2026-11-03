@@ -342,6 +342,9 @@ bool GuestLink::dispatch_pointer(MessageReader& message) {
         case MessageId::CursorChanged:
             if (const std::optional<GuestCursor> cursor = GuestCursor::read(message)) cursor_changed(*cursor);
             return true;
+        case MessageId::CursorAt:
+            if (const std::optional<CursorAt> at = CursorAt::read(message)) cursor_moved(*at);
+            return true;
         case MessageId::PointerGrab:
             if (const std::optional<PointerGrab> grab = PointerGrab::read(message)) {
                 pointer_grabbed(*grab);

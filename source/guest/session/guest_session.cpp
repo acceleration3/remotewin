@@ -9,6 +9,7 @@
 #include "logging/logger.hpp"
 #include "proto/activate.hpp"
 #include "proto/clock_echo.hpp"
+#include "proto/cursor_at.hpp"
 #include "proto/cursor_picture.hpp"
 #include "proto/frame_in_slot.hpp"
 #include "proto/frame_route.hpp"
@@ -104,6 +105,7 @@ void GuestSession::run() {
         report_cursor();
         const std::lock_guard held{shared_};
         report_grab();
+        report_cursor_at();
     }
     running_ = false;
     reader.join();
@@ -310,6 +312,7 @@ bool GuestSession::handle_input(MessageReader& message) {
                 report_grab();
                 grabs_.nudging();
                 nudge_pointer(delta->dx, delta->dy);
+                report_cursor_at();
             }
             break;
         case MessageId::PointerAt:
@@ -478,6 +481,21 @@ void GuestSession::report_grab() {
     if (!grab.has_value()) return;
     MessageWriter out{MessageId::PointerGrab};
     grab->write(out);
+    send(out.take());
+}
+
+void GuestSession::report_cursor_at() {
+    if (grabs_.current().kind != PointerGrab::Kind::Lock || !features_.has(Feature::kCursorAt)) {
+        cursor_sent_at_.reset();
+        return;
+    }
+    POINT at{};
+    if (::GetCursorPos(&at) == FALSE) return;
+    const std::pair<std::int32_t, std::int32_t> now{at.x, at.y};
+    if (cursor_sent_at_ == now) return;
+    cursor_sent_at_ = now;
+    MessageWriter out{MessageId::CursorAt};
+    CursorAt{now.first, now.second}.write(out);
     send(out.take());
 }
 

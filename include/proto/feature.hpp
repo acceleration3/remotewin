@@ -13,6 +13,7 @@ struct Feature {
     static constexpr std::string_view kFramesShared = "frames.shared";
     static constexpr std::string_view kCursor = "cursor";
     static constexpr std::string_view kPointerGrab = "pointer.grab";
+    static constexpr std::string_view kCursorAt = "cursor.at";
     static constexpr std::string_view kLatency = "latency";
     static constexpr std::string_view kMoveSize = "movesize";
     static constexpr std::string_view kAppId = "appid";

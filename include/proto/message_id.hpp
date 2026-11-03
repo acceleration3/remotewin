@@ -47,6 +47,7 @@ enum class MessageId : std::uint8_t {
     CursorChanged = 96,
     PointerGrab = 97,
     ClockEcho = 98,
+    CursorAt = 99,
 
     ProbeCreateWindow = 128,
     ProbeObserve = 129,

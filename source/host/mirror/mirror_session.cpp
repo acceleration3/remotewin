@@ -102,6 +102,10 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
     cursor_.worn.connect([this](const CursorLook* look, std::size_t step) {
         for (const auto& [window, mirror] : mirrors_) mirror->wear_cursor(look, step);
     });
+    link_.cursor_moved.connect([this](const CursorAt& at) {
+        if (grab_.kind != PointerGrab::Kind::Lock) return;
+        if (WindowMirror* mirror = find(grab_.window)) mirror->guest_cursor_at(Point{at.x, at.y});
+    });
     link_.pointer_grabbed.connect([this](const PointerGrab& grab) { follow_grab(grab); });
     parts.surfaces.seat.pointer_changed.connect([this] { follow_pointer(); });
     follow_pointer();

@@ -223,6 +223,8 @@ void WindowMirror::drop_surface() {
     held_at_.reset();
     inhibitor_.reset();
     lock_holds_shortcuts_ = false;
+    guest_cursor_.reset();
+    overlay_.reset();
     backdrop_.reset();
     geometry_corner_ = Point{};
     popup_.reset();
@@ -412,7 +414,27 @@ void WindowMirror::compositor_minimized(bool minimized) {
 
 void WindowMirror::hold_shortcuts_for_lock(bool held) {
     lock_holds_shortcuts_ = held;
+    if (!held) guest_cursor_.reset();
     inhibit_shortcuts();
+    apply_cursor();
+}
+
+void WindowMirror::guest_cursor_at(Point screen) {
+    guest_cursor_ = screen;
+    update_overlay();
+}
+
+void WindowMirror::update_overlay() {
+    const bool wanted = surface_ != nullptr && lock_holds_shortcuts_ && !cursor_hidden_ && look_ != nullptr
+                        && guest_cursor_.has_value();
+    if (!wanted) {
+        if (overlay_ != nullptr) overlay_->hide();
+        return;
+    }
+    if (overlay_ == nullptr) overlay_ = std::make_unique<CursorOverlay>(kit_.surfaces.globals, surface_->surface());
+    const Point origin = window_.picture_origin();
+    const Point picture{guest_cursor_->x - origin.x, guest_cursor_->y - origin.y};
+    if (overlay_->show(*look_, step_, scale(), mapping().logical_point(picture))) surface_->commit();
 }
 
 void WindowMirror::inhibit_shortcuts() {
@@ -643,8 +665,13 @@ void WindowMirror::wear_cursor(const CursorLook* look, std::size_t step) {
 }
 
 void WindowMirror::apply_cursor() {
+    update_overlay();
     if (surface_ == nullptr || kit_.surfaces.seat.pointer_focus() != surface()) return;
     PointerCursor& cursor = kit_.surfaces.seat.cursor();
+    if (lock_holds_shortcuts_) {
+        cursor.wear_nothing();
+        return;
+    }
     if (hovered_edges_ != 0 && cursor.draws_shapes()) {
         cursor.wear(ResizeBorder::cursor_for(hovered_edges_));
         return;
