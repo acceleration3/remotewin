@@ -8,8 +8,8 @@
 
 namespace rwin::host {
 
-MoveRequests::MoveRequests(EventLoop& loop, Ask ask, Answered answered)
-    : ask_(std::move(ask)), answered_(std::move(answered)), answer_due_(loop.timer([this] { overdue(); })) {}
+MoveRequests::MoveRequests(EventLoop& loop, Ask ask, Answered answered, Blocked blocked)
+    : ask_(std::move(ask)), answered_(std::move(answered)), blocked_(std::move(blocked)), answer_due_(loop.timer([this] { overdue(); })) {}
 
 void MoveRequests::reported(const Box& frame) {
     reported_ = frame;
@@ -40,6 +40,11 @@ void MoveRequests::want_corner(Point corner) {
 }
 
 void MoveRequests::ask_next() {
+    if (blocked_()) {
+        size_.reset();
+        corner_.reset();
+        return;
+    }
     Box target = reported_;
     if (size_.has_value()) {
         if ((moving_ & ResizeBorder::kLeft) != 0) target.x = reported_.right() - size_->width;

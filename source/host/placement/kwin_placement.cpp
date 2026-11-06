@@ -85,6 +85,10 @@ function place(w) {{
     if (w.pid !== {1}) return false;
     const caption = w.captionNormal || "";
     if (caption.indexOf(tag) < 0) return false;
+    if (w.maximizeMode !== 0 || w.fullScreen) {{
+        callDBus("{4}", "{5}", "{6}", "placed", tag + " " + w.frameGeometry.x + " " + w.frameGeometry.y);
+        return true;
+    }}
     const was = w.frameGeometry;
     w.frameGeometry = {{x: {2}, y: {3}, width: was.width, height: was.height}};
     const now = w.frameGeometry;

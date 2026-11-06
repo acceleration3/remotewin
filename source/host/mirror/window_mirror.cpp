@@ -53,7 +53,7 @@ WindowMirror::WindowMirror(const MirrorKit& kit, const GuestWindow& window)
     : kit_(kit), window_(window), style_(window),
       moves_(
           kit.surfaces.loop, [this](const Box& frame) { ask_guest_for(frame); },
-          [this](const Box& asked, const Box& got) { answered(asked, got); }),
+          [this](const Box& asked, const Box& got) { answered(asked, got); }, [this] { return in_state(); }),
       maximize_(
           [this](bool maximized) {
               kit_.link.send_sys_command(this->window(), maximized ? SysCommand::Command::Maximize
@@ -482,7 +482,7 @@ void WindowMirror::ask_for_wanted() {
         wanted_.reset();
         return;
     }
-    if (window_.maximized() || window_.minimized() || maximize_.guest_heading() || minimize_.guest_heading()) return;
+    if (in_state()) return;
     const Size picture = ViewMapping::picture_for(*wanted_, scale());
     const Size padding = window_.picture_padding();
     moves_.want_size(Size{picture.width + padding.width, picture.height + padding.height}, resize_edges_);
@@ -570,14 +570,23 @@ void WindowMirror::ask_guest_for(const Box& frame) {
                                               static_cast<std::uint32_t>(frame.height)});
 }
 
-void WindowMirror::move_guest_to(Point picture_corner) {
-    if (configure_.maximized || configure_.fullscreen || window_.maximized() || window_.minimized()
-        || maximize_.guest_heading() || minimize_.guest_heading()) {
+bool WindowMirror::compositor_holds_state() const noexcept {
+    return configure_.maximized || configure_.fullscreen || maximize_.compositor_expected() || asked_fullscreen_;
+}
+
+bool WindowMirror::in_state() const noexcept {
+    return compositor_holds_state() || window_.maximized() || window_.minimized() || maximize_.guest_heading()
+           || minimize_.guest_heading();
+}
+
+bool WindowMirror::move_guest_to(Point picture_corner) {
+    if (in_state()) {
         RWIN_DEBUG("placement", "{} is in a state, or on its way to one: not moved to {},{}", window(),
                    picture_corner.x, picture_corner.y);
-        return;
+        return false;
     }
     moves_.want_corner(picture_corner - window_.picture_offset());
+    return true;
 }
 
 void WindowMirror::show_frame(const PixelsView& pixels) {
@@ -632,6 +641,8 @@ void WindowMirror::take_over_move_size(MoveSizeKind kind) {
     if (!press.valid() || press.surface != surface()) return;
     if (const std::optional<std::uint32_t> edges = ResizeBorder::edges_of(kind)) {
         resize_edges_ = *edges;
+        RWIN_INFO("chrome", "{}: Windows' move or size (kind {}) becomes a resize at edges {:#x}", window(),
+                  static_cast<int>(kind), *edges);
         toplevel_->resize(kit_.surfaces.seat.seat(), press.serial, *edges);
     } else {
         toplevel_->move(kit_.surfaces.seat.seat(), press.serial);

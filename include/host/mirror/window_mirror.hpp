@@ -90,7 +90,8 @@ public:
     void note_guest_active(bool active);
     void activate(const std::string& token);
     void take_over_move_size(MoveSizeKind kind);
-    void move_guest_to(Point picture_corner);
+    bool move_guest_to(Point picture_corner);
+    [[nodiscard]] bool compositor_holds_state() const noexcept;
     void compositor_minimized(bool minimized);
     void follow_relative_motion(bool follows) noexcept { relative_motion_ = follows; }
     void held_motion(PointF logical);
@@ -140,6 +141,7 @@ private:
     void minimize_here(bool minimized);
     void take_size(const ToplevelConfigure& configure, const ToplevelConfigure& before);
     void ask_for_wanted();
+    [[nodiscard]] bool in_state() const noexcept;
     void answered(const Box& asked, const Box& got);
     void fit_into(const ToplevelConfigure& configure);
     void fit_given(Size given, Size natural);

@@ -71,9 +71,14 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
     link_.move_size_started.connect([this](const MoveSizeStart& start) {
         if (WindowMirror* mirror = find(start.window)) mirror->take_over_move_size(start.kind);
     });
-    placement_.moved_here.connect([this](WindowId window, Point picture_corner) {
-        if (WindowMirror* mirror = find(window)) mirror->move_guest_to(picture_corner);
-    });
+    placement_.move_guest = [this](WindowId window, Point picture_corner) {
+        WindowMirror* mirror = find(window);
+        return mirror != nullptr && mirror->move_guest_to(picture_corner);
+    };
+    placement_.compositor_has_state = [this](WindowId window) {
+        const WindowMirror* mirror = find(window);
+        return mirror != nullptr && mirror->compositor_holds_state();
+    };
     placement_.minimized_here.connect([this](WindowId window, bool minimized) {
         if (WindowMirror* mirror = find(window)) mirror->compositor_minimized(minimized);
     });

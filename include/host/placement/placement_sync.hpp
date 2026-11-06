@@ -11,6 +11,8 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -23,9 +25,13 @@ class GuestWindow;
 
 class PlacementSync {
 public:
-    PlacementSync(EventLoop& loop, BusConnection& bus);
+    using GuestMover = std::function<bool(WindowId, Point)>;
+    using StateQuery = std::function<bool(WindowId)>;
 
-    [[nodiscard]] bool active() const noexcept { return kwin_.active(); }
+    PlacementSync(EventLoop& loop, BusConnection& bus);
+    explicit PlacementSync(std::unique_ptr<KWinPlacement> kwin);
+
+    [[nodiscard]] bool active() const noexcept { return kwin_->active(); }
 
     [[nodiscard]] std::string caption_tag(WindowId window, KWinPlacement::Skips skips) const;
 
@@ -36,9 +42,10 @@ public:
     void end_drag_hold(WindowId window);
     void guest_resized(WindowId window);
 
-    void prefer_output(std::string name) { kwin_.prefer_output(std::move(name)); }
+    void prefer_output(std::string name) { kwin_->prefer_output(std::move(name)); }
 
-    Signal<WindowId, Point> moved_here;
+    GuestMover move_guest;
+    StateQuery compositor_has_state;
     Signal<WindowId, bool> minimized_here;
 
 private:
@@ -56,6 +63,7 @@ private:
         std::optional<Point> awaiting_guest;
         std::int64_t placed_at = 0;
         bool put_back = false;
+        bool skipping_state = false;
         std::uint32_t on_guest_screen = 0;
         std::deque<Point> recently_asked;
     };
@@ -69,7 +77,10 @@ private:
     bool put_back(std::uint64_t key, Tracked& tracked, const KWinPlacement::Report& report, Point guest,
                   const std::optional<BoxF>& before);
 
-    KWinPlacement kwin_;
+    [[nodiscard]] bool compositor_holds(WindowId window) const;
+    static bool skipped_for_state(WindowId window, Tracked& tracked, bool state);
+
+    std::unique_ptr<KWinPlacement> kwin_;
     std::unordered_map<std::uint64_t, Tracked> tracked_;
 };
 

@@ -5,6 +5,7 @@
 #include "logging/logger.hpp"
 
 #include <algorithm>
+#include <utility>
 
 namespace rwin::host {
 
@@ -14,10 +15,13 @@ constexpr std::int64_t kRegravitatedWithinNs = 1'000'000'000;
 
 }
 
-PlacementSync::PlacementSync(EventLoop& loop, BusConnection& bus) : kwin_(loop, bus) {
-    kwin_.window_placed.connect([this](std::uint64_t key, PointF corner, std::int64_t) { placed(key, corner); });
-    kwin_.window_not_placed.connect([this](std::uint64_t key) { not_placed(key); });
-    kwin_.window_moved.connect(
+PlacementSync::PlacementSync(EventLoop& loop, BusConnection& bus)
+    : PlacementSync(std::make_unique<KWinPlacement>(loop, bus)) {}
+
+PlacementSync::PlacementSync(std::unique_ptr<KWinPlacement> kwin) : kwin_(std::move(kwin)) {
+    kwin_->window_placed.connect([this](std::uint64_t key, PointF corner, std::int64_t) { placed(key, corner); });
+    kwin_->window_not_placed.connect([this](std::uint64_t key) { not_placed(key); });
+    kwin_->window_moved.connect(
         [this](std::uint64_t key, const KWinPlacement::Report& report) { moved(key, report); });
 }
 
@@ -34,6 +38,7 @@ void PlacementSync::follow_guest(const GuestWindow& window, std::uint32_t genera
     tracked.guest = guest;
     tracked.generation = generation;
     tracked.placeable = placeable;
+    const bool compositor_state = compositor_holds(window.id());
     RWIN_TRACE("placement", "{} at {},{}: active {} placeable {} moved {}{}{}", window.id(), guest.x, guest.y,
                active(), placeable, moved_in_guest, tracked.held ? ", dragged here" : "",
                answering ? ", answering" : "");
@@ -42,11 +47,12 @@ void PlacementSync::follow_guest(const GuestWindow& window, std::uint32_t genera
         tracked.awaiting_guest.reset();
         return;
     }
+    if (skipped_for_state(window.id(), tracked, compositor_state)) return;
     place_at_guest(window.id(), tracked, remade);
 }
 
 void PlacementSync::place_at_guest(WindowId window, Tracked& tracked, bool remade) {
-    const OutputLayout& outputs = kwin_.outputs();
+    const OutputLayout& outputs = kwin_->outputs();
     if (!outputs.known()) {
         tracked.asked.reset();
         return;
@@ -62,19 +68,19 @@ void PlacementSync::place_at_guest(WindowId window, Tracked& tracked, bool remad
     tracked.pending = true;
     tracked.placed_once = false;
     tracked.put_back = false;
-    kwin_.place(window.key(), corner);
+    kwin_->place(window.key(), corner);
 }
 
 void PlacementSync::keep_on_guest_screen(WindowId window, std::uint32_t generation) {
     if (!active()) return;
     Tracked& tracked = tracked_[window.key()];
     if (tracked.on_guest_screen == generation) return;
-    if (!kwin_.outputs().known()) return;
-    const std::string output = kwin_.outputs().guest_output_name();
+    if (!kwin_->outputs().known()) return;
+    const std::string output = kwin_->outputs().guest_output_name();
     tracked.on_guest_screen = generation;
     tracked.pending = true;
     RWIN_DEBUG("placement", "{} maximised on the guest's screen, {}", window, output);
-    kwin_.send_to_output(window.key(), output);
+    kwin_->send_to_output(window.key(), output);
 }
 
 void PlacementSync::forget(WindowId window) { tracked_.erase(window.key()); }
@@ -127,14 +133,15 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
         tracked.minimized = report.minimized;
         minimized_here(window, report.minimized);
     }
+    if (skipped_for_state(window, tracked, compositor_holds(window))) return;
     if (tracked.pending && tracked.asked.has_value() && !tracked.placed_once) {
         tracked.placed_once = true;
-        kwin_.place(key, *tracked.asked);
+        kwin_->place(key, *tracked.asked);
         return;
     }
     if (tracked.pending || !tracked.placeable || report.by_state || report.minimized) return;
-    if (!kwin_.outputs().known()) return;
-    const Point guest = kwin_.outputs().guest_point(report.frame);
+    if (!kwin_->outputs().known()) return;
+    const Point guest = kwin_->outputs().guest_point(report.frame);
     if (put_back(key, tracked, report, guest, before)) return;
     if (guest == tracked.guest || guest == tracked.awaiting_guest) return;
     const bool resized =
@@ -152,10 +159,22 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
                    guest.y);
         return;
     }
-    tracked.awaiting_guest = guest;
     RWIN_DEBUG("placement", "{} put at {:.2f},{:.2f} here; guest window to {},{}", window, report.frame.x,
                report.frame.y, guest.x, guest.y);
-    moved_here(window, guest);
+    if (!move_guest || !move_guest(window, guest)) return;
+    tracked.awaiting_guest = guest;
+}
+
+bool PlacementSync::compositor_holds(WindowId window) const {
+    return compositor_has_state && compositor_has_state(window);
+}
+
+bool PlacementSync::skipped_for_state(WindowId window, Tracked& tracked, bool state) {
+    if (state && !std::exchange(tracked.skipping_state, true)) {
+        RWIN_INFO("placement", "{} is maximised or fullscreen here, or about to be: not placed or followed", window);
+    }
+    if (!state) tracked.skipping_state = false;
+    return state;
 }
 
 bool PlacementSync::put_back(std::uint64_t key, Tracked& tracked, const KWinPlacement::Report& report, Point guest,
@@ -164,14 +183,14 @@ bool PlacementSync::put_back(std::uint64_t key, Tracked& tracked, const KWinPlac
                              && before->height == report.frame.height;
     if (report.dragged || !moved_alone || !tracked.asked.has_value() || tracked.put_back || tracked.placed_at == 0
         || now_ns() - tracked.placed_at >= kCompositorAfterPlacementNs
-        || guest == kwin_.outputs().guest_point(BoxF{tracked.asked->x, tracked.asked->y, report.frame.width,
+        || guest == kwin_->outputs().guest_point(BoxF{tracked.asked->x, tracked.asked->y, report.frame.width,
                                                       report.frame.height})) {
         return false;
     }
     RWIN_INFO("placement", "{} put at {:.2f},{:.2f} by KWin as it was placed; put back", WindowId::of_key(key),
               report.frame.x, report.frame.y);
     tracked.put_back = true;
-    kwin_.place(key, *tracked.asked);
+    kwin_->place(key, *tracked.asked);
     return true;
 }
 

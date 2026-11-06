@@ -17,8 +17,9 @@ class MoveRequests {
 public:
     using Ask = std::function<void(const Box& frame)>;
     using Answered = std::function<void(const Box& asked, const Box& got)>;
+    using Blocked = std::function<bool()>;
 
-    MoveRequests(EventLoop& loop, Ask ask, Answered answered);
+    MoveRequests(EventLoop& loop, Ask ask, Answered answered, Blocked blocked);
 
     void reported(const Box& frame);
     void want_size(Size frame, std::uint32_t moving);
@@ -37,6 +38,7 @@ private:
 
     Ask ask_;
     Answered answered_;
+    Blocked blocked_;
     std::unique_ptr<EventLoop::Timer> answer_due_;
     Box reported_;
     std::deque<Box> outstanding_;

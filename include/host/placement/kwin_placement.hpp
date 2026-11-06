@@ -25,14 +25,14 @@ class BusConnection;
 class KWinPlacement {
 public:
     KWinPlacement(EventLoop& loop, BusConnection& bus);
-    ~KWinPlacement();
+    virtual ~KWinPlacement();
 
     KWinPlacement(const KWinPlacement&) = delete;
     KWinPlacement& operator=(const KWinPlacement&) = delete;
     KWinPlacement(KWinPlacement&&) = delete;
     KWinPlacement& operator=(KWinPlacement&&) = delete;
 
-    [[nodiscard]] bool active() const noexcept { return watcher_ != nullptr && watcher_->running(); }
+    [[nodiscard]] virtual bool active() const noexcept { return watcher_ != nullptr && watcher_->running(); }
 
     struct Skips {
         bool taskbar = false;
@@ -50,10 +50,10 @@ public:
         bool minimized = false;
     };
 
-    void place(std::uint64_t window, PointF corner);
-    void send_to_output(std::uint64_t window, const std::string& output);
+    virtual void place(std::uint64_t window, PointF corner);
+    virtual void send_to_output(std::uint64_t window, const std::string& output);
 
-    [[nodiscard]] const OutputLayout& outputs() const noexcept { return outputs_; }
+    [[nodiscard]] virtual const OutputLayout& outputs() const noexcept { return outputs_; }
     void prefer_output(std::string name) { outputs_.prefer(std::move(name)); }
 
     Signal<std::uint64_t, PointF, std::int64_t> window_placed;

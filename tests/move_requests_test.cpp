@@ -27,8 +27,9 @@ struct Guest {
     PollLoop loop;
     std::vector<Box> asked;
     std::vector<Box> answered;
+    bool blocked = false;
     MoveRequests moves{loop, [this](const Box& frame) { asked.push_back(frame); },
-                       [this](const Box&, const Box& got) { answered.push_back(got); }};
+                       [this](const Box&, const Box& got) { answered.push_back(got); }, [this] { return blocked; }};
 
     Guest() { moves.reported(Box{100, 100, 800, 600}); }
 };
@@ -106,6 +107,21 @@ void refusal_is_an_answer() {
           "the size the guest chose is the answer");
 }
 
+void queued_move_is_dropped_when_the_window_became_maximized() {
+    Guest guest;
+    guest.moves.want_corner(Point{40, 50});
+    guest.moves.want_size(Size{820, 600}, ResizeBorder::kRight);
+    check(guest.asked.size() == 1, "one move is out");
+    guest.blocked = true;
+    guest.moves.reported(Box{40, 50, 800, 600});
+    check(guest.asked.size() == 1, "the queued size is not asked once the window is in a state");
+    guest.blocked = false;
+    turn(guest.loop, 400);
+    check(guest.asked.size() == 1 && guest.moves.idle(), "and it is gone, not asked later");
+    guest.moves.want_corner(Point{60, 70});
+    check(guest.asked.size() == 2, "a new move is asked once the state ends");
+}
+
 }
 
 int main() {
@@ -116,6 +132,7 @@ int main() {
     unanswered_is_given_up();
     late_answer_is_not_a_refusal();
     refusal_is_an_answer();
+    queued_move_is_dropped_when_the_window_became_maximized();
     if (failures == 0) std::printf("move_requests: all passed\n");
     return failures == 0 ? 0 : 1;
 }
