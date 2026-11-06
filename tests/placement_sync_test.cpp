@@ -5,6 +5,7 @@
 #include "host/placement/output_layout.hpp"
 #include "host/placement/placement_sync.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <vector>
@@ -74,7 +75,7 @@ struct Setup {
     Setup() {
         auto owned = std::make_unique<FakeKWin>(loop, bus);
         kwin = owned.get();
-        sync = std::make_unique<PlacementSync>(std::move(owned));
+        sync = std::make_unique<PlacementSync>(loop, std::move(owned));
         sync->move_guest = [this](WindowId, Point corner) {
             if (compositor_state) return false;
             moved_guest.push_back(corner);
@@ -84,6 +85,12 @@ struct Setup {
         sync->follow_guest(guest_at(100, 100), 1, true, false);
         kwin->window_placed(kWindow.key(), PointF{100, 100}, 0);
         kwin->places.clear();
+    }
+
+    void settle() {
+        const auto stop = loop.timer([this] { loop.quit(0); });
+        stop->start(std::chrono::milliseconds(300), false);
+        static_cast<void>(loop.run());
     }
 
     void follow(int x, int y, bool placeable = true) { sync->follow_guest(guest_at(x, y), 1, placeable, false); }
@@ -99,6 +106,8 @@ constexpr BoxF kMaximized{0, 0, 1920, 1080};
 void drop_then_maximize_does_not_place() {
     Setup setup;
     setup.report(kDrop, true, false);
+    check(setup.moved_guest.empty(), "the drop is held, not sent at once");
+    setup.settle();
     check(setup.moved_guest.size() == 1 && setup.moved_guest[0] == Point{400, 0}, "the drop is sent to the guest");
     setup.compositor_state = true;
     setup.report(kMaximized, false, false);
@@ -117,6 +126,7 @@ void maximize_before_drop_does_not_place() {
     setup.compositor_state = true;
     setup.report(kDrop, true, false);
     setup.report(kMaximized, false, false);
+    setup.settle();
     setup.follow(400, 0);
     setup.follow(300, 20);
     check(setup.moved_guest.empty() && setup.kwin->places.empty(), "nothing is sent or placed");
@@ -125,8 +135,10 @@ void maximize_before_drop_does_not_place() {
 void refused_move_keeps_the_awaited_corner() {
     Setup setup;
     setup.report(kDrop, true, false);
+    setup.settle();
     setup.compositor_state = true;
     setup.report(BoxF{10, 10, 800, 600}, true, false);
+    setup.settle();
     setup.follow(400, 0);
     check(setup.kwin->places.empty(), "the corner the guest was sent is still awaited");
 }
@@ -134,9 +146,36 @@ void refused_move_keeps_the_awaited_corner() {
 void user_moves_still_reach_the_guest() {
     Setup setup;
     setup.report(kDrop, true, false);
+    setup.settle();
     setup.follow(400, 0);
     setup.report(BoxF{500, 200, 800, 600}, true, false);
+    setup.settle();
     check(setup.moved_guest.size() == 2 && setup.moved_guest[1] == Point{500, 200}, "a plain drag is followed");
+}
+
+void maximize_within_the_settle_drops_the_move() {
+    Setup setup;
+    setup.report(kDrop, true, false);
+    setup.compositor_state = true;
+    setup.report(kMaximized, false, false);
+    setup.settle();
+    check(setup.moved_guest.empty(), "a maximize configure inside the window sends no guest move");
+}
+
+void state_without_a_report_drops_the_move() {
+    Setup setup;
+    setup.report(kDrop, true, false);
+    setup.compositor_state = true;
+    setup.settle();
+    check(setup.moved_guest.empty(), "a state held when the window ends sends no guest move");
+}
+
+void later_drag_replaces_the_held_move() {
+    Setup setup;
+    setup.report(kDrop, true, false);
+    setup.report(BoxF{500, 200, 800, 600}, true, false);
+    setup.settle();
+    check(setup.moved_guest.size() == 1 && setup.moved_guest[0] == Point{500, 200}, "only the latest drop is sent");
 }
 
 }
@@ -146,6 +185,9 @@ int main() {
     maximize_before_drop_does_not_place();
     refused_move_keeps_the_awaited_corner();
     user_moves_still_reach_the_guest();
+    maximize_within_the_settle_drops_the_move();
+    state_without_a_report_drops_the_move();
+    later_drag_replaces_the_held_move();
     if (failures == 0) std::printf("placement_sync: all passed\n");
     return failures == 0 ? 0 : 1;
 }

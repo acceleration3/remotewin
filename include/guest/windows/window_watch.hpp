@@ -62,6 +62,7 @@ private:
     void pump();
     void take(Parts& parts, const Event& event);
     void settle(Parts& parts);
+    void keep_maximized_centred(Parts& parts, void* window);
     void carry_out(Parts& parts, const Request& request);
     void activate(Parts& parts, const Activate& request);
     void say_work_area();

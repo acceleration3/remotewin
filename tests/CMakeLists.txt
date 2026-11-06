@@ -34,6 +34,12 @@ target_link_libraries(rwin_picture_room_test PRIVATE rwin::logging)
 target_include_directories(rwin_picture_room_test PRIVATE "${RWIN_INCLUDE_DIR}")
 add_test(NAME rwin_picture_room_test COMMAND rwin_picture_room_test)
 
+add_executable(rwin_maximized_position_test
+    maximized_position_test.cpp
+    "${PROJECT_SOURCE_DIR}/source/guest/windows/maximized_position.cpp")
+target_link_libraries(rwin_maximized_position_test PRIVATE rwin::proto)
+add_test(NAME rwin_maximized_position_test COMMAND rwin_maximized_position_test)
+
 add_executable(rwin_slot_ledger_test
     slot_ledger_test.cpp
     "${PROJECT_SOURCE_DIR}/source/guest/capture/slot_ledger.cpp")

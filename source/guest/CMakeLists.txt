@@ -39,6 +39,7 @@ add_executable(remotewin-guest
     windows/desktop_settings.cpp
     windows/kernel_handle.cpp
     windows/marker_window.cpp
+    windows/maximized_position.cpp
     windows/min_max_reader.cpp
     windows/move_size_report.cpp
     windows/shell_views.cpp

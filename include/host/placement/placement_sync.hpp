@@ -9,6 +9,7 @@
 #include "host/placement/screen_mapping.hpp"
 #include "proto/window_id.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -29,7 +30,7 @@ public:
     using StateQuery = std::function<bool(WindowId)>;
 
     PlacementSync(EventLoop& loop, BusConnection& bus);
-    explicit PlacementSync(std::unique_ptr<KWinPlacement> kwin);
+    PlacementSync(EventLoop& loop, std::unique_ptr<KWinPlacement> kwin);
 
     [[nodiscard]] bool active() const noexcept { return kwin_->active(); }
 
@@ -66,20 +67,27 @@ private:
         bool skipping_state = false;
         std::uint32_t on_guest_screen = 0;
         std::deque<Point> recently_asked;
+        std::optional<Point> settling_to;
+        std::unique_ptr<EventLoop::Timer> settling;
     };
 
     static constexpr std::size_t kRecentlyAsked = 32;
+    static constexpr std::chrono::milliseconds kDropSettle{150};
 
     void placed(std::uint64_t key, PointF frame_corner);
     void not_placed(std::uint64_t key);
     void moved(std::uint64_t key, const KWinPlacement::Report& report);
     void place_at_guest(WindowId window, Tracked& tracked, bool remade);
+    void settle_before_sending(std::uint64_t key, Tracked& tracked, Point guest);
+    void settled(std::uint64_t key);
+    void send_to_guest(WindowId window, Tracked& tracked, Point guest);
     bool put_back(std::uint64_t key, Tracked& tracked, const KWinPlacement::Report& report, Point guest,
                   const std::optional<BoxF>& before);
 
     [[nodiscard]] bool compositor_holds(WindowId window) const;
     static bool skipped_for_state(WindowId window, Tracked& tracked, bool state);
 
+    EventLoop& loop_;
     std::unique_ptr<KWinPlacement> kwin_;
     std::unordered_map<std::uint64_t, Tracked> tracked_;
 };

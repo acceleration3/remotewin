@@ -2,6 +2,7 @@
 
 #include "guest/session/outbox.hpp"
 #include "guest/windows/app_id_resolver.hpp"
+#include "guest/windows/maximized_position.hpp"
 #include "guest/windows/process_tree.hpp"
 #include "guest/windows/move_size_report.hpp"
 #include "guest/windows/shell_views.hpp"
@@ -105,6 +106,7 @@ struct WindowWatch::Parts {
     WindowTracker tracker;
     ZOrderReport zorder;
     MoveSizeReport movesize;
+    MaximizedPosition maximized;
     std::vector<Event> serving;
     struct Settling {
         void* window = nullptr;
@@ -222,6 +224,7 @@ void WindowWatch::take(Parts& parts, const Event& event) {
             parts.tracker.changed(event.window, Change::Focused);
             break;
         case EVENT_OBJECT_DESTROY:
+            parts.maximized.forget(event.window);
             parts.tracker.changed(event.window, Change::Destroyed);
             break;
         case EVENT_OBJECT_SHOW:
@@ -266,6 +269,7 @@ void WindowWatch::settle(Parts& parts) {
             continue;
         }
         parts.tracker.refresh(entry->window);
+        keep_maximized_centred(parts, entry->window);
         if (entry->again) {
             entry->due = now + kFrameSettlesLate;
             entry->again = false;
@@ -274,6 +278,33 @@ void WindowWatch::settle(Parts& parts) {
         }
         entry = parts.settling.erase(entry);
     }
+}
+
+void WindowWatch::keep_maximized_centred(Parts& parts, void* window) {
+    const auto hwnd = static_cast<HWND>(window);
+    if (!parts.tracker.id_of(window).has_value() || ::IsWindow(hwnd) == FALSE) return;
+    RECT bounds{};
+    MONITORINFO monitor{};
+    monitor.cbSize = sizeof(monitor);
+    const HMONITOR on = ::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    const bool zoomed = ::IsZoomed(hwnd) != FALSE;
+    if (zoomed && (::GetWindowRect(hwnd, &bounds) == FALSE || ::GetMonitorInfoW(on, &monitor) == FALSE)) return;
+    const Rect rect{bounds.left, bounds.top, static_cast<std::uint32_t>(bounds.right - bounds.left),
+                    static_cast<std::uint32_t>(bounds.bottom - bounds.top)};
+    const Rect work{monitor.rcWork.left, monitor.rcWork.top,
+                    static_cast<std::uint32_t>(monitor.rcWork.right - monitor.rcWork.left),
+                    static_cast<std::uint32_t>(monitor.rcWork.bottom - monitor.rcWork.top)};
+    const auto spot = parts.maximized.correction(window, zoomed, rect, work, Clock::now());
+    if (!spot.has_value()) return;
+    if (::SetWindowPos(hwnd, nullptr, spot->x, spot->y, 0, 0,
+                       SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS)
+        == FALSE) {
+        RWIN_WARN("move", "{:#x} could not be moved back to {},{}: error {}", reinterpret_cast<std::uintptr_t>(window),
+                  spot->x, spot->y, ::GetLastError());
+        return;
+    }
+    RWIN_INFO("move", "{:#x} is maximized at {},{}; moved back to its monitor's maximized position {},{}",
+              reinterpret_cast<std::uintptr_t>(window), rect.x, rect.y, spot->x, spot->y);
 }
 
 void WindowWatch::carry_out(Parts& parts, const Request& request) {

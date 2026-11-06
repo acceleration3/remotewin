@@ -16,9 +16,10 @@ constexpr std::int64_t kRegravitatedWithinNs = 1'000'000'000;
 }
 
 PlacementSync::PlacementSync(EventLoop& loop, BusConnection& bus)
-    : PlacementSync(std::make_unique<KWinPlacement>(loop, bus)) {}
+    : PlacementSync(loop, std::make_unique<KWinPlacement>(loop, bus)) {}
 
-PlacementSync::PlacementSync(std::unique_ptr<KWinPlacement> kwin) : kwin_(std::move(kwin)) {
+PlacementSync::PlacementSync(EventLoop& loop, std::unique_ptr<KWinPlacement> kwin)
+    : loop_(loop), kwin_(std::move(kwin)) {
     kwin_->window_placed.connect([this](std::uint64_t key, PointF corner, std::int64_t) { placed(key, corner); });
     kwin_->window_not_placed.connect([this](std::uint64_t key) { not_placed(key); });
     kwin_->window_moved.connect(
@@ -133,7 +134,9 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
         tracked.minimized = report.minimized;
         minimized_here(window, report.minimized);
     }
-    if (skipped_for_state(window, tracked, compositor_holds(window))) return;
+    const bool state = compositor_holds(window);
+    if (state || report.by_state || report.minimized) tracked.settling_to.reset();
+    if (skipped_for_state(window, tracked, state)) return;
     if (tracked.pending && tracked.asked.has_value() && !tracked.placed_once) {
         tracked.placed_once = true;
         kwin_->place(key, *tracked.asked);
@@ -161,6 +164,33 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
     }
     RWIN_DEBUG("placement", "{} put at {:.2f},{:.2f} here; guest window to {},{}", window, report.frame.x,
                report.frame.y, guest.x, guest.y);
+    if (report.dragged) {
+        settle_before_sending(key, tracked, guest);
+        return;
+    }
+    send_to_guest(window, tracked, guest);
+}
+
+void PlacementSync::settle_before_sending(std::uint64_t key, Tracked& tracked, Point guest) {
+    tracked.settling_to = guest;
+    if (!tracked.settling) tracked.settling = loop_.timer([this, key] { settled(key); });
+    tracked.settling->start(kDropSettle, false);
+}
+
+void PlacementSync::settled(std::uint64_t key) {
+    const auto it = tracked_.find(key);
+    if (it == tracked_.end() || !it->second.settling_to.has_value()) return;
+    Tracked& tracked = it->second;
+    const WindowId window = WindowId::of_key(key);
+    const Point guest = *std::exchange(tracked.settling_to, std::nullopt);
+    if (skipped_for_state(window, tracked, compositor_holds(window))) {
+        RWIN_DEBUG("placement", "{} went into a state after its drop at {},{}: not moved", window, guest.x, guest.y);
+        return;
+    }
+    send_to_guest(window, tracked, guest);
+}
+
+void PlacementSync::send_to_guest(WindowId window, Tracked& tracked, Point guest) {
     if (!move_guest || !move_guest(window, guest)) return;
     tracked.awaiting_guest = guest;
 }
