@@ -52,9 +52,10 @@ TestDesktop::TestDesktop(const Layout& layout, const std::string& host_binary, c
     const Rect frame = window_->frame();
     const auto mapped = settle(
         [&] {
-            const auto& now = kwin_->now();
-            return now.has_value() && std::abs(now->width - logical(static_cast<std::int32_t>(frame.width))) < 1.0
-                   && std::abs(now->x - logical(frame.x)) < 1.0 && std::abs(now->y - logical(frame.y)) < 1.0;
+            if (window_->minimized()) return kwin_->now().has_value() && kwin_->now()->minimized;
+            const KWinView::Seen* shown = kwin_->shown();
+            return shown != nullptr && std::abs(shown->width - logical(static_cast<std::int32_t>(frame.width))) < 1.0
+                   && std::abs(shown->x - logical(frame.x)) < 1.0 && std::abs(shown->y - logical(frame.y)) < 1.0;
         },
         kStartWait, std::chrono::milliseconds(100));
     if (!mapped.has_value()) {
@@ -145,26 +146,21 @@ bool TestDesktop::start_host(const std::string& host_binary) {
         arguments.push_back(device_->path());
     }
     host_ = std::make_unique<ChildProcess>(ChildProcess::Launch{std::move(arguments), std::move(env), host_log_, true});
-    std::string said;
-    host_output_ = loop_.watch(host_->output(), POLLIN, [this, &said](short) {
+    host_output_ = loop_.watch(host_->output(), POLLIN, [this](short) {
         std::array<char, 256> chunk{};
         const ssize_t got = ::read(host_->output(), chunk.data(), chunk.size());
         if (got <= 0) {
             host_output_.reset();
             return;
         }
-        said.append(chunk.data(), static_cast<std::size_t>(got));
-        const std::size_t at = said.find("LISTENING ");
-        const std::size_t end = said.find('\n', at);
+        host_said_.append(chunk.data(), static_cast<std::size_t>(got));
+        const std::size_t at = host_said_.find("LISTENING ");
+        const std::size_t end = host_said_.find('\n', at);
         if (port_ == 0 && at != std::string::npos && end != std::string::npos) {
-            port_ = static_cast<std::uint16_t>(std::stoi(said.substr(at + 10, end - at - 10)));
+            port_ = static_cast<std::uint16_t>(std::stoi(host_said_.substr(at + 10, end - at - 10)));
         }
     });
     const auto listening = settle([this] { return port_ != 0 || !host_->running(); }, kStartWait, kTick);
-    host_output_ = loop_.watch(host_->output(), POLLIN, [this](short) {
-        std::array<char, 256> chunk{};
-        if (::read(host_->output(), chunk.data(), chunk.size()) <= 0) host_output_.reset();
-    });
     if (!listening.has_value() || port_ == 0) {
         std::fprintf(stderr, "setup: the host never listened (see %s)\n", host_log_.c_str());
         return false;
@@ -181,7 +177,12 @@ bool TestDesktop::start_host(const std::string& host_binary) {
 
 bool TestDesktop::connect_guest() {
     guest_ = std::make_unique<FakeGuest>(loop_, *window_, layout_.timing, device_.get());
+    if (layout_.before_dial != nullptr) layout_.before_dial(*guest_, *window_);
     return guest_->dial(port_);
+}
+
+bool TestDesktop::host_said(std::string_view line) const {
+    return ('\n' + host_said_).find('\n' + std::string(line) + '\n') != std::string::npos;
 }
 
 std::optional<std::chrono::milliseconds> TestDesktop::settle(const std::function<bool()>& condition,

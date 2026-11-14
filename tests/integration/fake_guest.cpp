@@ -91,9 +91,17 @@ bool FakeGuest::dial(std::uint16_t port) {
     id_.write(made);
     said_.write(made, WindowFields::kAll);
     send(made.take());
+    ZOrder stacked{WindowId{}, {id_}};
+    for (const Other& played : others_) {
+        MessageWriter also{MessageId::WindowNew};
+        played.id.write(also);
+        played.said.write(also, WindowFields::kAll);
+        send(also.take());
+        stacked.windows.push_back(played.id);
+    }
     send(MessageWriter{MessageId::SyncEnd}.take());
     MessageWriter order{MessageId::ZOrder};
-    ZOrder{WindowId{}, {id_}}.write(order);
+    stacked.write(order);
     send(order.take());
     for (const SysParam::Param param : {SysParam::Param::WorkArea, SysParam::Param::Monitor}) {
         MessageWriter setting{MessageId::GuestSysParam};
@@ -304,8 +312,9 @@ bool FakeGuest::subscribed_to(WindowId id) const {
 
 void FakeGuest::picture_other(Other& played) {
     const Rect& picture = played.said.geometry.picture;
-    if (!played.subscribed || played.said.show == WindowFields::Show::Hidden || picture.width == 0
-        || picture.height == 0) {
+    const bool unseen = played.said.show == WindowFields::Show::Hidden
+                        || played.said.show == WindowFields::Show::Minimized;
+    if (!played.subscribed || unseen || picture.width == 0 || picture.height == 0) {
         return;
     }
     paint(played, picture.width, picture.height);

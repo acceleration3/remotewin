@@ -166,6 +166,7 @@ private:
     [[nodiscard]] FocusCause focus_cause() noexcept;
     [[nodiscard]] std::string caption() const;
     void show_last_frame();
+    void show_blank_if_unpictured();
     void dismiss_in_guest();
 
     MirrorKit kit_;

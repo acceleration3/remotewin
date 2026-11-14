@@ -47,6 +47,7 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
       rearrange_(parts.loop.timer([this] { arrange(); })),
       release_(parts.loop.timer([this] { release_closed(); })) {
     placement_.prefer_output(parts.output);
+    presentation_.began.connect([this] { ready(); });
     link_.connected.connect([this] { link_.send_sys_param(SysParam{SysParam::Param::DragFullWindows, {}, true}); });
     link_.sync_began.connect([this] { syncing_ = true; });
     link_.sync_ended.connect([this] {
@@ -91,13 +92,13 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
     link_.frame_arrived.connect([this](WindowId window, const PixelsView& pixels) {
         if (WindowMirror* mirror = find(window)) {
             mirror->show_frame(pixels);
-            note_ready();
+            presentation_.pictured();
         }
     });
     frames_.frame_ready.connect([this](WindowId window, const SharedFrame& frame) {
         if (WindowMirror* mirror = find(window)) {
             mirror->show_frame(frame);
-            note_ready();
+            presentation_.pictured();
         }
     });
     link_.window_icon.connect([this](const WindowIcon& icon) {
@@ -246,6 +247,7 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
     mirror.reshaped.connect([this](WindowId) { rearrange_->start(std::chrono::milliseconds::zero(), false); });
     mirror.mapped_now.connect([this, &mirror](WindowId) {
         rearrange_->start(std::chrono::milliseconds::zero(), false);
+        presentation_.mapped(mirror.role());
         if (!token_.empty() && mirror.role().kind == MirrorRole::Kind::Toplevel) {
             RWIN_INFO("focus", "{} activated with the launcher's token", mirror.window());
             mirror.activate(std::exchange(token_, std::string()));
@@ -390,12 +392,6 @@ void MirrorSession::follow_pointer() {
         RWIN_INFO("pointer", "no relative pointer: a window Windows drags is followed against its mirror");
     }
     for (const auto& [window, mirror] : mirrors_) mirror->follow_relative_motion(held_motion_ != nullptr);
-}
-
-void MirrorSession::note_ready() {
-    if (ready_) return;
-    ready_ = true;
-    ready();
 }
 
 }

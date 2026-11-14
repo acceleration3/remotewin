@@ -6,6 +6,7 @@
 #include "host/input/pointer_grabber.hpp"
 #include "host/latency/frame_stamps.hpp"
 #include "host/link/guest_link.hpp"
+#include "host/mirror/blank_picture.hpp"
 #include "host/mirror/configure_meaning.hpp"
 #include "host/mirror/guest_desktop.hpp"
 #include "host/mirror/picture_limits.hpp"
@@ -211,6 +212,14 @@ void WindowMirror::show_last_frame() {
     } else if (!last_pixels_.empty()) {
         surface_->show(PixelsView{last_pixels_.data(), last_pixels_size_.width, last_pixels_size_.height,
                                   last_pixels_size_.width * 4});
+    } else {
+        show_blank_if_unpictured();
+    }
+}
+
+void WindowMirror::show_blank_if_unpictured() {
+    if (const std::optional<Size> blank = blank_picture(window_, role_, picture_, frames_ != 0)) {
+        surface_->show_blank(*blank);
     }
 }
 
@@ -352,7 +361,10 @@ void WindowMirror::follow(const GuestWindow& window) {
         toplevel_->set_modal(parent_ != nullptr && parent_->style_.disabled() && !style_.disabled());
         apply_limits();
         follow_state();
-        if (picture_ != before) resized_in_guest();
+        if (picture_ != before) {
+            if (surface_->blank()) surface_->show_blank(picture_);
+            resized_in_guest();
+        }
         ask_for_wanted();
     }
     if (popup_ != nullptr) place_popup();
@@ -410,6 +422,7 @@ void WindowMirror::minimize_here(bool minimized) {
     } else {
         minimize_owed_ = true;
     }
+    show_blank_if_unpictured();
 }
 
 void WindowMirror::compositor_minimized(bool minimized) {
@@ -857,6 +870,7 @@ MirrorState WindowMirror::state() const {
     state.shown = surface_ != nullptr;
     state.mapped = mapped();
     state.on_gpu = surface_ != nullptr && surface_->on_gpu();
+    state.blank = surface_ != nullptr && surface_->blank();
     state.activated = configure_.activated;
     state.maximized = configure_.maximized;
     state.fullscreen = configure_.fullscreen;

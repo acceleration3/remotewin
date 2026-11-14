@@ -25,6 +25,7 @@ public:
         bool shown = false;
         bool mapped = false;
         bool on_gpu = false;
+        bool blank = false;
         Picture picture;
     };
 

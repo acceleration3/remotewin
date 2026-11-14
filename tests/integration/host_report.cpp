@@ -102,6 +102,7 @@ std::optional<HostReport::Mirror> HostReport::mirror(std::string_view title) {
         mirror.shown = object.find("\"shown\":true") != std::string_view::npos;
         mirror.mapped = object.find("\"mapped\":true") != std::string_view::npos;
         mirror.on_gpu = object.find("\"on_gpu\":true") != std::string_view::npos;
+        mirror.blank = object.find("\"blank\":true") != std::string_view::npos;
         if (const std::size_t key = object.find(kPictureKey); key != std::string_view::npos) {
             std::size_t at = key + kPictureKey.size();
             number_at(object, at);

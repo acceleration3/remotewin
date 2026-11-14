@@ -38,7 +38,8 @@ foreach(case maximize-here maximize-in-guest minimize-here minimize-in-guest dra
              drag-corner-sluggish-guest drag-corner-in drag-top drag-left resize-by-compositor resize-in-guest
              dialog-in-front menus-in-front winui-popup activation-both-ways map-keeps-guest-active
              taskbar-presence app-id-per-application welcome-in-front welcome-in-front-rounded close-confirmation-in-front
-             close-confirmation-in-front-rounded)
+             close-confirmation-in-front-rounded minimized-at-start minimized-at-start-restored-in-guest
+             minimized-beside-shown)
     add_test(NAME rwin_integration_${case} COMMAND rwin_resize_integration ${case})
     set_tests_properties(rwin_integration_${case} PROPERTIES LABELS integration SKIP_RETURN_CODE 77 TIMEOUT 30)
 endforeach()

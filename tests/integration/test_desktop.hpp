@@ -17,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace rwin::integration {
 class TestDesktop {
@@ -27,6 +28,7 @@ public:
         double scale = 1.2;
         FakeGuest::Timing timing;
         bool gpu_frames = false;
+        void (*before_dial)(FakeGuest& guest, ModelWindow& window) = nullptr;
     };
 
     TestDesktop(const Layout& layout, const std::string& host_binary, const std::string& scratch);
@@ -49,6 +51,7 @@ public:
     [[nodiscard]] bool gpu_frames_shown() const noexcept { return device_ != nullptr && device_->showable(); }
     [[nodiscard]] double scale() const noexcept { return layout_.scale; }
     [[nodiscard]] const std::string& host_log() const noexcept { return host_log_; }
+    [[nodiscard]] bool host_said(std::string_view line) const;
 
     [[nodiscard]] double logical(std::int32_t pixels) const noexcept { return pixels / layout_.scale; }
 
@@ -74,6 +77,7 @@ private:
     std::unique_ptr<FakeExportDevice> device_;
     std::unique_ptr<ChildProcess> host_;
     std::unique_ptr<host::EventLoop::Watch> host_output_;
+    std::string host_said_;
     std::uint16_t port_ = 0;
     std::unique_ptr<KWinView> kwin_;
     std::unique_ptr<HostReport> report_;

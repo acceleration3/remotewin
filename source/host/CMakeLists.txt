@@ -98,12 +98,14 @@ add_library(rwin_host STATIC
     link/parent_control.cpp
     loop/poll_loop.cpp
     mirror/activation_sync.cpp
+    mirror/blank_picture.cpp
     mirror/json_text.cpp
     mirror/mirror_role.cpp
     mirror/mirror_session.cpp
     mirror/monitor_session.cpp
     mirror/popup_layout.cpp
     mirror/popup_stack.cpp
+    mirror/presentation.cpp
     mirror/move_requests.cpp
     mirror/state_sync.cpp
     mirror/window_mirror.cpp

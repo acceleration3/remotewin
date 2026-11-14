@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cstring>
 #include <limits>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -183,6 +184,8 @@ void MirrorSurface::allow_commits() {
         attach_pixels();
     } else if (shared_waiting_.has_value()) {
         try_attach_shared();
+    } else if (blank_waiting_) {
+        attach_blank();
     } else {
         commit();
     }
@@ -200,7 +203,8 @@ void MirrorSurface::apply_view() {
     if (picture_.empty()) return;
     const ViewMapping view = mapping();
     wp_viewport_set_source(viewport_, wl_fixed_from_int(0), wl_fixed_from_int(0),
-                           wl_fixed_from_double(view.source_width()), wl_fixed_from_double(view.source_height()));
+                           wl_fixed_from_double(blank_ ? 1.0 : view.source_width()),
+                           wl_fixed_from_double(blank_ ? 1.0 : view.source_height()));
     wp_viewport_set_destination(viewport_, view.logical().width, view.logical().height);
 }
 
@@ -222,7 +226,7 @@ void MirrorSurface::apply_input() {
 }
 
 void MirrorSurface::apply_opaque() {
-    if (opaque_rects_.empty() || opaque_for_ != picture_) {
+    if (blank_ || opaque_rects_.empty() || opaque_for_ != picture_) {
         wl_surface_set_opaque_region(surface_, nullptr);
         return;
     }
@@ -256,6 +260,8 @@ void MirrorSurface::show(const PixelsView& pixels) {
     }
     const bool resized = size != picture_;
     picture_ = size;
+    blank_ = false;
+    blank_waiting_ = false;
     pixels_waiting_ = buffer;
     pixels_stamps_ = FrameStamps{};
     pixels_stamps_.note_now(FrameStamps::Stage::Shown);
@@ -269,6 +275,35 @@ void MirrorSurface::attach_pixels() {
     buffer->attached();
     on_gpu_ = false;
     commit_attached(buffer->buffer(), pixels_stamps_);
+}
+
+void MirrorSurface::show_blank(Size picture) {
+    if (picture.empty()) return;
+    drop_sync_objects();
+    shared_waiting_.reset();
+    fence_watch_.reset();
+    pixels_waiting_ = nullptr;
+    frame_dropped_ = false;
+    if (blank_pixel_ == nullptr) {
+        blank_pixel_ = std::make_unique<ShmBuffer>(kit_.globals.shm(), Size{1, 1});
+        const std::span<std::uint8_t> pixel = blank_pixel_->pixels();
+        std::fill(pixel.begin(), pixel.end(), std::uint8_t{0});
+    }
+    const bool resized = picture != picture_;
+    picture_ = picture;
+    blank_ = true;
+    blank_waiting_ = true;
+    if (resized) announce_resize();
+    if (commits_allowed_) attach_blank();
+}
+
+void MirrorSurface::attach_blank() {
+    blank_waiting_ = false;
+    on_gpu_ = false;
+    wl_surface_attach(surface_, blank_pixel_->buffer(), 0, 0);
+    wl_surface_damage_buffer(surface_, 0, 0, 1, 1);
+    commit();
+    note_mapped();
 }
 
 void MirrorSurface::show(const SharedFrame& frame) {
@@ -324,6 +359,8 @@ void MirrorSurface::attach_shared(wl_buffer* buffer) {
     SharedFrame frame = std::move(*shared_waiting_);
     shared_waiting_.reset();
     frame.stamps.note_now(FrameStamps::Stage::Acquired);
+    blank_ = false;
+    blank_waiting_ = false;
     if (frame.size() != picture_) {
         picture_ = frame.size();
         announce_resize();
@@ -386,6 +423,10 @@ void MirrorSurface::commit_attached(wl_buffer* buffer, const FrameStamps& stamps
     committed.note_now(FrameStamps::Stage::Committed);
     presentation_.ask(surface_, committed);
     commit();
+    note_mapped();
+}
+
+void MirrorSurface::note_mapped() {
     if (mapped_) return;
     mapped_ = true;
     first_mapped();

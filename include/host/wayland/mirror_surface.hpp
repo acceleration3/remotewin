@@ -12,6 +12,7 @@
 #include "host/loop/signal.hpp"
 #include "host/wayland/dmabuf_buffers.hpp"
 #include "host/wayland/presentation_times.hpp"
+#include "host/wayland/shm_buffer.hpp"
 #include "host/wayland/shm_buffers.hpp"
 #include "host/wayland/surface_kit.hpp"
 
@@ -54,6 +55,8 @@ public:
 
     void show(const PixelsView& pixels);
     void show(const SharedFrame& frame);
+    void show_blank(Size picture);
+    [[nodiscard]] bool blank() const noexcept { return blank_; }
     [[nodiscard]] Size picture_size() const noexcept { return picture_; }
     [[nodiscard]] bool mapped() const noexcept { return mapped_; }
     [[nodiscard]] bool on_gpu() const noexcept { return on_gpu_; }
@@ -97,6 +100,8 @@ private:
     void attach_pixels();
     void try_attach_shared();
     void attach_shared(wl_buffer* buffer);
+    void attach_blank();
+    void note_mapped();
     void buffer_made(const SurfaceMemory& memory, wl_buffer* buffer, const std::string& why);
     void buffer_released(wl_buffer* buffer);
     void apply_view();
@@ -131,6 +136,9 @@ private:
     bool mapped_ = false;
     bool on_gpu_ = false;
     ShmBuffer* pixels_waiting_ = nullptr;
+    std::unique_ptr<ShmBuffer> blank_pixel_;
+    bool blank_ = false;
+    bool blank_waiting_ = false;
     bool frame_dropped_ = false;
     std::unique_ptr<EventLoop::Timer> owed_;
     FrameStamps pixels_stamps_;

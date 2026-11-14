@@ -50,6 +50,7 @@ public:
         bool active = false;
         bool skip_taskbar = false;
         bool skip_switcher = false;
+        bool minimized = false;
         double x = 0;
         double y = 0;
         double width = 0;
@@ -59,6 +60,7 @@ public:
 
     [[nodiscard]] bool watching() const noexcept { return watching_; }
     [[nodiscard]] const std::optional<Seen>& now() const noexcept { return now_; }
+    [[nodiscard]] const Seen* shown() const noexcept;
     [[nodiscard]] const std::vector<Seen>& journal() const noexcept { return journal_; }
     [[nodiscard]] std::size_t done() const noexcept { return done_; }
 
@@ -67,6 +69,7 @@ public:
     [[nodiscard]] std::size_t surveys() const noexcept { return surveys_; }
     void activate(const std::string& title);
     void close(const std::string& title);
+    void unminimize(const std::string& title);
 
     void set_frame(double x, double y, double width, double height);
     void maximize(bool maximized);

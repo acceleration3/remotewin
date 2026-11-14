@@ -1125,6 +1125,196 @@ void close_confirmation(Case& run, Corners corners) {
     judge_corner(run, kConfirmTitle, kConfirm, kAppId, "the close confirmation over the main window");
 }
 
+constexpr const char* kIconicTitle = "Played minimised";
+constexpr WindowId kIconicId{0x9605e4, 2};
+constexpr Rect kIconicFrame{-32000, -32000, 160, 28};
+constexpr Rect kIconicRestored{420, 260, 640, 480};
+constexpr std::uint32_t kWsMinimize = 0x20000000;
+
+void minimize_before_dial(FakeGuest&, ModelWindow& window) { window.command(Command::Minimize); }
+
+void play_minimized_before_dial(FakeGuest& guest, ModelWindow& window) {
+    WindowFields iconic = played_window(window, kIconicTitle, "RemotewinIntegrationWindow",
+                                        kWsOverlappedWindow | kWsVisible | kWsMinimize, 0, kIconicFrame, WindowId{});
+    iconic.show = WindowFields::Show::Minimized;
+    guest.show_window(kIconicId, iconic);
+}
+
+std::string app_id_of(const WindowFields& fields) { return host::GuestApplication{fields.app_id}.host_app_id(); }
+
+bool blank_sized(Case& run, const KWinView::Seen& seen) {
+    return near(seen.width, run.desktop().logical(static_cast<std::int32_t>(kIconicFrame.width)))
+           && near(seen.height, run.desktop().logical(static_cast<std::int32_t>(kIconicFrame.height)));
+}
+
+void judge_mapped_minimized(Case& run, const std::string& title, const std::string& app_id) {
+    const auto there = stacking_settles(
+        run,
+        [&](const Stacking& stacking) {
+            const KWinView::Stacked* window = stacked(stacking, title);
+            return window != nullptr && window->minimized && window->app_id == app_id && !window->skip_taskbar
+                   && !window->skip_switcher;
+        },
+        kHold);
+    judge_stacking(run, there, std::format("the compositor has '{}' minimised, under its application, on the taskbar "
+                                           "and the switcher",
+                                           title));
+    const std::optional<HostReport::Mirror> mirror = run.desktop().host_report().mirror(title);
+    run.verdicts().check(mirror.has_value() && mirror->mapped && mirror->blank,
+                         "its mirror is mapped with a blank picture");
+    run.verdicts().check(run.desktop().host_said("READY"), "the mirror told its parent it is ready");
+}
+
+bool shown_at(Case& run, const Rect& frame) {
+    const auto& now = run.kwin().now();
+    return !now->minimized && near(now->x, run.desktop().logical(frame.x))
+           && near(now->y, run.desktop().logical(frame.y))
+           && near(now->width, run.desktop().logical(static_cast<std::int32_t>(frame.width)))
+           && near(now->height, run.desktop().logical(static_cast<std::int32_t>(frame.height)))
+           && run.host_shows(frame.width, frame.height);
+}
+
+void judge_only_blank_or(Case& run, const Rect& frame) {
+    const auto& journal = run.kwin().journal();
+    int other_sizes = 0;
+    for (std::size_t at = run.kwin_mark(); at < journal.size(); ++at) {
+        const KWinView::Seen& seen = journal[at];
+        const bool whole = near(seen.width, run.desktop().logical(static_cast<std::int32_t>(frame.width)))
+                           && near(seen.height, run.desktop().logical(static_cast<std::int32_t>(frame.height)));
+        other_sizes += !seen.minimized && !whole && !blank_sized(run, seen);
+    }
+    run.verdicts().check(other_sizes == 0,
+                         std::format("un-minimised it was only blank or the guest's size ({} other sizes)", other_sizes));
+    const std::optional<HostReport::Mirror> mirror = run.desktop().host_report().mirror(kMainTitle);
+    run.verdicts().check(mirror.has_value() && !mirror->blank, "its mirror shows the guest's picture");
+}
+
+void minimized_at_start_restored_in_guest(Case& run) {
+    const Rect normal = run.window().normal();
+    judge_mapped_minimized(run, kMainTitle, app_id_of(run.window().fields()));
+    run.mark();
+    run.guest().act(Command::Restore);
+    const auto back = run.desktop().settle([&] { return shown_at(run, normal); }, kSettleWait, kHold);
+    run.judge_settled(back, std::format("restored by the guest, it is shown at the guest's {}", rect_text(normal)));
+    if (!back.has_value()) {
+        run.verdicts().note(std::format("the compositor has it at {} minimised {}", box_text(*run.kwin().now()),
+                                        run.kwin().now()->minimized));
+    }
+    run.verdicts().check(run.flips(minimized) == 1,
+                         std::format("the compositor's minimised flag changed once ({} times)", run.flips(minimized)));
+    run.verdicts().check(run.commands_asked(Command::Minimize) + run.commands_asked(Command::Restore) == 0
+                             && run.moves_asked().empty() && run.window().frame() == normal,
+                         std::format("nothing was asked back of the guest, which is at {}", rect_text(run.window().frame())));
+    judge_only_blank_or(run, normal);
+    if (!run.verdicts().passed()) run.dump_kwin_since_mark();
+}
+
+void minimized_at_start(Case& run) {
+    const Rect normal = run.window().normal();
+    judge_mapped_minimized(run, kMainTitle, app_id_of(run.window().fields()));
+    const auto& journal = run.kwin().journal();
+    const auto shown = std::count_if(journal.begin(), journal.end(),
+                                     [](const KWinView::Seen& seen) { return !seen.minimized; });
+    run.verdicts().check(!journal.empty() && journal.front().what == "added" && shown == 0,
+                         std::format("the compositor never had it un-minimised ({} times)", shown));
+    run.verdicts().check(run.guest().asked().empty() && run.guest().pictured().empty(),
+                         "nothing was asked of the guest, and it sent no picture");
+
+    run.mark();
+    run.in_kwin([](KWinView& kwin) { kwin.minimize(false); });
+    const auto back = run.desktop().settle(
+        [&] { return !run.window().minimized() && run.window().frame() == normal && shown_at(run, normal); },
+        kSettleWait, kHold);
+    run.judge_settled(back, std::format("un-minimised by the compositor, it is shown at the guest's {}",
+                                        rect_text(normal)));
+    if (!back.has_value()) {
+        run.verdicts().note(std::format("the compositor has it at {} minimised {}, the guest at {} minimised {}",
+                                        box_text(*run.kwin().now()), run.kwin().now()->minimized,
+                                        rect_text(run.window().frame()), run.window().minimized()));
+    }
+    run.verdicts().check(run.flips(minimized) == 1,
+                         std::format("the compositor's minimised flag changed once ({} times)", run.flips(minimized)));
+    run.verdicts().check(run.commands_asked(Command::Restore) == 1 && run.commands_asked(Command::Minimize) == 0,
+                         std::format("the guest was asked to restore once ({}) and never to minimise ({})",
+                                     run.commands_asked(Command::Restore), run.commands_asked(Command::Minimize)));
+    const std::vector<Rect> moves = run.moves_asked();
+    run.verdicts().check(moves.empty(), std::format("the guest was never asked for a place or a size{}",
+                                                    moves.empty() ? "" : ", not " + rect_text(moves.front())));
+    judge_only_blank_or(run, normal);
+    if (!run.verdicts().passed()) run.dump_kwin_since_mark();
+}
+
+bool same_picture(const std::optional<ScreenCapture::Picture>& a, const std::optional<ScreenCapture::Picture>& b) {
+    return a.has_value() && b.has_value() && a->width == b->width && a->height == b->height && a->pixels == b->pixels;
+}
+
+void minimized_beside_shown(Case& run) {
+    main_window_active(run);
+    WindowFields iconic = played_window(run.window(), kIconicTitle, "RemotewinIntegrationWindow",
+                                        kWsOverlappedWindow | kWsVisible | kWsMinimize, 0, kIconicFrame, WindowId{});
+    iconic.show = WindowFields::Show::Minimized;
+    judge_mapped_minimized(run, kIconicTitle, app_id_of(iconic));
+    const KWinView::Stacked* main = stacked(run.kwin().stacking(), kMainTitle);
+    run.verdicts().check(main != nullptr && main->active && !main->minimized,
+                         "the shown window is still shown and active");
+    const auto& journal = run.kwin().journal();
+    const auto blank_shown = [&] {
+        return std::count_if(journal.begin(), journal.end(), [&](const KWinView::Seen& seen) {
+            return !seen.minimized && blank_sized(run, seen);
+        });
+    };
+    run.verdicts().check(blank_shown() == 0,
+                         std::format("the compositor never had the blank un-minimised ({} times)", blank_shown()));
+    const auto asked_of_iconic = [&] {
+        const auto& asked = run.guest().asked();
+        return std::count_if(asked.begin(), asked.end(), [](const FakeGuest::Asked& request) {
+            const auto* command = std::get_if<Command>(&request.request);
+            return request.window == kIconicId && command != nullptr && *command == Command::Restore;
+        });
+    };
+    run.verdicts().check(asked_of_iconic() == 0, "the guest was not asked to restore it");
+
+    const int width = static_cast<int>(std::lround(run.desktop().logical(static_cast<std::int32_t>(
+        run.window().work_area().width))));
+    const int height = static_cast<int>(std::lround(run.desktop().logical(static_cast<std::int32_t>(
+        run.window().work_area().height))));
+    const std::optional<ScreenCapture::Picture> before = run.desktop().screen().area(0, 0, width, height);
+    run.in_kwin([](KWinView& kwin) { kwin.unminimize(kIconicTitle); });
+    const auto asked = run.desktop().settle([&] { return asked_of_iconic() == 1; }, kSettleWait, milliseconds(0));
+    run.judge_settled(asked, "un-minimised by the compositor, the guest was asked to restore it");
+    run.desktop().pass(milliseconds(100));
+    const std::optional<ScreenCapture::Picture> blank = run.desktop().screen().area(0, 0, width, height);
+    run.verdicts().check(same_picture(before, blank),
+                         "until the guest answers, the screen shows what it showed before");
+
+    WindowFields restored = played_window(run.window(), kIconicTitle, "RemotewinIntegrationWindow",
+                                          kWsOverlappedWindow | kWsVisible, 0, kIconicRestored, WindowId{});
+    run.guest().change_window(kIconicId, restored);
+    run.guest().stack(ZOrder{kIconicId, {kIconicId, kMainId, kMonitorWindow}});
+    const auto shown = stacking_settles(
+        run,
+        [&](const Stacking& stacking) {
+            const KWinView::Stacked* window = stacked(stacking, kIconicTitle);
+            const std::optional<HostReport::Mirror> mirror = run.desktop().host_report().mirror(kIconicTitle);
+            return window != nullptr && !window->minimized && near(window->x, run.desktop().logical(kIconicRestored.x))
+                   && near(window->y, run.desktop().logical(kIconicRestored.y))
+                   && near(window->width, run.desktop().logical(static_cast<std::int32_t>(kIconicRestored.width)))
+                   && near(window->height, run.desktop().logical(static_cast<std::int32_t>(kIconicRestored.height)))
+                   && mirror.has_value() && !mirror->blank
+                   && mirror->picture.width == static_cast<int>(kIconicRestored.width)
+                   && mirror->picture.height == static_cast<int>(kIconicRestored.height);
+        },
+        kHold);
+    judge_stacking(run, shown, std::format("restored in the guest, it is shown with its picture at the guest's {}",
+                                           rect_text(kIconicRestored)));
+    run.verdicts().check(asked_of_iconic() == 1, "the guest was asked to restore it once");
+    const auto& requests = run.guest().asked();
+    const bool moved = std::any_of(requests.begin(), requests.end(), [](const FakeGuest::Asked& request) {
+        return request.window == kIconicId && std::holds_alternative<Rect>(request.request);
+    });
+    run.verdicts().check(!moved, "the guest was never asked for a place or a size for it");
+}
+
 void welcome_in_front(Case& run) { welcome(run, Corners::Square); }
 void welcome_in_front_rounded(Case& run) { welcome(run, Corners::Rounded); }
 void close_confirmation_in_front(Case& run) { close_confirmation(run, Corners::Square); }
@@ -1135,6 +1325,7 @@ struct Named {
     void (*run)(Case&);
     FakeGuest::Timing timing;
     bool gpu_frames = false;
+    void (*before_dial)(FakeGuest& guest, ModelWindow& window) = nullptr;
 };
 
 constexpr FakeGuest::Timing kQuick{milliseconds(25), milliseconds(16)};
@@ -1157,6 +1348,10 @@ constexpr Named kCases[] = {
     {"welcome-in-front-rounded", &welcome_in_front_rounded, kQuick, true},
     {"close-confirmation-in-front", &close_confirmation_in_front, kQuick},
     {"close-confirmation-in-front-rounded", &close_confirmation_in_front_rounded, kQuick, true},
+    {"minimized-at-start", &minimized_at_start, kQuick, false, &minimize_before_dial},
+    {"minimized-at-start-restored-in-guest", &minimized_at_start_restored_in_guest, kQuick, false,
+     &minimize_before_dial},
+    {"minimized-beside-shown", &minimized_beside_shown, kQuick, false, &play_minimized_before_dial},
 };
 
 bool on_path(const std::string& program) {
@@ -1185,6 +1380,7 @@ int run_case(const Named& named) {
         TestDesktop::Layout layout;
         layout.timing = named.timing;
         layout.gpu_frames = named.gpu_frames;
+        layout.before_dial = named.before_dial;
         const char* host = std::getenv("RWIN_INTEGRATION_HOST");
         TestDesktop desktop{layout, host != nullptr ? host : RWIN_HOST_BINARY, scratch};
         verdicts.check(desktop.ready(), "the mirror came up where the guest has its window");

@@ -11,6 +11,7 @@
 #include "host/mirror/mirror_scope.hpp"
 #include "host/mirror/mirror_state.hpp"
 #include "host/mirror/popup_stack.hpp"
+#include "host/mirror/presentation.hpp"
 #include "host/mirror/window_mirror.hpp"
 #include "host/placement/placement_sync.hpp"
 #include "host/wayland/activation.hpp"
@@ -89,7 +90,6 @@ private:
     void count_windows(std::size_t belonging);
     void follow_grab(const PointerGrab& grab);
     void follow_pointer();
-    void note_ready();
 
     EventLoop& loop_;
     GuestLink& link_;
@@ -115,7 +115,7 @@ private:
     std::unique_ptr<EventLoop::Timer> release_;
     bool syncing_ = false;
     bool had_windows_ = false;
-    bool ready_ = false;
+    Presentation presentation_;
 };
 
 }
