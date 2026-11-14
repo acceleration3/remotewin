@@ -43,7 +43,8 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
           RWIN_INFO("mirror", "the application has had no window for {} ms; the session is done", kEmptyGrace.count());
           finished();
       })),
-      rearrange_(parts.loop.timer([this] { arrange(); })) {
+      rearrange_(parts.loop.timer([this] { arrange(); })),
+      release_(parts.loop.timer([this] { release_closed(); })) {
     placement_.prefer_output(parts.output);
     link_.connected.connect([this] { link_.send_sys_param(SysParam{SysParam::Param::DragFullWindows, {}, true}); });
     link_.sync_began.connect([this] { syncing_ = true; });
@@ -230,7 +231,9 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
         const wl_surface* surface = mirror.surface();
         frames_.shown(stamps, surface != nullptr && kit_.surfaces.seat.keyboard_focus() == surface);
     });
-    mirror.let_go.connect([this](WindowId) { release_closed(); });
+    mirror.let_go.connect([this](WindowId) {
+        if (!releasing_.empty()) release_->start(std::chrono::milliseconds::zero(), false);
+    });
     mirror.remade.connect([this](WindowId) { rearrange_->start(std::chrono::milliseconds::zero(), false); });
     mirror.dropped.connect([this](WindowId) { rearrange_->start(std::chrono::milliseconds::zero(), false); });
     mirror.reshaped.connect([this](WindowId) { rearrange_->start(std::chrono::milliseconds::zero(), false); });

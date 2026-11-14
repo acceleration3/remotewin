@@ -109,6 +109,7 @@ private:
     std::string token_;
     std::unique_ptr<EventLoop::Timer> empty_;
     std::unique_ptr<EventLoop::Timer> rearrange_;
+    std::unique_ptr<EventLoop::Timer> release_;
     bool syncing_ = false;
     bool had_windows_ = false;
     bool ready_ = false;
