@@ -5,6 +5,8 @@
 #include "host/placement/output_layout.hpp"
 #include "host/placement/placement_sync.hpp"
 
+#include "fake_kwin_bus.hpp"
+
 #include <chrono>
 #include <cstdio>
 #include <memory>
@@ -65,6 +67,7 @@ GuestWindow guest_at(int x, int y) {
 }
 
 struct Setup {
+    rwin::test::FakeKWinBus session_bus;
     PollLoop loop;
     BusConnection bus{loop};
     FakeKWin* kwin = nullptr;
