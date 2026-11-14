@@ -58,11 +58,15 @@ endif()
 
 if(TARGET rwin_host)
     foreach(name win32_style guest_button key_translator popup_layout link_lifecycle state_sync
-                 move_requests kwin_tag screen_mapping placement_sync)
+                 move_requests kwin_tag screen_mapping placement_sync kwin_placement)
         add_executable(rwin_${name}_test ${name}_test.cpp)
         target_link_libraries(rwin_${name}_test PRIVATE rwin::host)
         add_test(NAME rwin_${name}_test COMMAND rwin_${name}_test)
     endforeach()
+    find_package(PkgConfig REQUIRED)
+    find_package(Threads REQUIRED)
+    pkg_check_modules(RWIN_TEST_SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
+    target_link_libraries(rwin_kwin_placement_test PRIVATE PkgConfig::RWIN_TEST_SYSTEMD Threads::Threads)
 endif()
 
 if(TARGET rwin_host)

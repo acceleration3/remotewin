@@ -63,6 +63,7 @@ public:
 private:
     struct Pending {
         std::uint64_t window = 0;
+        std::uint32_t serial = 0;
         std::int64_t since = 0;
         std::unique_ptr<KWinScript> script;
         bool failed = false;
@@ -74,8 +75,8 @@ private:
     void placed(std::string_view report);
     void moved(std::string_view report);
     void outputs(std::string_view report);
-    [[nodiscard]] std::string script_name(std::string_view role);
-    void run_for(std::uint64_t window, const std::string& source);
+    [[nodiscard]] static std::string script_name(std::string_view role, std::uint32_t serial);
+    void run_for(std::uint64_t window, std::uint32_t serial, const std::string& source);
     void watch();
     void expire();
 

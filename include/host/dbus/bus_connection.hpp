@@ -22,10 +22,10 @@ public:
     [[nodiscard]] sd_bus* bus() const noexcept { return bus_; }
     [[nodiscard]] std::string unique_name() const;
 
-    void pump();
+    void rearm();
 
 private:
-    void rearm();
+    void pump();
 
     sd_bus* bus_ = nullptr;
     std::unique_ptr<EventLoop::Watch> watch_;

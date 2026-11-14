@@ -37,7 +37,7 @@ private:
     std::string file_;
     Done done_;
     sd_bus_slot* call_ = nullptr;
-    bool loaded_ = false;
+    bool load_asked_ = false;
     bool running_ = false;
 };
 

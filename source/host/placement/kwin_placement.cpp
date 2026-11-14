@@ -81,18 +81,19 @@ outputs();
 
 constexpr const char* kPlacer = R"JS(
 const tag = "{0}";
+const placement = {7};
 function place(w) {{
     if (w.pid !== {1}) return false;
     const caption = w.captionNormal || "";
     if (caption.indexOf(tag) < 0) return false;
     if (w.maximizeMode !== 0 || w.fullScreen) {{
-        callDBus("{4}", "{5}", "{6}", "placed", tag + " " + w.frameGeometry.x + " " + w.frameGeometry.y);
+        callDBus("{4}", "{5}", "{6}", "placed", [tag, placement, w.frameGeometry.x, w.frameGeometry.y].join(" "));
         return true;
     }}
     const was = w.frameGeometry;
     w.frameGeometry = {{x: {2}, y: {3}, width: was.width, height: was.height}};
     const now = w.frameGeometry;
-    callDBus("{4}", "{5}", "{6}", "placed", tag + " " + now.x + " " + now.y);
+    callDBus("{4}", "{5}", "{6}", "placed", [tag, placement, now.x, now.y].join(" "));
     return true;
 }}
 if (!workspace.windowList().some(place)) {{
@@ -103,6 +104,7 @@ if (!workspace.windowList().some(place)) {{
 
 constexpr const char* kSender = R"JS(
 const tag = "{0}";
+const placement = {6};
 function send(w) {{
     if (w.pid !== {1}) return false;
     const caption = w.captionNormal || "";
@@ -110,7 +112,7 @@ function send(w) {{
     const output = workspace.screens.find(function(s) {{ return s.name === "{2}"; }});
     if (output && w.output !== output) workspace.sendClientToScreen(w, output);
     const now = w.frameGeometry;
-    callDBus("{3}", "{4}", "{5}", "placed", tag + " " + now.x + " " + now.y);
+    callDBus("{3}", "{4}", "{5}", "placed", [tag, placement, now.x, now.y].join(" "));
     return true;
 }}
 if (!workspace.windowList().some(send)) {{
@@ -158,6 +160,12 @@ std::vector<std::string_view> words_of(std::string_view text, char separator) {
     return words;
 }
 
+std::uint32_t to_serial(std::string_view text) {
+    std::uint32_t value = 0;
+    std::from_chars(text.data(), text.data() + text.size(), value);
+    return value;
+}
+
 double to_double(std::string_view text) {
     double value = 0.0;
     std::from_chars(text.data(), text.data() + text.size(), value);
@@ -200,7 +208,7 @@ KWinPlacement::KWinPlacement(EventLoop& loop, BusConnection& bus) : bus_(bus) {
 
 void KWinPlacement::watch() {
     watcher_ = std::make_unique<KWinScript>(
-        bus_, script_name("watch"), std::format(kWatcher, service_, kPath, kInterface, ::getpid()),
+        bus_, script_name("watch", ++scripts_), std::format(kWatcher, service_, kPath, kInterface, ::getpid()),
         [this](bool ran, const std::string&) {
             if (ran) {
                 RWIN_INFO("placement", "placing toplevel windows through KWin");
@@ -216,8 +224,8 @@ KWinPlacement::~KWinPlacement() {
     if (object_ != nullptr) sd_bus_slot_unref(object_);
 }
 
-std::string KWinPlacement::script_name(std::string_view role) {
-    return std::format("remotewin-{}-{}-{}", ::getpid(), role, ++scripts_);
+std::string KWinPlacement::script_name(std::string_view role, std::uint32_t serial) {
+    return std::format("remotewin-{}-{}-{}", ::getpid(), role, serial);
 }
 
 std::string KWinPlacement::tag_for(std::uint64_t window) {
@@ -255,24 +263,28 @@ std::optional<std::uint64_t> KWinPlacement::window_of(std::string_view tag) {
 
 void KWinPlacement::place(std::uint64_t window, PointF corner) {
     if (!active()) return;
-    run_for(window, std::format(kPlacer, js_string(tag_for(window)), ::getpid(), number(corner.x), number(corner.y),
-                                service_, kPath, kInterface));
+    const std::uint32_t serial = ++scripts_;
+    run_for(window, serial,
+            std::format(kPlacer, js_string(tag_for(window)), ::getpid(), number(corner.x), number(corner.y), service_,
+                        kPath, kInterface, serial));
 }
 
 void KWinPlacement::send_to_output(std::uint64_t window, const std::string& output) {
     if (!active()) return;
-    run_for(window, std::format(kSender, js_string(tag_for(window)), ::getpid(), js_string(output), service_, kPath,
-                                kInterface));
+    const std::uint32_t serial = ++scripts_;
+    run_for(window, serial,
+            std::format(kSender, js_string(tag_for(window)), ::getpid(), js_string(output), service_, kPath,
+                        kInterface, serial));
 }
 
-void KWinPlacement::run_for(std::uint64_t window, const std::string& source) {
+void KWinPlacement::run_for(std::uint64_t window, std::uint32_t serial, const std::string& source) {
     std::erase_if(pending_, [window](const Pending& pending) { return pending.window == window; });
-    pending_.push_back(Pending{window, now_ns(), nullptr, false});
-    pending_.back().script = std::make_unique<KWinScript>(bus_, script_name("place"), source,
-                                                          [this, window](bool ran, const std::string&) {
+    pending_.push_back(Pending{window, serial, now_ns(), nullptr, false});
+    pending_.back().script = std::make_unique<KWinScript>(bus_, script_name("place", serial), source,
+                                                          [this, serial](bool ran, const std::string&) {
                                                               if (ran) return;
                                                               for (Pending& pending : pending_) {
-                                                                  if (pending.window == window) pending.failed = true;
+                                                                  if (pending.serial == serial) pending.failed = true;
                                                               }
                                                           });
 }
@@ -291,16 +303,21 @@ int KWinPlacement::outputs_call(sd_bus_message* call, void* self, sd_bus_error* 
 
 void KWinPlacement::placed(std::string_view report) {
     const std::vector<std::string_view> parts = words_of(report, ' ');
-    const std::optional<std::uint64_t> window = parts.size() == 3 ? window_of(parts[0]) : std::nullopt;
+    constexpr std::size_t kParts = 4;
+    const std::optional<std::uint64_t> window = parts.size() == kParts ? window_of(parts[0]) : std::nullopt;
     if (!window.has_value()) {
         RWIN_WARN("placement", "a placement report that names no window: '{}'", report);
         return;
     }
     const auto pending = std::find_if(pending_.begin(), pending_.end(),
                                       [&](const Pending& entry) { return entry.window == *window; });
+    if (pending != pending_.end() && pending->serial != to_serial(parts[1])) {
+        RWIN_DEBUG("placement", "{:#x}: a report of a placement since replaced; not taken", *window);
+        return;
+    }
     const std::int64_t took = pending == pending_.end() ? -1 : (now_ns() - pending->since) / kNanosecondsPerMillisecond;
     if (pending != pending_.end()) pending_.erase(pending);
-    const PointF at{to_double(parts[1]), to_double(parts[2])};
+    const PointF at{to_double(parts[2]), to_double(parts[3])};
     RWIN_DEBUG("placement", "{:#x} placed at {:.2f},{:.2f} in {} ms", *window, at.x, at.y, took);
     window_placed(*window, at, took);
 }

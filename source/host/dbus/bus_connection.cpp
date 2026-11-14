@@ -64,6 +64,7 @@ void BusConnection::pump() {
 }
 
 void BusConnection::rearm() {
+    if (bus_ == nullptr || processing_) return;
     const int events = sd_bus_get_events(bus_);
     if (events >= 0) watch_->want(static_cast<short>(events));
     std::uint64_t until = 0;

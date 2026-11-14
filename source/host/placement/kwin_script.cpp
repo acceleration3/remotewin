@@ -50,15 +50,16 @@ KWinScript::KWinScript(BusConnection& bus, std::string name, const std::string& 
         fail("loadScript: " + std::string(std::strerror(-asked)));
         return;
     }
-    bus_.pump();
+    load_asked_ = true;
+    bus_.rearm();
 }
 
 KWinScript::~KWinScript() {
     if (call_ != nullptr) sd_bus_slot_unref(call_);
-    if (loaded_) {
+    if (load_asked_) {
         static_cast<void>(sd_bus_call_method_async(bus_.bus(), nullptr, kService, kScripting, kScriptingInterface,
                                                    "unloadScript", nullptr, nullptr, "s", name_.c_str()));
-        bus_.pump();
+        bus_.rearm();
     }
     if (!file_.empty()) ::unlink(file_.c_str());
 }
@@ -88,7 +89,6 @@ int KWinScript::loaded(sd_bus_message* reply, void* self, sd_bus_error* ) {
         script->fail("loadScript gave no id");
         return 0;
     }
-    script->loaded_ = true;
     if (id < 0) {
         script->fail("loadScript refused " + script->name_ + " (already loaded?)");
         return 0;
