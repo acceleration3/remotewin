@@ -2,6 +2,7 @@
 
 #include "host/cursor/cursor_look.hpp"
 #include "host/cursor/native_cursor_shape.hpp"
+#include "proto/cursor_picture.hpp"
 #include "logging/logger.hpp"
 
 #include <utility>
@@ -13,7 +14,10 @@ CursorPlayer::CursorPlayer(EventLoop& loop) : animation_(loop) {
     animation_.stepped.connect([this](std::size_t step) { step_to(step); });
 }
 
-void CursorPlayer::remember(const CursorPicture& picture) { looks_.remember(picture); }
+void CursorPlayer::remember(const CursorPicture& picture) {
+    looks_.remember(picture);
+    if (shown_.shown && shown_.id == picture.id) show(shown_);
+}
 
 const CursorLook* CursorPlayer::look() const {
     return shown_.shown ? looks_.find(shown_.id) : nullptr;
