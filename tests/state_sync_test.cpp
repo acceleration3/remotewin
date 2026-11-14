@@ -94,6 +94,28 @@ void new_surface_asked_again() {
 
 }
 
+void a_placement_ends_a_maximise_in_transit() {
+    Sides sides;
+    sides.sync.guest_says(true, 10 * kMs);
+    check(sides.compositor_asked == std::vector<bool>{true}, "the guest's maximise is asked of the compositor");
+    sides.sync.compositor_insists(false, 20 * kMs);
+    check(sides.guest_asked == std::vector<bool>{false}, "a placement restores the guest at once");
+    check(!sides.sync.compositor_expected(), "and the compositor is no longer expected maximised");
+    sides.sync.guest_says(false, 40 * kMs);
+    check(sides.compositor_asked.size() == 1, "the guest's answer is not sent back");
+    sides.sync.compositor_insists(false, 50 * kMs);
+    sides.sync.compositor_insists(false, 3000 * kMs);
+    check(sides.guest_asked.size() == 1, "further placements ask nothing");
+}
+
+void a_placement_of_a_restored_window_asks_nothing() {
+    Sides sides;
+    sides.sync.compositor_insists(false, 10 * kMs);
+    check(sides.guest_asked.empty() && sides.compositor_asked.empty(), "nothing to change");
+    sides.sync.compositor_says(true, 20 * kMs);
+    check(sides.guest_asked == std::vector<bool>{true}, "a maximise after it is still taken");
+}
+
 int main() {
     compositor_maximises_past_a_stale_report();
     guest_toggles_quickly();
@@ -101,6 +123,8 @@ int main() {
     unanswered_ask_expires();
     wanted_once();
     new_surface_asked_again();
+    a_placement_ends_a_maximise_in_transit();
+    a_placement_of_a_restored_window_asks_nothing();
     if (failures == 0) std::printf("state_sync: all passed\n");
     return failures == 0 ? 0 : 1;
 }

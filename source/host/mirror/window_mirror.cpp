@@ -6,6 +6,7 @@
 #include "host/input/pointer_grabber.hpp"
 #include "host/latency/frame_stamps.hpp"
 #include "host/link/guest_link.hpp"
+#include "host/mirror/configure_meaning.hpp"
 #include "host/mirror/guest_desktop.hpp"
 #include "host/mirror/picture_limits.hpp"
 #include "host/mirror/popup_layout.hpp"
@@ -235,6 +236,8 @@ void WindowMirror::drop_surface() {
     made_against_ = 0;
     pointer_.reset();
     configure_ = ToplevelConfigure{};
+    held_ = false;
+    taken_ = Size{};
     caption_.clear();
     asked_fullscreen_ = false;
     minimize_owed_ = false;
@@ -304,8 +307,7 @@ void WindowMirror::picture_changed() {
 }
 
 void WindowMirror::rescaled() {
-    if (toplevel_ != nullptr && style_.sizable() && !configure_.size.empty() && !configure_.maximized
-        && !configure_.fullscreen) {
+    if (toplevel_ != nullptr && style_.sizable() && !configure_.size.empty() && !held_) {
         wanted_ = configure_.size;
         ask_for_wanted();
     }
@@ -317,8 +319,8 @@ void WindowMirror::resized_in_guest() {
     const Size natural = logical_of(picture_);
     if (wanted_.has_value() && natural == *wanted_) {
         wanted_.reset();
-    } else if (!wanted_.has_value() && !configure_.size.empty() && !configure_.maximized && !configure_.fullscreen
-               && !window_.maximized() && natural != configure_.size) {
+    } else if (!wanted_.has_value() && !configure_.size.empty() && !held_ && !window_.maximized()
+               && natural != configure_.size) {
         resized_by_guest(window());
     }
     apply_limits();
@@ -360,7 +362,7 @@ void WindowMirror::follow(const GuestWindow& window) {
 
 void WindowMirror::apply_limits() {
     if (toplevel_ == nullptr) return;
-    if (window_.maximized() || asked_fullscreen_ || configure_.maximized || configure_.fullscreen) {
+    if (window_.maximized() || asked_fullscreen_ || held_) {
         toplevel_->limit(Size{}, Size{});
         return;
     }
@@ -369,9 +371,12 @@ void WindowMirror::apply_limits() {
         toplevel_->limit(fixed, fixed);
         return;
     }
-    const PictureLimits picture =
-        PictureLimits::of(limits_, window_.margins(), window_.picture_padding(), kit_.desktop.work_area.size());
+    const PictureLimits picture = picture_limits();
     toplevel_->limit(logical_limit(picture.smallest), logical_limit(picture.largest));
+}
+
+PictureLimits WindowMirror::picture_limits() const noexcept {
+    return PictureLimits::of(limits_, window_.margins(), window_.picture_padding(), kit_.desktop.work_area.size());
 }
 
 Size WindowMirror::logical_limit(Size picture) const noexcept {
@@ -456,23 +461,35 @@ bool WindowMirror::covers_monitor() const noexcept {
 }
 
 void WindowMirror::configured(const ToplevelConfigure& configure) {
-    const ToplevelConfigure before = configure_;
+    const bool was_activated = configure_.activated;
     configure_ = configure;
+    const PictureLimits limits = picture_limits();
+    const ConfigureMeaning meaning = ConfigureMeaning::of(
+        configure, ConfigureMeaning::Guest{logical_of(picture_), logical_limit(limits.smallest),
+                                           logical_limit(limits.largest), style_.sizable()});
+    held_ = meaning.held();
     if (std::exchange(minimize_owed_, false)) toplevel_->minimize();
     if (!configure.resizing) resize_edges_ = 0;
-    maximize_.compositor_says(configure.maximized, now_ns());
-    take_size(configure, before);
+    if (meaning.kind == ConfigureMeaning::Kind::Placed) {
+        maximize_.compositor_insists(false, now_ns());
+    } else {
+        maximize_.compositor_says(configure.maximized, now_ns());
+    }
+    take_size(configure, meaning);
     fit_into(configure);
-    if (!before.activated && configure.activated) RWIN_DEBUG("focus", "{} activated by the compositor", window());
+    if (!was_activated && configure.activated) RWIN_DEBUG("focus", "{} activated by the compositor", window());
 }
 
-void WindowMirror::take_size(const ToplevelConfigure& configure, const ToplevelConfigure& before) {
-    if (configure.maximized || configure.fullscreen || configure.size.empty() || !style_.sizable()) {
+void WindowMirror::take_size(const ToplevelConfigure& configure, const ConfigureMeaning& meaning) {
+    if (meaning.held() || configure.size.empty() || !style_.sizable()) {
         wanted_.reset();
+        taken_ = Size{};
         return;
     }
-    if (configure.size == before.size && !before.maximized && !before.fullscreen) return;
-    wanted_ = configure.size;
+    if (meaning.kind == ConfigureMeaning::Kind::Placed && configure.resizing) return;
+    if (configure.size == taken_) return;
+    taken_ = configure.size;
+    wanted_ = meaning.guest_size;
     ask_for_wanted();
 }
 
@@ -571,7 +588,7 @@ void WindowMirror::ask_guest_for(const Box& frame) {
 }
 
 bool WindowMirror::compositor_holds_state() const noexcept {
-    return configure_.maximized || configure_.fullscreen || maximize_.compositor_expected() || asked_fullscreen_;
+    return held_ || maximize_.compositor_expected() || asked_fullscreen_;
 }
 
 bool WindowMirror::in_state() const noexcept {
@@ -710,7 +727,7 @@ void WindowMirror::pointer_entered(PointF at) {
 void WindowMirror::pointer_moved(PointF at) {
     pointer_ = at;
     if (style_.disabled() || surface_ == nullptr) return;
-    const bool resizable = toplevel_ != nullptr && style_.sizable() && !configure_.maximized && !configure_.fullscreen;
+    const bool resizable = toplevel_ != nullptr && style_.sizable() && !held_;
     const std::uint32_t edges = resizable ? border_.at(at, window_size()) : 0;
     if (edges != hovered_edges_) {
         hovered_edges_ = edges;

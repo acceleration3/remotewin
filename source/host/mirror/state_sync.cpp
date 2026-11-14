@@ -44,6 +44,12 @@ void StateSync::compositor_says(bool state, std::int64_t at) {
     if (guest_expected() != state) ask(guest_, state, at, ask_guest_);
 }
 
+void StateSync::compositor_insists(bool state, std::int64_t at) {
+    compositor_.seen = state;
+    compositor_.asked.reset();
+    if (guest_expected() != state) ask(guest_, state, at, ask_guest_);
+}
+
 void StateSync::want_guest(bool state, std::int64_t at) {
     if (guest_expected() != state) ask(guest_, state, at, ask_guest_);
 }

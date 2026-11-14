@@ -59,6 +59,7 @@ void ToplevelRole::toplevel_configured(void* self, xdg_toplevel* , std::int32_t 
     auto* role = static_cast<ToplevelRole*>(self);
     ToplevelConfigure configure;
     configure.size = Size{width, height};
+    configure.bounds = role->bounds_;
     const auto* state = static_cast<const std::uint32_t*>(states->data);
     for (std::size_t at = 0; at < states->size / sizeof(std::uint32_t); ++at) {
         switch (state[at]) {
@@ -79,7 +80,9 @@ void ToplevelRole::toplevel_configured(void* self, xdg_toplevel* , std::int32_t 
 
 void ToplevelRole::closed(void* self, xdg_toplevel* ) { static_cast<ToplevelRole*>(self)->events_.close_requested(); }
 
-void ToplevelRole::bounded(void* , xdg_toplevel* , std::int32_t , std::int32_t ) {}
+void ToplevelRole::bounded(void* self, xdg_toplevel* , std::int32_t width, std::int32_t height) {
+    static_cast<ToplevelRole*>(self)->bounds_ = Size{width, height};
+}
 
 void ToplevelRole::capable(void* , xdg_toplevel* , wl_array* ) {}
 

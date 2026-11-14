@@ -13,6 +13,7 @@ public:
 
     void guest_says(bool state, std::int64_t at);
     void compositor_says(bool state, std::int64_t at);
+    void compositor_insists(bool state, std::int64_t at);
     void want_guest(bool state, std::int64_t at);
 
     [[nodiscard]] bool guest_expected() const noexcept;

@@ -67,6 +67,7 @@ private:
     xdg_dialog_v1* dialog_ = nullptr;
     std::uint64_t parent_ = 0;
     std::uint64_t serial_;
+    Size bounds_;
     ToplevelConfigure pending_;
     ToplevelConfigure last_;
     bool configured_ = false;

@@ -50,6 +50,10 @@ struct WindowIcon;
 }
 
 namespace rwin::host {
+
+struct ConfigureMeaning;
+struct PictureLimits;
+
 class WindowMirror final : public SurfaceInput, public ToplevelEvents, public PopupEvents {
 public:
     WindowMirror(const MirrorKit& kit, const GuestWindow& window);
@@ -139,7 +143,8 @@ private:
     void apply_limits();
     void follow_state();
     void minimize_here(bool minimized);
-    void take_size(const ToplevelConfigure& configure, const ToplevelConfigure& before);
+    void take_size(const ToplevelConfigure& configure, const ConfigureMeaning& meaning);
+    [[nodiscard]] PictureLimits picture_limits() const noexcept;
     void ask_for_wanted();
     [[nodiscard]] bool in_state() const noexcept;
     void answered(const Box& asked, const Box& got);
@@ -186,6 +191,8 @@ private:
     HeldKeys held_keys_;
     std::optional<MinMax> limits_;
     ToplevelConfigure configure_;
+    bool held_ = false;
+    Size taken_;
     std::optional<Size> wanted_;
     Size picture_;
     std::uint32_t resize_edges_ = 0;

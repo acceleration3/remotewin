@@ -5,6 +5,7 @@
 namespace rwin::host {
 struct ToplevelConfigure {
     Size size;
+    Size bounds;
     bool maximized = false;
     bool fullscreen = false;
     bool activated = false;
