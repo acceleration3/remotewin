@@ -13,11 +13,12 @@ struct WindowIcon;
 namespace rwin::host {
 
 class Globals;
+class IconBadge;
 class ToplevelRole;
 
 class ToplevelIcon {
 public:
-    ToplevelIcon(const Globals& globals, const WindowIcon& icon);
+    ToplevelIcon(const Globals& globals, const WindowIcon& icon, const IconBadge& badge);
     ~ToplevelIcon();
 
     ToplevelIcon(const ToplevelIcon&) = delete;

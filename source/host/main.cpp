@@ -4,6 +4,7 @@
 #include "host/link/guest_link.hpp"
 #include "host/link/parent_control.hpp"
 #include "host/loop/poll_loop.hpp"
+#include "host/mirror/icon_badge.hpp"
 #include "host/mirror/mirror_scope.hpp"
 #include "host/mirror/mirror_session.hpp"
 #include "host/mirror/monitor_session.hpp"
@@ -61,6 +62,9 @@ Exits with status 3 when the guest half is from another build.
                            (repeatable). With none of --pid, --image and
                            --aumid, every guest window is mirrored.
   --app-id <id>            Desktop identity these windows present as.
+  --icon-badge <path>      A picture put over the bottom right corner of every
+                           window icon: 32-bit little-endian width and height,
+                           then premultiplied BGRA rows.
   --output <name>          The host output (Wayland output name, e.g. DP-2)
                            that stands for the guest's monitor; the first
                            output where there is none of that name.
@@ -85,6 +89,7 @@ struct Options {
     std::string export_socket;
     rwin::host::MirrorScope::Launch launch;
     std::string app_id;
+    std::string icon_badge;
     std::string output;
     std::string qmp_input;
     bool desktop = false;
@@ -92,7 +97,7 @@ struct Options {
     bool managed = false;
 };
 
-enum Option : int { kPort = 1, kExport, kPid, kPidCreated, kImage, kAumid, kAppId, kOutput, kQmpInput, kDesktop, kTitle, kManaged, kHelp, kVersion };
+enum Option : int { kPort = 1, kExport, kPid, kPidCreated, kImage, kAumid, kAppId, kIconBadge, kOutput, kQmpInput, kDesktop, kTitle, kManaged, kHelp, kVersion };
 
 template <typename Number>
 bool parse_number(std::string_view text, Number& into) {
@@ -106,6 +111,7 @@ std::optional<Options> parse(int argc, char** argv, int& status) {
         {"pid", required_argument, nullptr, kPid},       {"pid-created", required_argument, nullptr, kPidCreated},
         {"image", required_argument, nullptr, kImage},
         {"aumid", required_argument, nullptr, kAumid},   {"app-id", required_argument, nullptr, kAppId},
+        {"icon-badge", required_argument, nullptr, kIconBadge},
         {"output", required_argument, nullptr, kOutput},
         {"qmp-input", required_argument, nullptr, kQmpInput},
         {"desktop", no_argument, nullptr, kDesktop},     {"title", required_argument, nullptr, kTitle},
@@ -147,6 +153,7 @@ std::optional<Options> parse(int argc, char** argv, int& status) {
             case kImage: options.launch.image = value; break;
             case kAumid: options.launch.aumids.emplace_back(value); break;
             case kAppId: options.app_id = value; break;
+            case kIconBadge: options.icon_badge = value; break;
             case kOutput: options.output = value; break;
             case kQmpInput: options.qmp_input = value; break;
             case kDesktop: options.desktop = true; break;
@@ -259,8 +266,9 @@ int run(const Options& options) {
               options.launch.image, options.launch.aumids.size());
     MirrorScope scope{options.launch};
     if (scope.everything()) RWIN_INFO("boot", "nothing to go by: every guest window is mirrored");
-    MirrorSession session{MirrorSession::Parts{loop, link, frames, bus, surfaces, options.output}, std::move(scope), options.app_id,
-                          take_activation_token()};
+    const IconBadge badge = options.icon_badge.empty() ? IconBadge{} : IconBadge{options.icon_badge};
+    MirrorSession session{MirrorSession::Parts{loop, link, frames, bus, surfaces, badge, options.output},
+                          std::move(scope), options.app_id, take_activation_token()};
     const WindowReport report{bus, session};
     if (control) {
         session.ready.connect([&control] { control->report_ready(); });

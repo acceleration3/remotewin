@@ -72,6 +72,7 @@ add_library(rwin_link STATIC
     link/guest_window.cpp
     link/guest_windows.cpp
     loop/deferred.cpp
+    mirror/icon_badge.cpp
     mirror/mirror_scope.cpp
     mirror/picture_limits.cpp
     mirror/settled_room.cpp

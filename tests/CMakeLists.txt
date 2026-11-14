@@ -49,7 +49,7 @@ add_test(NAME rwin_slot_ledger_test COMMAND rwin_slot_ledger_test)
 if(TARGET rwin_link)
     foreach(name export_wire guest_window latency mirror_scope picture_limits emulated_cursor unit_padding
                  native_cursor_shape
-                 view_mapping settled_room)
+                 view_mapping settled_room icon_badge)
         add_executable(rwin_${name}_test ${name}_test.cpp)
         target_link_libraries(rwin_${name}_test PRIVATE rwin::link)
         add_test(NAME rwin_${name}_test COMMAND rwin_${name}_test)

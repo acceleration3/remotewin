@@ -614,7 +614,7 @@ void WindowMirror::show_frame(const SharedFrame& frame) {
 
 void WindowMirror::set_icon(const WindowIcon& icon) {
     RWIN_DEBUG("icons", "{}'s icon, {}x{}", window(), icon.width, icon.height);
-    icon_ = std::make_unique<ToplevelIcon>(kit_.surfaces.globals, icon);
+    icon_ = std::make_unique<ToplevelIcon>(kit_.surfaces.globals, icon, kit_.badge);
     if (toplevel_ == nullptr) return;
     icon_->put_on(*toplevel_);
     surface_->commit();

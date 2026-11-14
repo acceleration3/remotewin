@@ -37,7 +37,7 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
       activation_(parts.surfaces.globals, parts.surfaces.seat),
       grabber_(parts.link, parts.surfaces.globals, parts.surfaces.seat),
       placement_(parts.loop, parts.bus),
-      kit_{parts.link, parts.surfaces, activation_, popups_, grabber_, desktop_, placement_, std::move(app_id)},
+      kit_{parts.link, parts.surfaces, activation_, popups_, grabber_, desktop_, placement_, parts.badge, std::move(app_id)},
       cursor_(parts.loop), focus_(parts.loop, parts.link, parts.surfaces.seat), token_(std::move(token)),
       empty_(parts.loop.timer([this] {
           RWIN_INFO("mirror", "the application has had no window for {} ms; the session is done", kEmptyGrace.count());

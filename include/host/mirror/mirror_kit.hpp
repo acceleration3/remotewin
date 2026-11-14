@@ -8,6 +8,7 @@ namespace rwin::host {
 
 class Activation;
 class GuestLink;
+class IconBadge;
 class PlacementSync;
 class PointerGrabber;
 class PopupStack;
@@ -21,6 +22,7 @@ struct MirrorKit {
     PointerGrabber& grabber;
     const GuestDesktop& desktop;
     const PlacementSync& placement;
+    const IconBadge& badge;
     std::string app_id;
 };
 

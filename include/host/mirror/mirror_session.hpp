@@ -33,6 +33,7 @@ class BusConnection;
 class GuestLink;
 class GuestWindow;
 class GuestWindows;
+class IconBadge;
 class SharedFrameFeed;
 
 class MirrorSession {
@@ -43,6 +44,7 @@ public:
         SharedFrameFeed& frames;
         BusConnection& bus;
         SurfaceKit surfaces;
+        const IconBadge& badge;
         std::string output;
     };
 

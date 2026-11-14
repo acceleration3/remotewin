@@ -1,5 +1,6 @@
 #include "host/wayland/toplevel_icon.hpp"
 
+#include "host/mirror/icon_badge.hpp"
 #include "host/wayland/globals.hpp"
 #include "host/wayland/toplevel_role.hpp"
 #include "proto/window_icon.hpp"
@@ -9,7 +10,7 @@
 #include <algorithm>
 
 namespace rwin::host {
-ToplevelIcon::ToplevelIcon(const Globals& globals, const WindowIcon& icon) {
+ToplevelIcon::ToplevelIcon(const Globals& globals, const WindowIcon& icon, const IconBadge& badge) {
     if (globals.toplevel_icon() == nullptr) return;
     const int side = std::max(icon.width, icon.height);
     pixels_ = std::make_unique<ShmBuffer>(globals.shm(), Size{side, side});
@@ -28,6 +29,7 @@ ToplevelIcon::ToplevelIcon(const Globals& globals, const WindowIcon& icon) {
             to[3] = static_cast<std::uint8_t>(alpha);
         }
     }
+    badge.stamp(into, side, static_cast<std::size_t>(pixels_->stride()));
     icon_ = xdg_toplevel_icon_manager_v1_create_icon(globals.toplevel_icon());
     xdg_toplevel_icon_v1_add_buffer(icon_, pixels_->buffer(), 1);
 }
