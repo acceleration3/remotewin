@@ -75,9 +75,17 @@ void a_side_under_one_unit_shows_its_own_pixels() {
     check(std::abs(view.source_height() - 39.6) < 1e-9, "down it is one to one as before");
 }
 
+void a_room_in_units_is_the_nearest_whole_pixels() {
+    check(ViewMapping::device_size(Size{1000, 700}, 1.2) == (Size{1200, 840}), "1000x700 units at 1.2 are 1200x840 pixels");
+    check(ViewMapping::device_size(Size{1001, 701}, 1.2) == (Size{1201, 841}), "1201.2x841.2 is 1201x841");
+    check(ViewMapping::device_size(Size{1003, 3}, 1.5) == (Size{1505, 5}), "a half rounds away from zero");
+    check(ViewMapping::device_size(Size{640, 480}, 1.0) == (Size{640, 480}), "at 1 a unit is a pixel");
+}
+
 }
 
 int main() {
+    a_room_in_units_is_the_nearest_whole_pixels();
     a_fraction_of_a_unit_is_cropped_not_stretched();
     a_size_asked_for_comes_back_as_itself();
     a_pixel_is_found_where_it_is_shown();

@@ -28,6 +28,10 @@ void ParentControl::report_ready() { report("READY"); }
 
 void ParentControl::report_app(std::string_view aumid) { report("APP " + std::string(aumid)); }
 
+void ParentControl::report_size(Size pixels) {
+    report("SIZE " + std::to_string(pixels.width) + ' ' + std::to_string(pixels.height));
+}
+
 void ParentControl::report(std::string_view line) {
     std::string out(line);
     out += '\n';

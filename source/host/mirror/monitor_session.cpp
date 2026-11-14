@@ -66,6 +66,10 @@ MonitorSession::MonitorSession(const SurfaceKit& kit, GuestLink& link, SharedFra
     link_.cursor_pictured.connect([this](const CursorPicture& picture) { cursor_.remember(picture); });
     cursor_.worn.connect([this](const CursorLook*, std::size_t) { wear_cursor(); });
     surface_.picture_resized.connect([this] { fit(); });
+    surface_.rescaled.connect([this] {
+        fit();
+        tell_room();
+    });
     surface_.shared_refused.connect([this](const std::string& why) { frames_.pixels_for(kMonitorWindow, why); });
     surface_.presented.connect([this](const FrameStamps& stamps) {
         frames_.shown(stamps, kit_.seat.keyboard_focus() == surface_.surface());
@@ -117,6 +121,15 @@ void MonitorSession::patch(Size picture, Point at, const PixelsView& pixels) {
 void MonitorSession::configured(const ToplevelConfigure& configure) {
     configure_ = configure;
     fit();
+    tell_room();
+}
+
+void MonitorSession::tell_room() {
+    if (!toplevel_.configured()) return;
+    if (const std::optional<Size> pixels = room_.changed(configure_, surface_.scale())) {
+        RWIN_INFO("monitor", "the window holds {}x{} pixels", pixels->width, pixels->height);
+        room_settled(*pixels);
+    }
 }
 
 void MonitorSession::close_requested() { finished(); }
@@ -130,6 +143,13 @@ void MonitorSession::fit() {
         backdrop_.reset();
         surface_.fit_one_to_one();
         toplevel_.set_window_geometry(Box::of(Point{}, natural));
+        surface_.commit();
+        return;
+    }
+    if (ViewMapping::device_size(room, surface_.scale()) == picture) {
+        backdrop_.reset();
+        surface_.fit_to(room);
+        toplevel_.set_window_geometry(Box::of(Point{}, room));
         surface_.commit();
         return;
     }

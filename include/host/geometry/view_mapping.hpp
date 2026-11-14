@@ -14,6 +14,7 @@ public:
     [[nodiscard]] static ViewMapping stretched(Size picture, Size logical) noexcept;
 
     [[nodiscard]] static Size picture_for(Size logical, double scale) noexcept;
+    [[nodiscard]] static Size device_size(Size logical, double scale) noexcept;
 
     [[nodiscard]] ViewMapping within(Size most) const noexcept;
 

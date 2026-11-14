@@ -248,6 +248,7 @@ int run(const Options& options) {
                                take_activation_token(), qmp_input.get()};
         if (control) {
             session.ready.connect([&control] { control->report_ready(); });
+            session.room_settled.connect([&control](Size pixels) { control->report_size(pixels); });
             control->raise_requested.connect([&session](const std::string& token) { session.raise(token); });
         }
         session.finished.connect([&loop] { loop.quit(EXIT_SUCCESS); });

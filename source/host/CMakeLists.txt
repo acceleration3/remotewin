@@ -74,6 +74,7 @@ add_library(rwin_link STATIC
     loop/deferred.cpp
     mirror/mirror_scope.cpp
     mirror/picture_limits.cpp
+    mirror/settled_room.cpp
 )
 add_library(rwin::link ALIAS rwin_link)
 target_link_libraries(rwin_link PUBLIC rwin::proto rwin::logging)

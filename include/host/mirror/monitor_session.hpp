@@ -4,6 +4,7 @@
 #include "host/geometry/size.hpp"
 #include "host/input/held_keys.hpp"
 #include "host/loop/signal.hpp"
+#include "host/mirror/settled_room.hpp"
 #include "host/wayland/backdrop.hpp"
 #include "host/wayland/mirror_surface.hpp"
 #include "host/wayland/surface_input.hpp"
@@ -42,6 +43,7 @@ public:
 
     Signal<> finished;
     Signal<> ready;
+    Signal<Size> room_settled;
 
 private:
     void pointer_entered(PointF at) override;
@@ -58,6 +60,7 @@ private:
     void show_pixels(const PixelsView& pixels);
     void patch(Size picture, Point at, const PixelsView& pixels);
     void fit();
+    void tell_room();
     void wear_cursor();
     void note_ready();
     [[nodiscard]] std::optional<Point> picture_point(PointF at) const;
@@ -73,6 +76,7 @@ private:
     ToplevelRole toplevel_;
     std::unique_ptr<Backdrop> backdrop_;
     ToplevelConfigure configure_;
+    SettledRoom room_;
     HeldKeys held_keys_;
     std::vector<std::uint8_t> canvas_;
     Size canvas_size_;

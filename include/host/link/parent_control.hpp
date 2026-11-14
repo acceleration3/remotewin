@@ -1,5 +1,6 @@
 #pragma once
 
+#include "host/geometry/size.hpp"
 #include "host/loop/event_loop.hpp"
 #include "host/loop/signal.hpp"
 
@@ -16,6 +17,7 @@ public:
     void report_listening(std::uint16_t port);
     void report_ready();
     void report_app(std::string_view aumid);
+    void report_size(Size pixels);
 
     Signal<const std::string&> raise_requested;
     Signal<> closed;
