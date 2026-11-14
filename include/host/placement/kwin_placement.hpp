@@ -61,22 +61,25 @@ public:
     Signal<std::uint64_t, const Report&> window_moved;
 
 private:
-    struct Pending {
+    struct Order {
         std::uint64_t window = 0;
         std::uint32_t serial = 0;
         std::int64_t since = 0;
-        std::unique_ptr<KWinScript> script;
-        bool failed = false;
+        std::string what;
+        std::string next;
+        bool handed = false;
     };
 
     static int placed_call(sd_bus_message* call, void* self, sd_bus_error* error);
     static int moved_call(sd_bus_message* call, void* self, sd_bus_error* error);
     static int outputs_call(sd_bus_message* call, void* self, sd_bus_error* error);
+    static int next_call(sd_bus_message* call, void* self, sd_bus_error* error);
     void placed(std::string_view report);
     void moved(std::string_view report);
     void outputs(std::string_view report);
-    [[nodiscard]] static std::string script_name(std::string_view role, std::uint32_t serial);
-    void run_for(std::uint64_t window, std::uint32_t serial, const std::string& source);
+    void order(std::uint64_t window, std::string what);
+    void hand_over();
+    void answer(const std::string& text);
     void watch();
     void expire();
 
@@ -84,7 +87,10 @@ private:
     std::string service_;
     sd_bus_slot* object_ = nullptr;
     std::unique_ptr<KWinScript> watcher_;
-    std::vector<Pending> pending_;
+    std::vector<Order> orders_;
+    sd_bus_message* asking_ = nullptr;
+    std::int64_t asked_at_ = 0;
+    std::uint32_t serials_ = 0;
     OutputLayout outputs_;
     std::unique_ptr<EventLoop::Timer> expiry_;
     std::unique_ptr<EventLoop::Timer> rewatch_;
