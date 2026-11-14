@@ -25,6 +25,7 @@ struct MirrorState {
     bool grabs = false;
     Box placed;
     std::string title;
+    std::string app_id;
     Size logical;
     double scale = 1.0;
     Size picture;

@@ -73,6 +73,8 @@ add_library(rwin_link STATIC
     link/guest_windows.cpp
     loop/deferred.cpp
     mirror/configure_meaning.cpp
+    mirror/guest_application.cpp
+    mirror/host_app_ids.cpp
     mirror/icon_badge.cpp
     mirror/mirror_scope.cpp
     mirror/picture_limits.cpp

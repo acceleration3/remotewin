@@ -30,10 +30,15 @@ public:
     [[nodiscard]] std::vector<std::string> claim(const GuestWindows& windows);
     [[nodiscard]] bool belongs(WindowId window, const GuestWindows& windows) const;
     [[nodiscard]] const std::vector<std::string>& claimed() const noexcept { return claimed_; }
+    [[nodiscard]] bool launched_application(const WindowFields::AppId& app) const;
 
 private:
     [[nodiscard]] bool launched(const GuestWindow& window) const;
     [[nodiscard]] bool belongs_itself(const GuestWindow& window) const;
+    [[nodiscard]] bool own_process(const WindowFields::AppId& app) const;
+    [[nodiscard]] bool names_launch(const WindowFields::AppId& app) const;
+    void identify(const GuestWindows& windows);
+    void remember(const WindowFields::AppId& app);
     [[nodiscard]] bool is_launched(const WindowFields::ProcessRef& process) const;
     [[nodiscard]] bool in_launched_tree(const WindowFields::AppId& app) const;
     [[nodiscard]] bool holds_launched(const std::vector<WindowFields::ProcessRef>& tree) const;
@@ -41,6 +46,7 @@ private:
     Launch launch_;
     std::string image_;
     std::vector<std::string> claimed_;
+    std::vector<std::string> identities_;
     std::optional<WindowFields::ProcessRef> tree_root_;
     bool tree_claimed_ = false;
 };

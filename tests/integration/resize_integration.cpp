@@ -3,6 +3,7 @@
 #include "host/latency/frame_stamps.hpp"
 #include "host/geometry/size.hpp"
 #include "host/geometry/view_mapping.hpp"
+#include "host/mirror/guest_application.hpp"
 
 #include <unistd.h>
 
@@ -672,9 +673,9 @@ bool above(const Stacking& stacking, std::string_view upper, std::string_view lo
 std::string stacking_text(const Stacking& stacking) {
     std::string text;
     for (const KWinView::Stacked& entry : stacking) {
-        text += std::format(" [{}{}{}{} {:.0f},{:.0f} {:.0f}x{:.0f}]", entry.title, entry.popup ? " popup" : "",
+        text += std::format(" [{}{}{}{} {:.0f},{:.0f} {:.0f}x{:.0f} '{}']", entry.title, entry.popup ? " popup" : "",
                             entry.transient ? " transient" : "", entry.active ? " active" : "", entry.x, entry.y,
-                            entry.width, entry.height);
+                            entry.width, entry.height, entry.app_id);
     }
     return text.empty() ? " nothing" : text;
 }
@@ -879,6 +880,53 @@ void taskbar_presence(Case& run) {
         },
         kHold);
     judge_stacking(run, put_on, "given a button, it is on both");
+}
+
+void app_id_per_application(Case& run) {
+    const Rect main = run.window().frame();
+    constexpr WindowId kInstaller{0x1a570, 2};
+    constexpr WindowId kInstallerDialog{0x1a571, 3};
+    const auto app_id_of = [](const WindowFields& fields) {
+        return host::GuestApplication{fields.app_id}.host_app_id();
+    };
+    const std::string main_id = app_id_of(run.window().fields());
+    WindowFields installer = played_window(run.window(), "Played installer", "RemotewinIntegrationWindow",
+                                           kWsOverlappedWindow | kWsVisible, 0,
+                                           Rect{main.x + 300, main.y + 100, 420, 300}, WindowId{});
+    installer.app_id.process_id = 5151;
+    installer.app_id.aumid = "C:\\Users\\lsw\\Downloads\\Played Setup.exe";
+    installer.app_id.image = "C:\\Users\\lsw\\Downloads\\Played Setup.exe";
+    const std::string installer_id = app_id_of(installer);
+    run.guest().show_window(kInstaller, installer);
+    WindowFields dialog = played_window(run.window(), "Played installer dialog", "#32770",
+                                        kWsPopup | kWsVisible | kWsClipSiblings | kWsCaption | kWsSysMenu, 0,
+                                        Rect{main.x + 340, main.y + 160, 300, 200}, kInstaller);
+    run.guest().show_window(kInstallerDialog, dialog);
+    const auto named = [](const Stacking& stacking, std::string_view title, const std::string& app_id) {
+        const KWinView::Stacked* shown = stacked(stacking, title);
+        return shown != nullptr && shown->app_id == app_id;
+    };
+    const auto apart = stacking_settles(
+        run,
+        [&](const Stacking& stacking) {
+            return named(stacking, kMainTitle, main_id) && named(stacking, "Played installer", installer_id)
+                   && named(stacking, "Played installer dialog", installer_id);
+        },
+        kHold);
+    run.verdicts().check(main_id != installer_id, "the two applications derive different ids");
+    judge_stacking(run, apart, "the main window is its own application's, the installer and the dialog it owns "
+                               "the installer's");
+    installer.app_id.aumid = "Played.Setup_8wekyb3d8bbwe!Setup";
+    const std::string later_id = app_id_of(installer);
+    run.guest().change_window(kInstaller, installer);
+    const auto followed = stacking_settles(
+        run,
+        [&](const Stacking& stacking) {
+            return named(stacking, kMainTitle, main_id) && named(stacking, "Played installer", later_id)
+                   && named(stacking, "Played installer dialog", later_id);
+        },
+        kHold);
+    judge_stacking(run, followed, "an identity learned later moves the installer and its dialog to the new id");
 }
 
 void activation_both_ways(Case& run) {
@@ -1104,6 +1152,7 @@ constexpr Named kCases[] = {
     {"dialog-in-front", &dialog_in_front, kQuick},   {"menus-in-front", &menus_in_front, kQuick},
     {"winui-popup", &winui_popup, kQuick},           {"activation-both-ways", &activation_both_ways, kQuick},
     {"map-keeps-guest-active", &map_keeps_guest_active, kQuick}, {"taskbar-presence", &taskbar_presence, kQuick},
+    {"app-id-per-application", &app_id_per_application, kQuick},
     {"welcome-in-front", &welcome_in_front, kQuick},
     {"welcome-in-front-rounded", &welcome_in_front_rounded, kQuick, true},
     {"close-confirmation-in-front", &close_confirmation_in_front, kQuick},

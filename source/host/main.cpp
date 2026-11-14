@@ -61,7 +61,10 @@ Exits with status 3 when the guest half is from another build.
   --aumid <id>             An AppUserModelID the application is known by
                            (repeatable). With none of --pid, --image and
                            --aumid, every guest window is mirrored.
-  --app-id <id>            Desktop identity these windows present as.
+  --app-id <id>            Desktop identity the launched application's windows
+                           present as. Another application's windows, and
+                           all windows without this, present as an identity
+                           derived from the guest application's.
   --icon-badge <path>      A picture put over the bottom right corner of every
                            window icon: 32-bit little-endian width and height,
                            then premultiplied BGRA rows.

@@ -246,7 +246,7 @@ void WindowMirror::drop_surface() {
 }
 
 void WindowMirror::dress_toplevel() {
-    if (!kit_.app_id.empty()) toplevel_->set_app_id(kit_.app_id);
+    if (!app_id_.empty()) toplevel_->set_app_id(app_id_);
     caption_ = caption();
     toplevel_->set_title(caption_);
     toplevel_->set_parent(parent_ != nullptr ? parent_->toplevel_.get() : nullptr);
@@ -637,6 +637,13 @@ void WindowMirror::set_icon(const WindowIcon& icon) {
     surface_->commit();
 }
 
+void WindowMirror::wear_app_id(std::string app_id) {
+    if (app_id == app_id_) return;
+    app_id_ = std::move(app_id);
+    RWIN_INFO("mirror", "{} is a window of the host application '{}'", window(), app_id_);
+    if (toplevel_ != nullptr) toplevel_->set_app_id(app_id_);
+}
+
 void WindowMirror::note_guest_active(bool active) { guest_active_ = active; }
 
 void WindowMirror::activate(const std::string& token) {
@@ -860,6 +867,7 @@ MirrorState WindowMirror::state() const {
     state.grabs = grabs();
     state.placed = placed_;
     state.title = window_.title();
+    state.app_id = app_id_;
     state.logical = mapping().logical();
     state.scale = scale();
     state.picture = surface_ != nullptr ? surface_->picture_size() : Size{};

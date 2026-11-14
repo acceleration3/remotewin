@@ -2,8 +2,6 @@
 
 #include "host/wayland/surface_kit.hpp"
 
-#include <string>
-
 namespace rwin::host {
 
 class Activation;
@@ -23,7 +21,6 @@ struct MirrorKit {
     const GuestDesktop& desktop;
     const PlacementSync& placement;
     const IconBadge& badge;
-    std::string app_id;
 };
 
 }

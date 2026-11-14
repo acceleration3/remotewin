@@ -100,6 +100,7 @@ void mirror_of(JsonText& json, const MirrorState& state) {
     json.key("placed");
     box(json, state.placed);
     json.key("title").value(state.title);
+    json.key("app_id").value(state.app_id);
     json.key("logical_size");
     box(json, Box::of(Point{}, state.logical));
     json.key("scale").value(state.scale);

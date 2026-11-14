@@ -34,10 +34,11 @@ constexpr std::uint32_t kBelongingFields = WindowFields::kOwner | WindowFields::
 
 MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string app_id, std::string token)
     : loop_(parts.loop), link_(parts.link), frames_(parts.frames), scope_(std::move(scope)),
+      app_ids_(std::move(app_id), scope_),
       activation_(parts.surfaces.globals, parts.surfaces.seat),
       grabber_(parts.link, parts.surfaces.globals, parts.surfaces.seat),
       placement_(parts.loop, parts.bus),
-      kit_{parts.link, parts.surfaces, activation_, popups_, grabber_, desktop_, placement_, parts.badge, std::move(app_id)},
+      kit_{parts.link, parts.surfaces, activation_, popups_, grabber_, desktop_, placement_, parts.badge},
       cursor_(parts.loop), focus_(parts.loop, parts.link, parts.surfaces.seat), token_(std::move(token)),
       empty_(parts.loop.timer([this] {
           RWIN_INFO("mirror", "the application has had no window for {} ms; the session is done", kEmptyGrace.count());
@@ -190,6 +191,7 @@ void MirrorSession::reconcile() {
         close(stray);
         link_.unsubscribe(stray);
     }
+    name_applications();
     arrange();
     count_windows(belonging);
 }
@@ -199,6 +201,10 @@ void MirrorSession::claim_applications() {
         RWIN_INFO("mirror", "the application is known as '{}'", aumid);
         app_claimed(aumid);
     }
+}
+
+void MirrorSession::name_applications() {
+    for (const auto& [window, mirror] : mirrors_) mirror->wear_app_id(app_ids_.of(window, windows()));
 }
 
 void MirrorSession::count_windows(std::size_t belonging) {
@@ -217,6 +223,7 @@ WindowMirror& MirrorSession::open(const GuestWindow& window) {
               window.fields().app_id.aumid);
     auto made = std::make_unique<WindowMirror>(kit_, window);
     WindowMirror& mirror = *made;
+    mirror.wear_app_id(app_ids_.of(window.id(), windows()));
     mirror.focused.connect([this](WindowId focused, FocusCause cause) {
         if (focus_.focused(focused, cause) || cause != FocusCause::Mapping) return;
         focus_.follow(windows().order(), find(windows().order().active));

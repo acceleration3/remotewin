@@ -54,6 +54,7 @@ public:
         double y = 0;
         double width = 0;
         double height = 0;
+        std::string app_id;
     };
 
     [[nodiscard]] bool watching() const noexcept { return watching_; }

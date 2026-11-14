@@ -91,6 +91,7 @@ public:
     void show_frame(const SharedFrame& frame);
     void wear_cursor(const CursorLook* look, std::size_t step);
     void set_icon(const WindowIcon& icon);
+    void wear_app_id(std::string app_id);
     void note_guest_active(bool active);
     void activate(const std::string& token);
     void take_over_move_size(MoveSizeKind kind);
@@ -222,6 +223,7 @@ private:
     std::int64_t mapped_at_ = 0;
     bool focused_since_mapped_ = false;
     std::string caption_;
+    std::string app_id_;
     std::unique_ptr<EventLoop::Timer> dismissal_;
 };
 

@@ -6,6 +6,7 @@
 #include "host/loop/signal.hpp"
 #include "host/mirror/activation_sync.hpp"
 #include "host/mirror/guest_desktop.hpp"
+#include "host/mirror/host_app_ids.hpp"
 #include "host/mirror/mirror_kit.hpp"
 #include "host/mirror/mirror_scope.hpp"
 #include "host/mirror/mirror_state.hpp"
@@ -61,7 +62,7 @@ public:
     [[nodiscard]] std::optional<MirrorState> state_of(WindowId window) const;
     [[nodiscard]] const GuestWindows& windows() const noexcept;
     [[nodiscard]] bool belongs(WindowId window) const;
-    [[nodiscard]] const std::string& app_id() const noexcept { return kit_.app_id; }
+    [[nodiscard]] const std::string& app_id() const noexcept { return app_ids_.launched(); }
 
     Signal<> finished;
     Signal<> ready;
@@ -75,6 +76,7 @@ private:
 
     void reconcile();
     void claim_applications();
+    void name_applications();
     void arrange();
     void arrange_one(const GuestWindow& window, std::vector<WindowId>& arranging);
     [[nodiscard]] WindowMirror* find(WindowId window) const;
@@ -93,6 +95,7 @@ private:
     GuestLink& link_;
     SharedFrameFeed& frames_;
     MirrorScope scope_;
+    HostAppIds app_ids_;
     GuestDesktop desktop_;
     PopupStack popups_;
     Activation activation_;

@@ -2,27 +2,19 @@
 
 #include "host/link/guest_window.hpp"
 #include "host/link/guest_windows.hpp"
+#include "host/mirror/guest_application.hpp"
 #include "proto/window_fields.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <string>
 #include <utility>
 
 namespace rwin::host {
 
-namespace {
-std::string compared_path(std::string path) {
-    std::transform(path.begin(), path.end(), path.begin(), [](unsigned char c) {
-        return c == '/' ? '\\' : static_cast<char>(std::tolower(c));
-    });
-    return path;
-}
-
-}
-
 MirrorScope::MirrorScope(Launch launch)
-    : launch_(std::move(launch)), image_(compared_path(launch_.image)), claimed_(launch_.aumids) {}
+    : launch_(std::move(launch)), image_(GuestApplication::folded(launch_.image)), claimed_(launch_.aumids) {
+    for (const std::string& aumid : launch_.aumids) identities_.push_back(GuestApplication::folded(aumid));
+}
 
 bool MirrorScope::everything() const noexcept {
     return !launch_.process_id.has_value() && launch_.image.empty() && launch_.aumids.empty();
@@ -50,8 +42,44 @@ bool MirrorScope::in_launched_tree(const WindowFields::AppId& app) const {
     return tree_root_.has_value() && !app.tree.empty() && app.tree.back() == *tree_root_;
 }
 
+bool MirrorScope::own_process(const WindowFields::AppId& app) const {
+    return app.tree.empty() ? launch_.process_id.has_value() && app.process_id == *launch_.process_id
+                            : is_launched(app.tree.front());
+}
+
+bool MirrorScope::names_launch(const WindowFields::AppId& app) const {
+    return own_process(app) || (!image_.empty() && GuestApplication::folded(app.image) == image_);
+}
+
+bool MirrorScope::launched_application(const WindowFields::AppId& app) const {
+    if (everything() || names_launch(app)) return true;
+    const GuestApplication application{app};
+    return application.known()
+           && std::find(identities_.begin(), identities_.end(), application.identity()) != identities_.end();
+}
+
+void MirrorScope::identify(const GuestWindows& windows) {
+    const std::vector<const GuestWindow*> stacked = windows.stacked();
+    for (const GuestWindow* window : stacked) {
+        if (names_launch(window->fields().app_id)) remember(window->fields().app_id);
+    }
+    if (!identities_.empty() || !launch_.aumids.empty()) return;
+    const auto first = std::find_if(stacked.begin(), stacked.end(), [this](const GuestWindow* window) {
+        return !window->hidden() && launched(*window) && GuestApplication{window->fields().app_id}.known();
+    });
+    if (first != stacked.end()) remember((*first)->fields().app_id);
+}
+
+void MirrorScope::remember(const WindowFields::AppId& app) {
+    const GuestApplication application{app};
+    if (!application.known()) return;
+    if (std::find(identities_.begin(), identities_.end(), application.identity()) != identities_.end()) return;
+    identities_.push_back(application.identity());
+}
+
 std::vector<std::string> MirrorScope::claim(const GuestWindows& windows) {
     std::vector<std::string> fresh;
+    identify(windows);
     if (!launch_.same_app_id) return fresh;
     for (const GuestWindow* window : windows.stacked()) {
         const WindowFields::AppId& app = window->fields().app_id;
@@ -74,11 +102,7 @@ std::vector<std::string> MirrorScope::claim(const GuestWindows& windows) {
 
 bool MirrorScope::launched(const GuestWindow& window) const {
     const WindowFields::AppId& app = window.fields().app_id;
-    if (app.tree.empty() ? launch_.process_id.has_value() && app.process_id == *launch_.process_id
-                         : is_launched(app.tree.front()))
-        return true;
-    if (in_launched_tree(app)) return true;
-    return !image_.empty() && compared_path(app.image) == image_;
+    return names_launch(app) || in_launched_tree(app);
 }
 
 bool MirrorScope::belongs_itself(const GuestWindow& window) const {
