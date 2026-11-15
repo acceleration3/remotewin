@@ -26,13 +26,15 @@ const OutputLayout::Output& OutputLayout::output_of(const BoxF& frame) const {
     return holding != outputs_.end() ? *holding : guest_output();
 }
 
-Point OutputLayout::guest_point(const BoxF& frame) const {
+Point OutputLayout::guest_point(const BoxF& frame, Size guest_screen) const {
     const Output& on = output_of(frame);
     const Output& guest = guest_output();
     const Point raw = mapping_of(on).guest_point(frame.corner());
     const auto pixels = [](double logical, double scale) { return static_cast<int>(std::lround(logical * scale)); };
-    const int room_x = std::max(0, pixels(guest.size.x, guest.scale) - pixels(frame.width, on.scale));
-    const int room_y = std::max(0, pixels(guest.size.y, guest.scale) - pixels(frame.height, on.scale));
+    const Size screen = guest_screen.empty() ? Size{pixels(guest.size.x, guest.scale), pixels(guest.size.y, guest.scale)}
+                                             : guest_screen;
+    const int room_x = std::max(0, screen.width - pixels(frame.width, on.scale));
+    const int room_y = std::max(0, screen.height - pixels(frame.height, on.scale));
     return Point{std::clamp(raw.x, 0, room_x), std::clamp(raw.y, 0, room_y)};
 }
 

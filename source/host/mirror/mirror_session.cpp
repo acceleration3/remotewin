@@ -68,6 +68,7 @@ MirrorSession::MirrorSession(const Parts& parts, MirrorScope scope, std::string 
     });
     link_.monitor_changed.connect([this](const Box& area) {
         desktop_.monitor = area;
+        placement_.guest_screen(area.size());
         desktop_changed();
     });
     link_.restacked.connect([this](const ZOrder& order) { restacked(order); });

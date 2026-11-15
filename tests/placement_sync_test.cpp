@@ -183,7 +183,29 @@ void later_drag_replaces_the_held_move() {
 
 }
 
+void a_drop_beyond_a_smaller_guest_screen_keeps_the_guest_window_on_it() {
+    Setup setup;
+    setup.sync->guest_screen(rwin::host::Size{1280, 720});
+    setup.report(BoxF{1000, 400, 800, 600}, false, false);
+    check(setup.moved_guest.size() == 1 && setup.moved_guest.back() == Point{480, 120},
+          "a window put past the guest's smaller screen is asked for the last spot that keeps it whole");
+    setup.follow(480, 120);
+    check(setup.kwin->places.empty(), "and the guest answering from that spot does not pull the host window back");
+
+    Setup wide;
+    wide.report(BoxF{1000, 400, 800, 600}, false, false);
+    check(wide.moved_guest.size() == 1 && wide.moved_guest.back() == Point{1000, 400},
+          "with no guest screen said, the output's own size bounds the spot");
+
+    Setup small;
+    small.sync->guest_screen(rwin::host::Size{640, 480});
+    small.report(BoxF{300, 200, 800, 600}, false, false);
+    check(small.moved_guest.size() == 1 && small.moved_guest.back() == Point{0, 0},
+          "a window larger than the guest's screen is kept at its corner");
+}
+
 int main() {
+    a_drop_beyond_a_smaller_guest_screen_keeps_the_guest_window_on_it();
     drop_then_maximize_does_not_place();
     maximize_before_drop_does_not_place();
     refused_move_keeps_the_awaited_corner();

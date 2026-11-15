@@ -59,7 +59,7 @@ void PlacementSync::place_at_guest(WindowId window, Tracked& tracked, bool remad
         return;
     }
     const Point guest = tracked.guest;
-    if (!remade && tracked.reported.has_value() && outputs.guest_point(*tracked.reported) == guest) return;
+    if (!remade && tracked.reported.has_value() && outputs.guest_point(*tracked.reported, guest_screen_) == guest) return;
     const PointF corner = outputs.host_point(guest, tracked.reported);
     RWIN_DEBUG("placement", "{} to {:.2f},{:.2f} (surface {}{})", window, corner.x, corner.y, tracked.generation,
                remade ? ", new" : "");
@@ -144,7 +144,7 @@ void PlacementSync::moved(std::uint64_t key, const KWinPlacement::Report& report
     }
     if (tracked.pending || !tracked.placeable || report.by_state || report.minimized) return;
     if (!kwin_->outputs().known()) return;
-    const Point guest = kwin_->outputs().guest_point(report.frame);
+    const Point guest = kwin_->outputs().guest_point(report.frame, guest_screen_);
     if (put_back(key, tracked, report, guest, before)) return;
     if (guest == tracked.guest || guest == tracked.awaiting_guest) return;
     const bool resized =
@@ -213,8 +213,9 @@ bool PlacementSync::put_back(std::uint64_t key, Tracked& tracked, const KWinPlac
                              && before->height == report.frame.height;
     if (report.dragged || !moved_alone || !tracked.asked.has_value() || tracked.put_back || tracked.placed_at == 0
         || now_ns() - tracked.placed_at >= kCompositorAfterPlacementNs
-        || guest == kwin_->outputs().guest_point(BoxF{tracked.asked->x, tracked.asked->y, report.frame.width,
-                                                      report.frame.height})) {
+        || guest == kwin_->outputs().guest_point(
+                        BoxF{tracked.asked->x, tracked.asked->y, report.frame.width, report.frame.height},
+                        guest_screen_)) {
         return false;
     }
     RWIN_INFO("placement", "{} put at {:.2f},{:.2f} by KWin as it was placed; put back", WindowId::of_key(key),

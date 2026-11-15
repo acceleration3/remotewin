@@ -4,6 +4,7 @@
 #include "host/geometry/box_f.hpp"
 #include "host/geometry/point.hpp"
 #include "host/geometry/point_f.hpp"
+#include "host/geometry/size.hpp"
 #include "host/loop/signal.hpp"
 #include "host/placement/kwin_placement.hpp"
 #include "host/placement/screen_mapping.hpp"
@@ -44,6 +45,7 @@ public:
     void guest_resized(WindowId window);
 
     void prefer_output(std::string name) { kwin_->prefer_output(std::move(name)); }
+    void guest_screen(Size pixels) noexcept { guest_screen_ = pixels; }
 
     GuestMover move_guest;
     StateQuery compositor_has_state;
@@ -89,6 +91,7 @@ private:
 
     EventLoop& loop_;
     std::unique_ptr<KWinPlacement> kwin_;
+    Size guest_screen_;
     std::unordered_map<std::uint64_t, Tracked> tracked_;
 };
 

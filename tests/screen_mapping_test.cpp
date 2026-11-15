@@ -1,3 +1,4 @@
+#include "host/geometry/size.hpp"
 #include "host/placement/output_layout.hpp"
 #include "host/placement/screen_mapping.hpp"
 
@@ -19,6 +20,7 @@ void check(bool condition, const char* what) {
 bool near(double a, double b) { return std::abs(a - b) < 1e-9; }
 
 using rwin::host::Point;
+using rwin::host::Size;
 using rwin::host::PointF;
 using rwin::host::BoxF;
 using rwin::host::OutputLayout;
@@ -67,8 +69,8 @@ void the_named_output_is_the_guests_and_the_first_is_the_fallback() {
 
 void a_window_on_either_output_is_on_the_guest_monitor() {
     const OutputLayout layout = two_outputs("DP-2");
-    check(layout.guest_point(BoxF{299, 300, 1254, 500}) == Point{359, 360}, "DP-2 at its own scale");
-    check(layout.guest_point(BoxF{2234, 220, 800, 500}) == Point{100, 100}, "HDMI-A-3 at scale 1");
+    check(layout.guest_point(BoxF{299, 300, 1254, 500}, Size{}) == Point{359, 360}, "DP-2 at its own scale");
+    check(layout.guest_point(BoxF{2234, 220, 800, 500}, Size{}) == Point{100, 100}, "HDMI-A-3 at scale 1");
 }
 
 void a_guest_move_is_placed_on_the_output_the_window_is_on() {
@@ -78,16 +80,18 @@ void a_guest_move_is_placed_on_the_output_the_window_is_on() {
     check(layout.host_point(Point{100, 100}, on_hdmi) == PointF{2234, 220}, "stays on HDMI-A-3");
     check(layout.host_point(Point{120, 120}, on_dp) == PointF{100, 100}, "stays on DP-2");
     check(layout.host_point(Point{120, 120}, std::nullopt) == PointF{100, 100}, "a new window is on the guest's output");
-    const Point guest = layout.guest_point(on_hdmi);
+    const Point guest = layout.guest_point(on_hdmi, Size{});
     const PointF back = layout.host_point(guest, on_hdmi);
-    check(layout.guest_point(BoxF{back.x, back.y, 800, 500}) == guest, "no drift");
+    check(layout.guest_point(BoxF{back.x, back.y, 800, 500}, Size{}) == guest, "no drift");
 }
 
 void the_guest_window_is_kept_whole_on_the_guest_monitor() {
     const OutputLayout layout = two_outputs("DP-2");
-    check(layout.guest_point(BoxF{-300, -50, 800, 500}) == Point{0, 0}, "not left of or above it");
-    check(layout.guest_point(BoxF{1700, 100, 800, 500}).x == 2560 - 960, "not past its right edge");
-    check(layout.guest_point(BoxF{299, 1100, 1254, 800}).y == 1440 - static_cast<int>(800 * 1.2 + 0.5), "not below it");
+    check(layout.guest_point(BoxF{-300, -50, 800, 500}, Size{}) == Point{0, 0}, "not left of or above it");
+    check(layout.guest_point(BoxF{1700, 100, 800, 500}, Size{}).x == 2560 - 960, "not past its right edge");
+    check(layout.guest_point(BoxF{299, 1100, 1254, 800}, Size{}).y == 1440 - static_cast<int>(800 * 1.2 + 0.5), "not below it");
+    check(layout.guest_point(BoxF{1700, 900, 800, 500}, Size{1920, 1080}) == Point{1920 - 960, 1080 - 600},
+          "nor past the edges of a guest screen smaller than the output");
 }
 
 }

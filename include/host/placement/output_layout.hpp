@@ -3,6 +3,7 @@
 #include "host/geometry/box_f.hpp"
 #include "host/geometry/point.hpp"
 #include "host/geometry/point_f.hpp"
+#include "host/geometry/size.hpp"
 #include "host/placement/screen_mapping.hpp"
 
 #include <optional>
@@ -26,7 +27,7 @@ public:
     [[nodiscard]] const Output& guest_output() const;
     [[nodiscard]] const std::string& guest_output_name() const { return guest_output().name; }
 
-    [[nodiscard]] Point guest_point(const BoxF& frame) const;
+    [[nodiscard]] Point guest_point(const BoxF& frame, Size guest_screen) const;
     [[nodiscard]] PointF host_point(Point guest, const std::optional<BoxF>& on) const;
 
 private:
