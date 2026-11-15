@@ -17,7 +17,10 @@ void InputTarget::raise(void* window, std::int32_t x, std::int32_t y, bool now) 
     if (under == hwnd || under == ::GetAncestor(hwnd, GA_ROOT)) return;
     UINT flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
     if (!now) flags |= SWP_ASYNCWINDOWPOS;
-    if (::SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, flags) == FALSE) {
+    const bool stays_topmost = (::GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    const bool raised = ::SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags) != FALSE
+                        && (stays_topmost || ::SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, flags) != FALSE);
+    if (!raised) {
         RWIN_DEBUG("input", "{:#x} could not be raised over {:#x}: error {}", reinterpret_cast<std::uintptr_t>(hwnd),
                    reinterpret_cast<std::uintptr_t>(under), ::GetLastError());
         return;
