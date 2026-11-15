@@ -320,7 +320,6 @@ bool GuestSession::handle_input(MessageReader& message) {
                 report_grab();
                 if (grabs_.current().kind == PointerGrab::Kind::Lock) {
                     if (at->button != PointerAt::kNoButton) {
-                        target_.pressed(at->pressed);
                         press_pointer_in_place(static_cast<PointerButton::Button>(at->button), at->pressed);
                     }
                     break;
@@ -328,7 +327,6 @@ bool GuestSession::handle_input(MessageReader& message) {
                 move_pointer_on_screen(at->x, at->y);
                 grabs_.put_at(at->x, at->y);
                 if (at->button != PointerAt::kNoButton) {
-                    target_.pressed(at->pressed);
                     press_pointer_in_place(static_cast<PointerButton::Button>(at->button), at->pressed);
                 }
             }
@@ -377,7 +375,6 @@ void GuestSession::move_pointer(const PointerMove& move) {
 void GuestSession::press_button(const PointerButton& press) {
     report_grab();
     if (grabs_.current().kind == PointerGrab::Kind::Lock) {
-        target_.pressed(press.pressed);
         press_pointer_in_place(press.button, press.pressed);
         return;
     }
@@ -394,7 +391,6 @@ void GuestSession::press_button(const PointerButton& press) {
     if (press.pressed) {
         target_.raise(surface->handle(), surface->screen_x(press.x + into_x), surface->screen_y(press.y + into_y), true);
     }
-    target_.pressed(press.pressed);
     rwin::guest::press_pointer(*surface, press.x + into_x, press.y + into_y, press.button, press.pressed);
 }
 

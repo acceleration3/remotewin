@@ -8,9 +8,20 @@
 
 namespace rwin::guest {
 
+namespace {
+
+bool button_down() noexcept {
+    for (const int key : {VK_LBUTTON, VK_RBUTTON, VK_MBUTTON, VK_XBUTTON1, VK_XBUTTON2}) {
+        if ((::GetAsyncKeyState(key) & 0x8000) != 0) return true;
+    }
+    return false;
+}
+
+}
+
 void InputTarget::raise(void* window, std::int32_t x, std::int32_t y, bool now) {
     const auto hwnd = static_cast<HWND>(window);
-    if (held_ > 0 || hwnd == nullptr || ::IsWindowEnabled(hwnd) == FALSE) return;
+    if (hwnd == nullptr || ::IsWindowEnabled(hwnd) == FALSE || button_down()) return;
     HWND under = ::WindowFromPoint(POINT{x, y});
     if (under == nullptr) return;
     under = ::GetAncestor(under, GA_ROOT);
@@ -27,10 +38,6 @@ void InputTarget::raise(void* window, std::int32_t x, std::int32_t y, bool now) 
     }
     RWIN_TRACE("input", "{:#x} raised over {:#x} for input at {},{}", reinterpret_cast<std::uintptr_t>(hwnd),
                reinterpret_cast<std::uintptr_t>(under), x, y);
-}
-
-void InputTarget::pressed(bool down) noexcept {
-    held_ = down ? held_ + 1 : (held_ > 0 ? held_ - 1 : 0);
 }
 
 }

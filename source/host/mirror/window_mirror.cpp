@@ -740,6 +740,13 @@ void WindowMirror::apply_cursor() {
 }
 
 void WindowMirror::pointer_entered(PointF at) {
+    if (buttons_held_ > 0) {
+        RWIN_INFO("input", "{} is entered with a press still held: its release never came here; released", window());
+        send_button(pressed_button_, pressed_at_, false);
+        buttons_held_ = 0;
+        held_at_.reset();
+        let_go(window());
+    }
     pointer_moved(at);
     apply_cursor();
 }
