@@ -42,6 +42,7 @@ private:
     std::vector<std::uint8_t> scratch_;
     std::vector<std::uint8_t> visible_;
     std::uint64_t started_for_ = 0;
+    bool started_maximized_ = false;
     std::uint32_t width_ = 0;
     std::uint32_t height_ = 0;
     std::uint32_t offset_x_ = 0;

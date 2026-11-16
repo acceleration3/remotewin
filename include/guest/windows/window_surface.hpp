@@ -9,6 +9,7 @@ public:
 
     [[nodiscard]] bool valid() const noexcept { return valid_; }
     [[nodiscard]] bool minimized() const noexcept { return minimized_; }
+    [[nodiscard]] bool maximized() const noexcept { return maximized_; }
     [[nodiscard]] bool capturable() const noexcept { return valid_ && shown_; }
     [[nodiscard]] bool margin_is_reserved() const noexcept { return margin_is_reserved_; }
 
@@ -40,6 +41,7 @@ private:
     std::uint32_t border_width_ = 0;
     std::uint32_t border_height_ = 0;
     bool minimized_ = false;
+    bool maximized_ = false;
     bool shown_ = false;
     bool margin_is_reserved_ = false;
     bool valid_ = false;

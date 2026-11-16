@@ -53,6 +53,11 @@ bool WindowCapture::follow(const WindowSurface& surface) {
         started_for_ = 0;
         if (!stream_.open_window(surface.handle(), room_for(size))) return false;
         started_for_ = handle;
+        started_maximized_ = surface.maximized();
+    }
+    if (!surface.minimized() && surface.maximized() != started_maximized_) {
+        started_maximized_ = surface.maximized();
+        return stream_.capture_afresh(room_for(size));
     }
     if (room_holds(stream_.size(), size)) return true;
     const bool fits = size.width <= stream_.size().width && size.height <= stream_.size().height;
