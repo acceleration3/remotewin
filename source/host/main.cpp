@@ -8,6 +8,7 @@
 #include "host/mirror/mirror_scope.hpp"
 #include "host/mirror/mirror_session.hpp"
 #include "host/mirror/monitor_session.hpp"
+#include "host/mirror/frame_dump_request.hpp"
 #include "host/mirror/window_report.hpp"
 #include "host/wayland/activation.hpp"
 #include "host/wayland/compositor_gpu.hpp"
@@ -273,6 +274,7 @@ int run(const Options& options) {
     MirrorSession session{MirrorSession::Parts{loop, link, frames, bus, surfaces, badge, options.output},
                           std::move(scope), options.app_id, take_activation_token()};
     const WindowReport report{bus, session};
+    const FrameDumpRequest dump_request{bus, link};
     if (control) {
         session.ready.connect([&control] { control->report_ready(); });
         session.app_claimed.connect([&control](const std::string& aumid) { control->report_app(aumid); });

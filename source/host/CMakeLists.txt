@@ -110,6 +110,7 @@ add_library(rwin_host STATIC
     mirror/state_sync.cpp
     mirror/window_mirror.cpp
     mirror/window_report.cpp
+    mirror/frame_dump_request.cpp
     placement/kwin_placement.cpp
     placement/kwin_script.cpp
     placement/output_layout.cpp

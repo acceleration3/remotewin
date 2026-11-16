@@ -4,6 +4,7 @@
 
 #include "guest/capture/capture_closer.hpp"
 #include "guest/capture/changed_tiles.hpp"
+#include "guest/capture/frame_dump.hpp"
 #include "guest/capture/frame_signal.hpp"
 #include "guest/capture/graphics_device.hpp"
 #include "guest/capture/monitor_capture.hpp"
@@ -109,6 +110,7 @@ private:
     TcpClient& link_;
     Outbox outbox_;
     GraphicsDevice graphics_;
+    FrameDump dumps_{graphics_};
     FrameSignal frames_;
     CaptureCloser closer_;
     FrameSignal woken_;

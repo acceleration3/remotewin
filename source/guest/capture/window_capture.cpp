@@ -15,13 +15,6 @@ constexpr std::size_t kBytesPerPixel = 4;
 
 }
 
-CaptureResult WindowCapture::grab(const WindowSurface& surface) {
-    std::optional<CaptureStream::Frame> frame;
-    const CaptureResult found = grab(surface, frame);
-    if (found != CaptureResult::Fresh) return found;
-    return keep(*frame, surface) ? CaptureResult::Fresh : CaptureResult::Unchanged;
-}
-
 CaptureResult WindowCapture::grab(const WindowSurface& surface, std::optional<CaptureStream::Frame>& frame) {
     if (!follow(surface)) return CaptureResult::Gone;
     frame = stream_.next_frame();

@@ -588,6 +588,8 @@ void GuestLink::send_popup_dismiss(WindowId window) {
     send_window(Feature::kPopupIntent, MessageId::PopupDismiss, window);
 }
 
+void GuestLink::send_dump_frame(WindowId window) { send_window(Feature::kWindows, MessageId::DumpFrame, window); }
+
 void GuestLink::send_route(bool shared_surfaces) {
     MessageWriter out{MessageId::FrameRoute};
     FrameRoute{shared_surfaces}.write(out);

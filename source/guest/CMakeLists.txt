@@ -5,6 +5,7 @@ add_executable(remotewin-guest
     capture/capture_stream.cpp
     capture/changed_tiles.cpp
     capture/content_bounds.cpp
+    capture/frame_dump.cpp
     capture/frame_signal.cpp
     capture/graphics_device.cpp
     capture/monitor_capture.cpp

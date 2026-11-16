@@ -74,6 +74,7 @@ public:
     void send_pointer_leave(WindowId window);
     void send_key(const KeyStroke& stroke);
     void send_popup_dismiss(WindowId window);
+    void send_dump_frame(WindowId window);
     void send_route(bool shared_surfaces);
     void send_window_pixels(WindowId window);
     void send_slot_free(const SlotFree& freed);

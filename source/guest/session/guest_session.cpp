@@ -204,6 +204,9 @@ void GuestSession::handle(MessageReader& message) {
         case MessageId::PopupDismiss:
             if (const std::optional<WindowId> popup = WindowId::read(message)) windows_->dismiss(*popup);
             return;
+        case MessageId::DumpFrame:
+            if (const std::optional<WindowId> window = WindowId::read(message)) dumps_.ask(*window);
+            return;
         case MessageId::SysCommand:
             if (const std::optional<SysCommand> command = SysCommand::read(message)) windows_->ask(*command);
             return;
@@ -624,8 +627,11 @@ void GuestSession::send_window_frame(WindowId id, Subscription& subscription) {
 }
 
 CaptureResult GuestSession::send_pixel_frame(WindowId id, WindowCapture& capture, const WindowSurface& surface) {
-    const CaptureResult grabbed = capture.grab(surface);
+    std::optional<CaptureStream::Frame> frame;
+    const CaptureResult grabbed = capture.grab(surface, frame);
     if (grabbed != CaptureResult::Fresh) return grabbed;
+    dumps_.write_if_asked(id, *frame, surface);
+    if (!capture.keep(*frame, surface)) return CaptureResult::Unchanged;
     rings_.erase(id.key());
     note_drawn(id, capture, surface);
     send_pixels(id, capture);
@@ -641,6 +647,7 @@ CaptureResult GuestSession::send_shared_frame(WindowId id, WindowCapture& captur
     std::optional<CaptureStream::Frame> frame;
     const CaptureResult grabbed = capture.grab(surface, frame);
     if (grabbed != CaptureResult::Fresh) return grabbed;
+    dumps_.write_if_asked(id, *frame, surface);
     if (surface.margin_is_reserved() && !edges_for(id).all_drawn(*frame)) {
         rings_.erase(id.key());
         if (capture.keep(*frame, surface)) {

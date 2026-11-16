@@ -19,7 +19,6 @@ public:
     WindowCapture(const GraphicsDevice& device, const FrameSignal& arrivals, CaptureCloser& closer)
         : stream_(device, arrivals, closer) {}
 
-    [[nodiscard]] CaptureResult grab(const WindowSurface& surface);
     [[nodiscard]] CaptureResult grab(const WindowSurface& surface, std::optional<CaptureStream::Frame>& frame);
     void minimized() noexcept;
     [[nodiscard]] bool keep(const CaptureStream::Frame& frame, const WindowSurface& surface);

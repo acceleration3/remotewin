@@ -18,6 +18,7 @@ enum class MessageId : std::uint8_t {
     WatchMonitor = 25,
     WindowPixels = 27,
     PopupDismiss = 28,
+    DumpFrame = 29,
     PointerMove = 30,
     PointerButton = 31,
     PointerWheel = 32,
