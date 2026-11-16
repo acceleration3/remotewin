@@ -30,6 +30,10 @@ Size GuestWindow::picture_padding() const noexcept {
     return Size{whole.width - picture.width, whole.height - picture.height};
 }
 
+bool GuestWindow::picture_covers(const Box& area) const noexcept {
+    return Box::of(picture_origin(), picture_size()).contains(area);
+}
+
 GuestWindow::Margins GuestWindow::margins() const noexcept {
     const WindowFields::Geometry& geometry = fields_.geometry;
     return Margins{geometry.margin_left, geometry.margin_top, geometry.margin_right, geometry.margin_bottom};

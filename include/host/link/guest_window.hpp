@@ -45,6 +45,7 @@ public:
     [[nodiscard]] Point picture_offset() const noexcept;
     [[nodiscard]] Size picture_size() const noexcept;
     [[nodiscard]] Size picture_padding() const noexcept;
+    [[nodiscard]] bool picture_covers(const Box& area) const noexcept;
     [[nodiscard]] Margins margins() const noexcept;
     [[nodiscard]] std::vector<Box> region() const;
     [[nodiscard]] std::vector<Box> opaque_region() const;

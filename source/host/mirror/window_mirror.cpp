@@ -470,7 +470,7 @@ bool WindowMirror::covers_monitor() const noexcept {
     const Box& monitor = kit_.desktop.monitor;
     if (monitor.empty() || window_.hidden() || window_.minimized() || window_.maximized()) return false;
     if (style_.has_caption() || style_.sizable()) return false;
-    return window_.frame().contains(monitor);
+    return window_.picture_covers(monitor);
 }
 
 void WindowMirror::configured(const ToplevelConfigure& configure) {

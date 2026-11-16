@@ -58,11 +58,25 @@ void nothing_of_a_layered_window() {
 
 }
 
+void covers_with_its_picture() {
+    WindowFields whole = window({}, Rect{0, 0, 900, 600}, 0);
+    whole.geometry.frame = Rect{0, 0, 2560, 1440};
+    whole.geometry.picture = Rect{0, 0, 2560, 1440};
+    const Box monitor{0, 0, 2560, 1440};
+    check(GuestWindow{WindowId{0x1234, 1}, whole}.picture_covers(monitor), "a window drawn over the monitor covers it");
+    WindowFields overlay = whole;
+    overlay.style.extended = WindowFields::Style::kLayered;
+    overlay.geometry.picture = Rect{283, 157, 1994, 1126};
+    check(!GuestWindow{WindowId{0x1234, 1}, overlay}.picture_covers(monitor),
+          "a layered window over the monitor that draws only part of it does not cover it");
+}
+
 int main() {
     a_region_is_opaque();
     against_the_picture();
     nothing_without_a_region();
     nothing_of_a_layered_window();
+    covers_with_its_picture();
     if (failures == 0) std::printf("guest_window: ok\n");
     return failures == 0 ? 0 : 1;
 }
