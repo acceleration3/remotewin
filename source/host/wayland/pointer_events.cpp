@@ -1,5 +1,6 @@
 #include "host/wayland/pointer_events.hpp"
 
+#include "host/cursor/cursor_shape.hpp"
 #include "host/wayland/mirror_surface.hpp"
 #include "host/wayland/pointer_cursor.hpp"
 
@@ -126,7 +127,9 @@ void PointerEvents::flush() {
     }
     if (frame.entered != nullptr) {
         focus_ = frame.entered;
-        if (SurfaceInput* input = target(); input != nullptr && frame.at.has_value()) input->pointer_entered(*frame.at);
+        SurfaceInput* input = target();
+        if (input == nullptr) cursor_.wear(CursorShape::Default);
+        if (input != nullptr && frame.at.has_value()) input->pointer_entered(*frame.at);
         frame.at.reset();
     }
     if (frame.at.has_value()) {

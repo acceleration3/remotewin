@@ -9,11 +9,12 @@ struct wp_viewport;
 
 namespace rwin::host {
 
-class Globals;
+class Seat;
+struct SurfaceKit;
 
 class Backdrop {
 public:
-    Backdrop(const Globals& globals, wl_surface* parent);
+    Backdrop(const SurfaceKit& kit, wl_surface* parent);
     ~Backdrop();
 
     Backdrop(const Backdrop&) = delete;
@@ -24,6 +25,7 @@ public:
     void cover(const Box& area);
 
 private:
+    Seat& seat_;
     ShmBuffer black_;
     wl_surface* surface_;
     wl_subsurface* subsurface_;

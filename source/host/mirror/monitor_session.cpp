@@ -159,7 +159,7 @@ void MonitorSession::fit() {
                       std::max(1, static_cast<int>(std::floor(picture.height * scale)))};
     surface_.fit_to(fitted);
     const Box whole{-(room.width - fitted.width) / 2, -(room.height - fitted.height) / 2, room.width, room.height};
-    if (backdrop_ == nullptr) backdrop_ = std::make_unique<Backdrop>(kit_.globals, surface_.surface());
+    if (backdrop_ == nullptr) backdrop_ = std::make_unique<Backdrop>(kit_, surface_.surface());
     backdrop_->cover(whole);
     toplevel_.set_window_geometry(whole);
     surface_.commit();

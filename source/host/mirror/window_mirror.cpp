@@ -536,7 +536,7 @@ void WindowMirror::fit_into(const ToplevelConfigure& configure) {
         const Size window = window_size();
         surface_->crop_to(window);
         if (shown.width < window.width || shown.height < window.height) {
-            if (backdrop_ == nullptr) backdrop_ = std::make_unique<Backdrop>(kit_.surfaces.globals, surface());
+            if (backdrop_ == nullptr) backdrop_ = std::make_unique<Backdrop>(kit_.surfaces, surface());
             backdrop_->cover(Box::of(Point{}, window));
         } else {
             backdrop_.reset();
@@ -555,7 +555,7 @@ void WindowMirror::fit_given(Size given, Size natural) {
         surface_->fit_one_to_one();
         const Point corner{(given.width - natural.width) / 2, (given.height - natural.height) / 2};
         const Box whole{-corner.x, -corner.y, given.width, given.height};
-        if (backdrop_ == nullptr) backdrop_ = std::make_unique<Backdrop>(kit_.surfaces.globals, surface());
+        if (backdrop_ == nullptr) backdrop_ = std::make_unique<Backdrop>(kit_.surfaces, surface());
         backdrop_->cover(whole);
         toplevel_->set_window_geometry(whole);
         geometry_corner_ = whole.corner();
