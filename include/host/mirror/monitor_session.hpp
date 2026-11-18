@@ -63,6 +63,7 @@ private:
     void tell_room();
     void wear_cursor();
     void note_ready();
+    void release_keys();
     [[nodiscard]] std::optional<Point> picture_point(PointF at) const;
     [[nodiscard]] bool through_qmp() const noexcept;
 

@@ -4,7 +4,9 @@
 #include "host/geometry/size.hpp"
 #include "host/geometry/view_mapping.hpp"
 #include "host/mirror/guest_application.hpp"
+#include "proto/key_stroke.hpp"
 
+#include <linux/input-event-codes.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -391,10 +393,10 @@ struct Dragged {
 };
 
 std::optional<Dragged> make_drag(Case& run, const KWinView::Seen& before, const Drag& drag, const std::string& what) {
-    FakePointer& pointer = run.desktop().pointer();
+    FakeInput& pointer = run.desktop().input();
     pointer.move_to(before.x + drag.press_x, before.y + drag.press_y);
     run.desktop().pass(milliseconds(30));
-    pointer.press();
+    pointer.press_button();
     const std::size_t mark = run.kwin_mark();
     const auto began = run.desktop().settle(
         [&] {
@@ -405,7 +407,7 @@ std::optional<Dragged> make_drag(Case& run, const KWinView::Seen& before, const 
         milliseconds(1000), milliseconds(0));
     run.verdicts().check(began.has_value(), std::format("the compositor began the {} resize", what));
     if (!began.has_value()) {
-        pointer.release();
+        pointer.release_button();
         return std::nullopt;
     }
     Dragged dragged;
@@ -414,7 +416,7 @@ std::optional<Dragged> make_drag(Case& run, const KWinView::Seen& before, const 
         dragged.steps.push_back(host::now_ns());
         run.desktop().pass(kDragStep);
     }
-    pointer.release();
+    pointer.release_button();
     dragged.released = host::now_ns();
     return dragged;
 }
@@ -963,6 +965,48 @@ void activation_both_ways(Case& run) {
     judge_stacking(run, followed, "the window the guest activated is active and on top here");
 }
 
+constexpr std::uint16_t kLeftShiftScan = 0x2A;
+
+bool shift_stroke(const FakeGuest& guest, std::size_t from, bool pressed) {
+    const auto& keys = guest.keys();
+    return std::any_of(keys.begin() + static_cast<std::ptrdiff_t>(from), keys.end(), [pressed](const KeyStroke& key) {
+        return key.scan_code == kLeftShiftScan && key.pressed == pressed;
+    });
+}
+
+void keys_released_on_close(Case& run) {
+    main_window_active(run);
+    const Rect main = run.window().frame();
+    constexpr WindowId kClosing{0x40f60, 2};
+    constexpr const char* kClosingTitle = "Closing window";
+    run.guest().show_window(kClosing, played_window(run.window(), kClosingTitle, "RemotewinIntegrationWindow",
+                                                    kWsOverlappedWindow | kWsVisible | kWsClipSiblings, 0,
+                                                    Rect{main.x + 300, main.y + 100, 600, 400}, WindowId{}));
+    run.guest().stack(ZOrder{kClosing, {kClosing, kMainId, kMonitorWindow}});
+    run.in_kwin([kClosingTitle](KWinView& kwin) { kwin.activate(kClosingTitle); });
+    const auto active = stacking_settles(
+        run,
+        [kClosingTitle](const Stacking& stacking) {
+            const KWinView::Stacked* shown = stacked(stacking, kClosingTitle);
+            return shown != nullptr && shown->active;
+        },
+        kHold);
+    judge_stacking(run, active, "the window to close has its mirror, and it is active");
+
+    const std::size_t before = run.guest().keys().size();
+    run.desktop().input().press_key(KEY_LEFTSHIFT);
+    const auto pressed = run.desktop().settle([&] { return shift_stroke(run.guest(), before, true); }, kSettleWait,
+                                              milliseconds(0));
+    run.judge_settled(pressed, "the guest saw Shift go down in the window to close");
+
+    const std::size_t held = run.guest().keys().size();
+    run.guest().forget_window(kClosing);
+    const auto released = run.desktop().settle([&] { return shift_stroke(run.guest(), held, false); }, kSettleWait,
+                                               milliseconds(0));
+    run.judge_settled(released, "the guest saw Shift go up when the window it went down in closed");
+    run.desktop().input().release_key(KEY_LEFTSHIFT);
+}
+
 constexpr const char* kAppTitle = "Played application";
 constexpr const char* kWelcomeTitle = "Played welcome";
 constexpr const char* kConfirmTitle = "Played close confirmation";
@@ -1343,6 +1387,7 @@ constexpr Named kCases[] = {
     {"dialog-in-front", &dialog_in_front, kQuick},   {"menus-in-front", &menus_in_front, kQuick},
     {"winui-popup", &winui_popup, kQuick},           {"activation-both-ways", &activation_both_ways, kQuick},
     {"map-keeps-guest-active", &map_keeps_guest_active, kQuick}, {"taskbar-presence", &taskbar_presence, kQuick},
+    {"keys-released-on-close", &keys_released_on_close, kQuick},
     {"app-id-per-application", &app_id_per_application, kQuick},
     {"welcome-in-front", &welcome_in_front, kQuick},
     {"welcome-in-front-rounded", &welcome_in_front_rounded, kQuick, true},

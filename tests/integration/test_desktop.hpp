@@ -3,7 +3,7 @@
 #include "child_process.hpp"
 #include "fake_export_device.hpp"
 #include "fake_guest.hpp"
-#include "fake_pointer.hpp"
+#include "fake_input.hpp"
 #include "host_report.hpp"
 #include "kwin_view.hpp"
 #include "model_window.hpp"
@@ -44,7 +44,7 @@ public:
     [[nodiscard]] host::PollLoop& loop() noexcept { return loop_; }
     [[nodiscard]] ModelWindow& window() noexcept { return *window_; }
     [[nodiscard]] FakeGuest& guest() noexcept { return *guest_; }
-    [[nodiscard]] FakePointer& pointer() noexcept { return *pointer_; }
+    [[nodiscard]] FakeInput& input() noexcept { return *input_; }
     [[nodiscard]] KWinView& kwin() noexcept { return *kwin_; }
     [[nodiscard]] HostReport& host_report() noexcept { return *report_; }
     [[nodiscard]] ScreenCapture& screen() noexcept { return *screen_; }
@@ -73,7 +73,7 @@ private:
     host::PollLoop loop_;
     std::unique_ptr<ChildProcess> kwin_process_;
     std::unique_ptr<host::BusConnection> bus_;
-    std::unique_ptr<FakePointer> pointer_;
+    std::unique_ptr<FakeInput> input_;
     std::unique_ptr<FakeExportDevice> device_;
     std::unique_ptr<ChildProcess> host_;
     std::unique_ptr<host::EventLoop::Watch> host_output_;

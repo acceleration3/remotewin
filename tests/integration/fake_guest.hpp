@@ -4,6 +4,7 @@
 
 #include "host/loop/event_loop.hpp"
 #include "proto/frame_decoder.hpp"
+#include "proto/key_stroke.hpp"
 #include "proto/move_size_kind.hpp"
 #include "proto/rect.hpp"
 #include "proto/activate.hpp"
@@ -72,6 +73,7 @@ public:
     void stack(const ZOrder& order);
 
     [[nodiscard]] const std::vector<Activate>& activations() const noexcept { return activations_; }
+    [[nodiscard]] const std::vector<KeyStroke>& keys() const noexcept { return keys_; }
     [[nodiscard]] bool subscribed_to(WindowId id) const;
     [[nodiscard]] std::size_t rings_made(WindowId id) const;
     [[nodiscard]] bool sent_back_to_pixels(WindowId id) const;
@@ -142,6 +144,7 @@ private:
     std::vector<Other> others_;
     std::size_t shown_ = 0;
     std::vector<Activate> activations_;
+    std::vector<KeyStroke> keys_;
     std::vector<Asked> asked_;
     std::vector<Placed> placed_;
     std::vector<Pictured> pictured_;

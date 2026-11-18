@@ -149,6 +149,7 @@ void WindowMirror::orphan() {
 void WindowMirror::drop_popup() {
     if (popup_ == nullptr) return;
     kit_.grabber.forget(*this);
+    held_keys_.release_all(kit_.link, window());
     if (buttons_held_ > 0) send_button(pressed_button_, pressed_at_, false);
     buttons_held_ = 0;
     held_at_.reset();
@@ -225,6 +226,7 @@ void WindowMirror::show_blank_if_unpictured() {
 
 void WindowMirror::drop_surface() {
     if (surface_ == nullptr) return;
+    held_keys_.release_all(kit_.link, window());
     kit_.grabber.forget(*this);
     kit_.popups.closing_under(*this);
     if (popup_ != nullptr) kit_.popups.closing(*this);

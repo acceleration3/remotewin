@@ -8,21 +8,23 @@ struct wl_display;
 struct wl_registry;
 
 namespace rwin::integration {
-class FakePointer {
+class FakeInput {
 public:
-    explicit FakePointer(const std::string& socket);
-    ~FakePointer();
+    explicit FakeInput(const std::string& socket);
+    ~FakeInput();
 
-    FakePointer(const FakePointer&) = delete;
-    FakePointer& operator=(const FakePointer&) = delete;
-    FakePointer(FakePointer&&) = delete;
-    FakePointer& operator=(FakePointer&&) = delete;
+    FakeInput(const FakeInput&) = delete;
+    FakeInput& operator=(const FakeInput&) = delete;
+    FakeInput(FakeInput&&) = delete;
+    FakeInput& operator=(FakeInput&&) = delete;
 
     [[nodiscard]] bool usable() const noexcept { return input_ != nullptr; }
 
     void move_to(double x, double y);
-    void press();
-    void release();
+    void press_button();
+    void release_button();
+    void press_key(std::uint32_t evdev_code);
+    void release_key(std::uint32_t evdev_code);
 
 private:
     static void announced(void* self, wl_registry* registry, std::uint32_t name, const char* interface,

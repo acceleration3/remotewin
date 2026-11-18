@@ -171,6 +171,9 @@ void FakeGuest::take(MessageReader& message) {
                 activations_.push_back(*activation);
             }
             return;
+        case MessageId::Key:
+            if (const std::optional<KeyStroke> stroke = KeyStroke::read(message)) keys_.push_back(*stroke);
+            return;
         case MessageId::WindowMove:
             if (const std::optional<WindowMove> move = WindowMove::read(message)) {
                 asked_.push_back(Asked{host::now_ns(), move->frame, move->window});

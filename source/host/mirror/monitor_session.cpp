@@ -79,7 +79,7 @@ MonitorSession::MonitorSession(const SurfaceKit& kit, GuestLink& link, SharedFra
     });
 }
 
-MonitorSession::~MonitorSession() = default;
+MonitorSession::~MonitorSession() { release_keys(); }
 
 void MonitorSession::raise(const std::string& token) {
     if (token.empty()) {
@@ -132,7 +132,10 @@ void MonitorSession::tell_room() {
     }
 }
 
-void MonitorSession::close_requested() { finished(); }
+void MonitorSession::close_requested() {
+    release_keys();
+    finished();
+}
 
 void MonitorSession::fit() {
     if (!toplevel_.configured() || surface_.picture_size().empty()) return;
@@ -234,7 +237,9 @@ void MonitorSession::wheel(Wheel turned) {
 
 void MonitorSession::keyboard_entered() {}
 
-void MonitorSession::keyboard_left() {
+void MonitorSession::keyboard_left() { release_keys(); }
+
+void MonitorSession::release_keys() {
     if (qmp_input_ != nullptr) qmp_input_->release_keys();
     held_keys_.release_all(link_, kMonitorWindow);
 }

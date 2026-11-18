@@ -71,7 +71,7 @@ TestDesktop::~TestDesktop() {
     kwin_.reset();
     host_output_.reset();
     if (host_ != nullptr) host_->stop();
-    pointer_.reset();
+    input_.reset();
     bus_.reset();
     if (kwin_process_ != nullptr) kwin_process_->stop();
 }
@@ -95,8 +95,8 @@ bool TestDesktop::start_kwin(const std::string& scratch) {
         }
         std::this_thread::sleep_for(kNamePoll);
     }
-    pointer_ = std::make_unique<FakePointer>(socket_);
-    if (!pointer_->usable()) {
+    input_ = std::make_unique<FakeInput>(socket_);
+    if (!input_->usable()) {
         std::fprintf(stderr, "setup: KWin offers no fake input\n");
         return false;
     }

@@ -21,7 +21,7 @@ add_executable(rwin_resize_integration
     fake_export_device.cpp
     surface_buffer.cpp
     fake_guest.cpp
-    fake_pointer.cpp
+    fake_input.cpp
     host_report.cpp
     kwin_view.cpp
     screen_capture.cpp
@@ -39,7 +39,7 @@ foreach(case maximize-here maximize-in-guest minimize-here minimize-in-guest dra
              dialog-in-front menus-in-front winui-popup activation-both-ways map-keeps-guest-active
              taskbar-presence app-id-per-application welcome-in-front welcome-in-front-rounded close-confirmation-in-front
              close-confirmation-in-front-rounded minimized-at-start minimized-at-start-restored-in-guest
-             minimized-beside-shown)
+             minimized-beside-shown keys-released-on-close)
     add_test(NAME rwin_integration_${case} COMMAND rwin_resize_integration ${case})
     set_tests_properties(rwin_integration_${case} PROPERTIES LABELS integration SKIP_RETURN_CODE 77 TIMEOUT 30)
 endforeach()

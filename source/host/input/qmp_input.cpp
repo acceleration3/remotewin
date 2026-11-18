@@ -89,7 +89,6 @@ void QmpInput::drop(const char* why) {
     socket_ = UniqueFd{};
     events_.clear();
     batch_->stop();
-    held_.clear();
     reported_unavailable_ = true;
     retry_later();
 }
@@ -137,6 +136,10 @@ void QmpInput::take_line(const std::string& line) {
         backoff_ = kFirstRetry;
         reported_unavailable_ = false;
         RWIN_INFO("qmp", "input goes through QEMU's virtual devices ('{}')", path_);
+        if (!held_.empty()) {
+            RWIN_DEBUG("qmp", "releasing {} key(s) held when the monitor was lost", held_.size());
+            release_keys();
+        }
     } else if (line.find("\"error\"") != std::string::npos) {
         RWIN_ERROR("qmp", "'{}' refused the handshake: {}", path_, line);
         drop("handshake refused");
@@ -240,10 +243,12 @@ bool QmpInput::key(std::uint32_t evdev_code, bool pressed) {
 }
 
 void QmpInput::release_keys() {
+    if (state_ != State::Ready) return;
     for (const std::uint16_t qnum : held_) {
         queue(std::format(R"({{"type":"key","data":{{"down":false,"key":{{"type":"number","data":{}}}}}}})", qnum));
     }
     held_.clear();
+    flush();
 }
 
 }
