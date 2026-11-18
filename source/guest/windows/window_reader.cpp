@@ -29,6 +29,7 @@ constexpr std::wstring_view kOwnClassPrefix = L"rwin-guest-";
 constexpr std::wstring_view kOfficeBorderClass = L"MSO_BORDEREFFECT_WINDOW_CLASS";
 constexpr std::wstring_view kMenuClass = L"#32768";
 constexpr std::wstring_view kGhostClass = L"Ghost";
+constexpr std::wstring_view kFrameClass = L"ApplicationFrameWindow";
 constexpr std::size_t kClassChars = 256;
 constexpr std::size_t kTitleChars = 1024;
 
@@ -114,6 +115,11 @@ bool shell_tool_window(HWND window, DWORD process, std::wstring_view name) {
     return shell != 0 && process == shell;
 }
 
+bool shell_prompt(HWND window, std::wstring_view name) {
+    if (name != kFrameClass || (::GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0) return false;
+    return ::IsWindowVisible(window) != FALSE && !cloaked(window);
+}
+
 Rect frame_of_surface(HWND window, const WindowSurface& surface) {
     if (surface.valid()) {
         return Rect{surface.screen_x(0), surface.screen_y(0), surface.width(), surface.height()};
@@ -177,7 +183,8 @@ bool WindowReader::admissible(void* window) const {
     if (name.starts_with(kOwnClassPrefix)) return false;
     if (std::find(kShellClasses.begin(), kShellClasses.end(), name) != kShellClasses.end()) return false;
     if (shell_tool_window(hwnd, process, name)) return false;
-    return !shell_.shell_managed(window) || shell_.shown_in_switchers(window);
+    if (!shell_.shell_managed(window) || shell_.shown_in_switchers(window)) return true;
+    return shell_prompt(hwnd, name);
 }
 
 WindowReader::Reading WindowReader::read(void* window, WindowId id,

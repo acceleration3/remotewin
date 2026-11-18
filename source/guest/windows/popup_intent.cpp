@@ -57,6 +57,12 @@ HWND shown_owner_of_menu(HWND owner, const GUITHREADINFO& input) {
 
 bool mirrored(HWND window) { return (::GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_LAYOUTRTL) != 0; }
 
+bool dropdown_shaped(HWND window) {
+    constexpr LONG_PTR kDropdownExtended = WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+    return (::GetWindowLongPtrW(window, GWL_STYLE) & WS_POPUP) != 0
+           && (::GetWindowLongPtrW(window, GWL_EXSTYLE) & kDropdownExtended) == kDropdownExtended;
+}
+
 BOOL CALLBACK collect_menus(HWND window, LPARAM into) {
     if (is_menu(window) && ::IsWindowVisible(window) != FALSE) {
         reinterpret_cast<std::vector<HWND>*>(into)->push_back(window);
@@ -187,9 +193,10 @@ void PopupIntent::read_placed_against(void* window) {
     HWND against = nullptr;
     if (gui.hwndMenuOwner != nullptr && is_menu(hwnd)) {
         against = ::GetAncestor(gui.hwndMenuOwner, GA_ROOTOWNER);
-    } else if (((::GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CHILD) != 0 || gui.hwndCapture == hwnd)
+    } else if (((::GetWindowLongPtrW(hwnd, GWL_STYLE) & WS_CHILD) != 0 || gui.hwndCapture == hwnd
+                || dropdown_shaped(hwnd))
                && gui.hwndActive != nullptr) {
-        against = ::GetAncestor(gui.hwndActive, GA_ROOTOWNER);
+        against = ::GetAncestor(gui.hwndActive, GA_ROOT);
     }
     if (against == nullptr || against == hwnd) return;
     open(Kind::Exact, against, frame_.x, frame_.y, frame_.x + static_cast<std::int32_t>(frame_.width),
