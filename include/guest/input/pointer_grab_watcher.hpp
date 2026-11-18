@@ -14,6 +14,7 @@ public:
 
     void put_at(std::int32_t screen_x, std::int32_t screen_y);
     void nudging();
+    [[nodiscard]] std::optional<PointerGrabRule::Point> hidden_step(std::int32_t screen_x, std::int32_t screen_y);
 
     [[nodiscard]] const PointerGrab& current() const noexcept { return last_; }
 

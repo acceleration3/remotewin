@@ -369,7 +369,16 @@ void GuestSession::move_pointer(const PointerMove& move) {
     const std::optional<WindowSurface> surface = surface_of(move.window, into_x, into_y);
     if (!surface.has_value()) return;
     report_grab();
-    target_.raise(surface->handle(), surface->screen_x(move.x + into_x), surface->screen_y(move.y + into_y), false);
+    const std::int32_t screen_x = surface->screen_x(move.x + into_x);
+    const std::int32_t screen_y = surface->screen_y(move.y + into_y);
+    target_.raise(surface->handle(), screen_x, screen_y, false);
+    if (const std::optional<PointerGrabRule::Point> step = grabs_.hidden_step(screen_x, screen_y)) {
+        if (step->x == 0 && step->y == 0) return;
+        grabs_.nudging();
+        nudge_pointer(step->x, step->y);
+        report_grab();
+        return;
+    }
     if (const auto at = move_pointer_to(*surface, move.x + into_x, move.y + into_y)) {
         grabs_.put_at(at->first, at->second);
     }

@@ -30,6 +30,20 @@ void PointerGrabRule::forget() noexcept {
     warping_ = false;
     held_at_.reset();
     dragged_away_ = false;
+    hidden_at_.reset();
+    locked_at_.reset();
+    last_target_.reset();
+    hidden_steps_ = 0;
+}
+
+std::optional<PointerGrabRule::Point> PointerGrabRule::step_while_hidden(Point target, bool cursor_shown,
+                                                                         Point cursor) noexcept {
+    const std::optional<Point> from = last_target_;
+    last_target_ = target;
+    if (cursor_shown) hidden_steps_ = 0;
+    if (cursor_shown || !from.has_value()) return std::nullopt;
+    if (++hidden_steps_ >= kHiddenStepsToLock && !hidden_at_.has_value()) hidden_at_ = cursor;
+    return Point{target.x - from->x, target.y - from->y};
 }
 
 void PointerGrabRule::note_return(Point at, std::uint64_t now_ms) noexcept {
@@ -39,6 +53,11 @@ void PointerGrabRule::note_return(Point at, std::uint64_t now_ms) noexcept {
     last_return_ms_ = now_ms;
     free_moves_ = 0;
     if (returns_ >= kReturnsToWarp) warping_ = true;
+}
+
+void PointerGrabRule::note_hidden(const Look& look) noexcept {
+    if (look.cursor_shown || hidden_at_.has_value()) return;
+    hidden_at_ = look.cursor;
 }
 
 void PointerGrabRule::note_free() noexcept {
@@ -53,11 +72,13 @@ void PointerGrabRule::judge(const Look& look) noexcept {
     const bool at_point = near(look.cursor, pending_->point);
     if (pending_->absolute && !at_point) {
         if (look.button_held && far(look.cursor, pending_->point)) dragged_away_ = true;
+        note_hidden(look);
         note_return(look.cursor, look.now_ms);
         pending_.reset();
         return;
     }
     if (!settled) return;
+    note_hidden(look);
     if (pending_->absolute || !at_point) {
         note_free();
     } else {
@@ -72,6 +93,10 @@ PointerGrab PointerGrabRule::grab_for(const Look& look) noexcept {
         window_ = look.foreground;
     }
     if (!look.button_held) dragged_away_ = false;
+    if (look.cursor_shown) {
+        hidden_at_.reset();
+        hidden_steps_ = 0;
+    }
     judge(look);
     PointerGrab grab;
     if (look.foreground.none()) return grab;
@@ -85,15 +110,20 @@ PointerGrab PointerGrabRule::grab_for(const Look& look) noexcept {
     } else if (!held_at_.has_value()) {
         held_at_ = look.cursor;
     }
-    const bool lock = (hidden && (look.clip.has_value() || warping_)) || held || small_clip;
+    const bool lock =
+        (hidden && (look.clip.has_value() || warping_ || hidden_at_.has_value())) || held || small_clip;
     if (look.clip.has_value()) grab.area = *look.clip;
+    if (!lock) locked_at_.reset();
     if (lock) {
         grab.kind = PointerGrab::Kind::Lock;
-        const Point at = warping_ ? return_point_
+        const Point found = warping_ ? return_point_
                          : look.clip.has_value()
                              ? Point{(look.clip->left + look.clip->right) / 2, (look.clip->top + look.clip->bottom) / 2}
                          : held_at_.has_value() ? *held_at_
-                                                : look.cursor;
+                         : hidden_at_.has_value() ? *hidden_at_
+                                                  : look.cursor;
+        if (!locked_at_.has_value()) locked_at_ = found;
+        const Point at = *locked_at_;
         grab.x = at.x;
         grab.y = at.y;
         return grab;

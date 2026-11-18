@@ -30,13 +30,16 @@ public:
     static constexpr std::uint64_t kSettleMs = 25;
     static constexpr int kFreeMovesToStop = 2;
     static constexpr std::int32_t kWarpDistance = 32;
+    static constexpr int kHiddenStepsToLock = 2;
 
     void put_at(Point at, std::uint64_t now_ms) noexcept;
     void nudged(Point from, std::uint64_t now_ms) noexcept;
 
     [[nodiscard]] PointerGrab grab_for(const Look& look) noexcept;
+    [[nodiscard]] std::optional<Point> step_while_hidden(Point target, bool cursor_shown, Point cursor) noexcept;
 
     [[nodiscard]] bool warping() const noexcept { return warping_; }
+    [[nodiscard]] bool looking_hidden() const noexcept { return hidden_at_.has_value(); }
 
 private:
     struct Pending {
@@ -48,6 +51,7 @@ private:
     void judge(const Look& look) noexcept;
     void note_return(Point at, std::uint64_t now_ms) noexcept;
     void note_free() noexcept;
+    void note_hidden(const Look& look) noexcept;
     void forget() noexcept;
 
     std::optional<Pending> pending_;
@@ -59,6 +63,10 @@ private:
     bool warping_ = false;
     std::optional<Point> held_at_;
     bool dragged_away_ = false;
+    std::optional<Point> hidden_at_;
+    std::optional<Point> locked_at_;
+    std::optional<Point> last_target_;
+    int hidden_steps_ = 0;
 };
 
 }

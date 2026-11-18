@@ -34,6 +34,17 @@ void mouse_look(PointerGrabRule& rule, std::uint64_t& now, int moves, bool shown
     }
 }
 
+PointerGrab free_moves(PointerGrabRule& rule, std::uint64_t& now, int moves, bool shown) {
+    PointerGrab grab;
+    for (int i = 0; i < moves; ++i) {
+        const PointerGrabRule::Point to{kMiddle.x + 20 * (i + 1), kMiddle.y + 5 * (i + 1)};
+        rule.put_at(to, now);
+        now += PointerGrabRule::kSettleMs;
+        grab = rule.grab_for(look(shown, std::nullopt, to, now));
+    }
+    return grab;
+}
+
 void a_hidden_cursor_alone_is_left_alone() {
     PointerGrabRule rule;
     const PointerGrab grab = rule.grab_for(look(false, std::nullopt, kMiddle, 0));
@@ -64,7 +75,8 @@ void mouse_look_without_a_clip_locks_after_three_returns() {
     PointerGrabRule rule;
     std::uint64_t now = 0;
     mouse_look(rule, now, 2);
-    check(rule.grab_for(look(false, std::nullopt, kMiddle, now)).kind == Kind::None, "two returns are not yet a pattern");
+    static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now)));
+    check(!rule.warping(), "two returns are not yet a pattern");
     rule.put_at({kMiddle.x + 40, kMiddle.y}, now);
     now += 8;
     const PointerGrab grab = rule.grab_for(look(false, std::nullopt, kMiddle, now));
@@ -89,8 +101,8 @@ void returns_too_far_apart_do_not_add_up() {
         rule.put_at({kMiddle.x + 10, kMiddle.y}, now);
         now += PointerGrabRule::kReturnGapMs + 1;
     }
-    check(rule.grab_for(look(false, std::nullopt, kMiddle, now)).kind == Kind::None,
-          "a cursor found back at one point once a second is no mouse look");
+    static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now)));
+    check(!rule.warping(), "a cursor found back at one point once a second is no mouse look");
 }
 
 void a_move_judged_too_soon_counts_for_nothing() {
@@ -114,8 +126,94 @@ void mouse_look_ends_when_moves_stay() {
         now += PointerGrabRule::kSettleMs;
         static_cast<void>(rule.grab_for(look(false, std::nullopt, to, now)));
     }
-    check(!rule.warping() && rule.grab_for(look(false, std::nullopt, {0, 0}, now)).kind == Kind::None,
-          "a game that stopped putting the cursor back - its menu is open - is let go");
+    check(!rule.warping() && rule.grab_for(look(false, std::nullopt, {0, 0}, now)).kind == Kind::Lock,
+          "a game that stopped putting the cursor back but keeps it hidden still reads the mouse");
+    check(rule.grab_for(look(true, std::nullopt, {0, 0}, now)).kind == Kind::None,
+          "and is let go once it shows its cursor - its menu is open");
+}
+
+void a_cursor_hidden_while_the_mouse_moves_locks() {
+    PointerGrabRule rule;
+    std::uint64_t now = 0;
+    static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now)));
+    const PointerGrab grab = free_moves(rule, now, 1, false);
+    check(grab.kind == Kind::Lock && grab.x == kMiddle.x + 20 && grab.y == kMiddle.y + 5,
+          "a cursor that stays hidden while the mouse moves it, without clip or warping, locks where it is");
+    check(rule.looking_hidden() && !rule.warping(), "locked by the hidden cursor, not by warping");
+    check(free_moves(rule, now, 4, false).kind == Kind::Lock, "relative motion that keeps it hidden keeps the lock");
+}
+
+void a_cursor_shown_again_on_movement_is_never_locked() {
+    PointerGrabRule rule;
+    std::uint64_t now = 0;
+    static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now)));
+    for (int i = 0; i < 6; ++i) {
+        static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now)));
+        check(free_moves(rule, now, 1, true).kind == Kind::None,
+              "a video player or an editor that hides the cursor shows it again when the mouse moves");
+    }
+    check(!rule.looking_hidden(), "and is never taken for mouse look");
+}
+
+void a_held_lock_keeps_its_point_through_clicks_and_edges() {
+    PointerGrabRule rule;
+    std::uint64_t now = 0;
+    static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now)));
+    const PointerGrab locked = free_moves(rule, now, 1, false);
+    check(locked.kind == Kind::Lock, "locked by the hidden cursor");
+    PointerGrabRule::Look pressed = look(false, std::nullopt, {2165, 309}, now + 1);
+    pressed.button_held = true;
+    const PointerGrab clicking = rule.grab_for(pressed);
+    check(clicking == locked, "pressing a button while locked asks for the same lock, so the host keeps it");
+    const PointerGrabRule::Point edge{2559, 0};
+    for (int i = 0; i < PointerGrabRule::kReturnsToWarp; ++i) {
+        static_cast<void>(rule.grab_for(look(false, std::nullopt, edge, now)));
+        rule.nudged(edge, now);
+        now += PointerGrabRule::kSettleMs;
+    }
+    check(rule.grab_for(look(false, std::nullopt, edge, now)) == locked,
+          "a cursor stuck at the screen's edge under relative motion does not move the lock");
+}
+
+void moves_onto_a_hidden_cursor_are_the_mouse_s_steps() {
+    PointerGrabRule rule;
+    check(!rule.step_while_hidden({100, 100}, false, kMiddle).has_value(), "the first move has no step to take");
+    const std::optional<PointerGrabRule::Point> step = rule.step_while_hidden({130, 90}, false, kMiddle);
+    check(step.has_value() && step->x == 30 && step->y == -10,
+          "a hidden cursor is moved by how far the mouse went, never to where it is");
+    check(!rule.step_while_hidden({400, 400}, true, kMiddle).has_value(), "a shown cursor is moved to where the mouse is");
+    const std::optional<PointerGrabRule::Point> after = rule.step_while_hidden({405, 401}, false, kMiddle);
+    check(after.has_value() && after->x == 5 && after->y == 1,
+          "hidden again, the step counts from the last place the mouse was seen");
+}
+
+void a_second_hidden_step_locks_at_once() {
+    PointerGrabRule rule;
+    std::uint64_t now = 0;
+    static_cast<void>(rule.grab_for(look(true, std::nullopt, kMiddle, now)));
+    static_cast<void>(rule.step_while_hidden({100, 100}, true, kMiddle));
+    static_cast<void>(rule.step_while_hidden({140, 100}, false, kMiddle));
+    check(rule.grab_for(look(false, std::nullopt, kMiddle, now)).kind == Kind::None,
+          "one step onto a hidden cursor is not yet a lock: an editor hiding it while typing shows it on that move");
+    static_cast<void>(rule.step_while_hidden({400, 100}, false, kMiddle));
+    const PointerGrab grab = rule.grab_for(look(false, std::nullopt, kMiddle, now));
+    check(grab.kind == Kind::Lock && grab.x == kMiddle.x && grab.y == kMiddle.y,
+          "the second step locks with no wait, where the game keeps its cursor, so a fast flick cannot leave");
+    static_cast<void>(rule.step_while_hidden({100, 100}, true, kMiddle));
+    static_cast<void>(rule.grab_for(look(true, std::nullopt, kMiddle, now)));
+    static_cast<void>(rule.step_while_hidden({140, 100}, false, kMiddle));
+    check(rule.grab_for(look(false, std::nullopt, kMiddle, now)).kind == Kind::None,
+          "after the cursor shows, the count starts again");
+}
+
+void a_lock_on_a_hidden_cursor_ends_when_it_shows() {
+    PointerGrabRule rule;
+    std::uint64_t now = 0;
+    static_cast<void>(rule.grab_for(look(false, std::nullopt, kMiddle, now)));
+    check(free_moves(rule, now, 1, false).kind == Kind::Lock, "locked");
+    check(free_moves(rule, now, 1, true).kind == Kind::None, "the game shows its cursor: let go");
+    check(rule.grab_for(look(false, std::nullopt, kMiddle, now)).kind == Kind::None,
+          "hidden again, it is not locked before the mouse moves it");
 }
 
 void nudges_put_back_keep_the_lock() {
@@ -155,6 +253,12 @@ int main() {
     mouse_look_ends_when_moves_stay();
     nudges_put_back_keep_the_lock();
     losing_the_foreground_lets_go();
+    a_cursor_hidden_while_the_mouse_moves_locks();
+    a_cursor_shown_again_on_movement_is_never_locked();
+    a_lock_on_a_hidden_cursor_ends_when_it_shows();
+    moves_onto_a_hidden_cursor_are_the_mouse_s_steps();
+    a_second_hidden_step_locks_at_once();
+    a_held_lock_keeps_its_point_through_clicks_and_edges();
     if (failures != 0) {
         std::printf("%d failure(s)\n", failures);
         return EXIT_FAILURE;

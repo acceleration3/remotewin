@@ -90,4 +90,8 @@ void PointerGrabWatcher::put_at(std::int32_t screen_x, std::int32_t screen_y) {
 
 void PointerGrabWatcher::nudging() { rule_.nudged(cursor_now(), ::GetTickCount64()); }
 
+std::optional<PointerGrabRule::Point> PointerGrabWatcher::hidden_step(std::int32_t screen_x, std::int32_t screen_y) {
+    return rule_.step_while_hidden({screen_x, screen_y}, cursor_shown(), cursor_now());
+}
+
 }
