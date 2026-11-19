@@ -168,3 +168,9 @@ The host half needs a C and a C++20 compiler, pkg-config, and
 `wayland-client`, `wayland-scanner`, `wayland-protocols` (1.38 or newer),
 `xkbcommon`, `libdrm` (2.4.116 or newer) and `libsystemd` (sd-bus). It
 links no Qt.
+
+## License
+
+remotewin is licensed under the [Apache License 2.0](LICENSE).
+
+Files that name their own license keep it, such as the KWin protocol description in `tests/integration/`, which is LGPL-2.1-or-later.
