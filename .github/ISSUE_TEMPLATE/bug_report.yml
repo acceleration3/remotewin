@@ -1,0 +1,68 @@
+name: Bug report
+description: A window, input or frame bug in remotewin.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If you use remotewin through LSW, report there first: [LSW issues](https://github.com/acceleration3/linux-subsystem-windows/issues/new/choose). Its log archive carries the mirror logs.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Window placement, size or maximising
+        - Menus, popups or tooltips
+        - Keyboard input
+        - Mouse, pointer or cursor
+        - Frames, rendering or flicker
+        - Latency or frame pacing
+        - Taskbar entries, icons or app IDs
+        - The whole-desktop view
+        - Building
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. A short screen recording helps a lot for window and input bugs.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The Windows application, and the steps.
+  - type: input
+    id: compositor
+    attributes:
+      label: Compositor and version
+      placeholder: KWin 6.5 (KDE Plasma), Hyprland 0.52, ...
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: remotewin commit
+      description: "`git rev-parse --short HEAD`, or the LSW version it came with."
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: Host GPU and driver
+      placeholder: Intel Arc B580, Mesa 26.2
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The host half's log for that window, and the guest half's if you have it. Run with a higher log level for input and placement bugs.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched the existing issues and this is not one of them.
+          required: true

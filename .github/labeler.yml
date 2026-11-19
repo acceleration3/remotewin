@@ -1,0 +1,15 @@
+"area: host":
+  - changed-files:
+      - any-glob-to-any-file: ["source/host/**", "include/host/**"]
+"area: guest":
+  - changed-files:
+      - any-glob-to-any-file: ["source/guest/**", "include/guest/**"]
+"area: protocol":
+  - changed-files:
+      - any-glob-to-any-file: ["source/proto/**", "include/proto/**"]
+"tests":
+  - changed-files:
+      - any-glob-to-any-file: ["tests/**"]
+"documentation":
+  - changed-files:
+      - any-glob-to-any-file: ["**/*.md"]

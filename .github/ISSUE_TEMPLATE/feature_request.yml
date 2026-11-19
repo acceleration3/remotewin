@@ -1,0 +1,20 @@
+name: Feature request
+description: Something remotewin could do that it does not.
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you want to do
+      description: The task or workload, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How remotewin could help
+  - type: textarea
+    id: else
+    attributes:
+      label: Anything else
+      description: Specifications, prior art, or how other projects do it.

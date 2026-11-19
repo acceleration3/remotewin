@@ -1,0 +1,30 @@
+name: close stale questions
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          any-of-labels: "needs info"
+          days-before-stale: 21
+          days-before-close: 14
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          stale-issue-message: >
+            This issue has waited three weeks for the details asked for above.
+            It will be closed in two weeks if nothing changes. Any comment keeps it open,
+            and a closed issue can be reopened at any time.
+          close-issue-message: >
+            Closing for now, since the details it needs did not arrive.
+            Reopen it, or comment, whenever you have them.
+          remove-stale-when-updated: true

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Using LSW?
+    url: https://github.com/acceleration3/linux-subsystem-windows/issues/new/choose
+    about: Applications and setup problems are best reported to LSW, with its log archive.
+  - name: Report a security vulnerability
+    url: https://github.com/acceleration3/remotewin/security/advisories/new
+    about: Privately, so it can be fixed before it is public.
