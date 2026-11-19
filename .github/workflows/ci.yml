@@ -23,7 +23,7 @@ jobs:
       - name: Install the build dependencies
         run: pacman -Syu --noconfirm --needed base-devel git cmake ninja pkgconf wayland wayland-protocols libxkbcommon libdrm systemd-libs
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure
         run: cmake -S . -B build -G Ninja
@@ -44,7 +44,7 @@ jobs:
       - name: Install the build dependencies
         run: pacman -Syu --noconfirm --needed base-devel git cmake ninja mingw-w64-gcc
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Configure
         run: cmake -S . -B build-guest -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DRWIN_BUILD_TESTS=OFF
