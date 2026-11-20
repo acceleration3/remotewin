@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "rwin-dev": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["tools/mcp/rwin_dev.py"]
+    }
+  }
+}
