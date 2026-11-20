@@ -11,9 +11,6 @@ PROTOCOL = "2025-06-18"
 LOG_LINES = 80
 MAX_LOG_LINES = 2000
 MAX_WAIT_SECONDS = 55
-BUILD_CPU_QUOTA = "400%"
-BUILD_MEMORY_HIGH = "6G"
-BUILD_JOBS = "4"
 GPU_EVENTS = re.compile(
     r"amdgpu.*(fault|timeout|reset|hang)|i915.*(hang|reset|fault)|xe .*(hang|reset|timedout)"
     r"|NVRM: Xid|gpu hang|fence expiration|GPU reset", re.I)
@@ -39,18 +36,24 @@ def state_directory(server):
 
 
 class BuildLimits:
-    def __init__(self, lock=None, cpu_quota=BUILD_CPU_QUOTA, memory_high=BUILD_MEMORY_HIGH, jobs=BUILD_JOBS):
+    def __init__(self, lock=None, environment=None):
+        settings = os.environ if environment is None else environment
         self.lock = pathlib.Path(lock) if lock else runtime_directory() / "lsw-build.lock"
-        self.cpu_quota = cpu_quota
-        self.memory_high = memory_high
-        self.jobs = jobs
+        self.jobs = settings.get("LSW_BUILD_JOBS") or str(os.cpu_count() or 1)
+        self.cpu_quota = settings.get("LSW_BUILD_CPU_QUOTA")
+        self.memory_high = settings.get("LSW_BUILD_MEMORY_HIGH")
 
     def wrap(self, argv):
-        return ["flock", str(self.lock), "systemd-run", "--user", "--scope", "-q", "-p", f"CPUQuota={self.cpu_quota}",
-                "-p", f"MemoryHigh={self.memory_high}", "nice", "-n", "19", "ionice", "-c3", *argv]
+        properties = []
+        if self.cpu_quota:
+            properties += ["-p", f"CPUQuota={self.cpu_quota}"]
+        if self.memory_high:
+            properties += ["-p", f"MemoryHigh={self.memory_high}"]
+        return ["flock", str(self.lock), "systemd-run", "--user", "--scope", "-q", *properties,
+                "nice", "-n", "19", "ionice", "-c3", *argv]
 
     def environment(self):
-        return {"JOBS": self.jobs, "CMAKE_BUILD_PARALLEL_LEVEL": self.jobs, "AV_GATE_JOBS": self.jobs}
+        return {"JOBS": self.jobs, "CMAKE_BUILD_PARALLEL_LEVEL": self.jobs, "AV_GATE_JOBS": self.jobs, "LSW_BUILD_JOBS": self.jobs}
 
 
 class Jobs:

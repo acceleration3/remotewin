@@ -27,7 +27,8 @@ class RwinDev(JobTools):
         return [
             tool("status", "The remotewin checkout: branch and changes, which build trees are configured, and the "
                  "running jobs."),
-            tool("build", "Configures (when needed) and builds one side as a job at four CPUs under the build lock: "
+            tool("build", "Configures (when needed) and builds one side as a job under the build lock, at the limits "
+                 "LSW_BUILD_JOBS, LSW_BUILD_CPU_QUOTA and LSW_BUILD_MEMORY_HIGH set: "
                  "host is the Wayland client and its tests in build/, guest the mingw cross-build of "
                  "remotewin-guest.exe in build-guest/. target picks one target, such as remotewin-wgcbench.",
                  {"side": {"type": "string", "enum": sorted(SIDES)}, "target": {"type": "string"},

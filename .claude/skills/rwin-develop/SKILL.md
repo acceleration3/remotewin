@@ -5,8 +5,8 @@ description: Build and test remotewin - the Wayland host client and the mingw gu
 
 # Develop remotewin
 
-The `rwin-dev` MCP server (`tools/mcp/rwin_dev.py`) runs the steps as background jobs at four CPUs under the build
-lock (`wait_job`, `job_log`, `cancel_job`). Read `CLAUDE.md` first: its C++ rules apply to every change, and every bug
+The `rwin-dev` MCP server (`tools/mcp/rwin_dev.py`) runs the steps as background jobs under the build lock, at the limits `LSW_BUILD_JOBS`,
+`LSW_BUILD_CPU_QUOTA` and `LSW_BUILD_MEMORY_HIGH` set (`wait_job`, `job_log`, `cancel_job`). Read `CLAUDE.md` first: its C++ rules apply to every change, and every bug
 fix ships the test that would have caught it.
 
 ## Builds

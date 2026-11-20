@@ -116,7 +116,7 @@ alone (`WindowPixels`), and a reset GPU device has every ring made afresh.
 
 ## Both halves from one build
 
-Each end's first message is a `Hello` (`proto/hello.hpp`) naming its build
+Each end's first message is a `Hello` (`include/proto/hello.hpp`) naming its build
 and the features it speaks; a feature is active at the lower version when
 both list it, and every message belongs to one. A peer that does not speak `windows` is refused: the host
 logs what it lacks and exits with status 3, a guest half logs it and ends.
